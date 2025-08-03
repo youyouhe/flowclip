@@ -1,0 +1,10 @@
+# 音频处理依赖
+pydub>=0.25.1
+numpy>=1.21.0
+scikit-learn>=1.0.0
+matplotlib>=3.5.0
+
+# 系统依赖（需要单独安装）
+# Ubuntu/Debian: sudo apt-get install ffmpeg
+# macOS: brew install ffmpeg
+# Windows: 下载 https://ffmpeg.org/download.html

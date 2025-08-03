@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebSocket连接测试</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .log {
+            background: #f5f5f5;
+            border: 1px solid #ddd;
+            padding: 10px;
+            height: 400px;
+            overflow-y: auto;
+            margin-bottom: 20px;
+        }
+        .log-entry {
+            margin: 5px 0;
+            padding: 5px;
+            border-radius: 3px;
+        }
+        .log-entry.info {
+            background: #e3f2fd;
+        }
+        .log-entry.error {
+            background: #ffebee;
+        }
+        .log-entry.success {
+            background: #e8f5e8;
+        }
+        button {
+            padding: 10px 20px;
+            margin: 5px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        .connect-btn {
+            background: #4CAF50;
+            color: white;
+        }
+        .download-btn {
+            background: #2196F3;
+            color: white;
+        }
+        .disconnect-btn {
+            background: #f44336;
+            color: white;
+        }
+    </style>
+</head>
+<body>
+    <h1>WebSocket连接测试</h1>
+    
+    <div>
+        <label>Token: </label>
+        <input type="text" id="token" placeholder="输入JWT token" style="width: 300px; padding: 5px;">
+        <label>Video ID: </label>
+        <input type="number" id="videoId" placeholder="视频ID" style="width: 100px; padding: 5px;">
+    </div>
+    
+    <div style="margin: 20px 0;">
+        <button class="connect-btn" onclick="connectWebSocket()">连接WebSocket</button>
+        <button class="download-btn" onclick="startDownload()">开始下载</button>
+        <button class="disconnect-btn" onclick="disconnectWebSocket()">断开连接</button>
+    </div>
+    
+    <div id="log" class="log"></div>
+    
+    <script>
+        let ws = null;
+        let progressData = {};
+        
+        function log(message, type = 'info') {
+            const logDiv = document.getElementById('log');
+            const entry = document.createElement('div');
+            entry.className = `log-entry ${type}`;
+            entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            logDiv.appendChild(entry);
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+        
+        function connectWebSocket() {
+            const token = document.getElementById('token').value;
+            const videoId = document.getElementById('videoId').value;
+            
+            if (!token || !videoId) {
+                log('请输入Token和Video ID', 'error');
+                return;
+            }
+            
+            if (ws) {
+                log('WebSocket已连接，请先断开', 'error');
+                return;
+            }
+            
+            const wsUrl = `ws://localhost:8001/api/v1/ws/progress/${token}`;
+            log(`尝试连接WebSocket: ${wsUrl}`, 'info');
+            
+            ws = new WebSocket(wsUrl);
+            
+            ws.onopen = function() {
+                log('WebSocket连接已建立', 'success');
+                
+                // 订阅视频进度
+                const subscribeMessage = {
+                    type: 'subscribe',
+                    video_id: parseInt(videoId)
+                };
+                ws.send(JSON.stringify(subscribeMessage));
+                log(`已订阅视频 ${videoId} 的进度`, 'success');
+            };
+            
+            ws.onmessage = function(event) {
+                try {
+                    const data = JSON.parse(event.data);
+                    log(`收到消息: ${JSON.stringify(data)}`, 'info');
+                    
+                    if (data.type === 'progress_update') {
+                        progressData[data.video_id] = data;
+                        updateProgressDisplay(data);
+                    }
+                } catch (error) {
+                    log(`解析消息失败: ${error}`, 'error');
+                }
+            };
+            
+            ws.onclose = function(event) {
+                log(`WebSocket连接关闭: ${event.code} ${event.reason}`, 'error');
+                ws = null;
+            };
+            
+            ws.onerror = function(error) {
+                log(`WebSocket错误: ${error}`, 'error');
+            };
+        }
+        
+        function startDownload() {
+            const token = document.getElementById('token').value;
+            const videoId = document.getElementById('videoId').value;
+            
+            if (!token || !videoId) {
+                log('请输入Token和Video ID', 'error');
+                return;
+            }
+            
+            // 这里可以调用下载API
+            log(`开始下载视频: ${videoId}`, 'info');
+            
+            // 模拟下载API调用
+            fetch('/api/v1/videos/download', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({
+                    url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ', // 示例URL
+                    project_id: 1
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                log(`下载任务已启动: ${JSON.stringify(data)}`, 'success');
+            })
+            .catch(error => {
+                log(`下载失败: ${error}`, 'error');
+            });
+        }
+        
+        function disconnectWebSocket() {
+            if (ws) {
+                ws.close();
+                ws = null;
+                log('WebSocket连接已断开', 'info');
+            } else {
+                log('WebSocket未连接', 'error');
+            }
+        }
+        
+        function updateProgressDisplay(data) {
+            // 更新进度显示
+            const progressText = `视频 ${data.video_id} 进度: ${data.download_progress || 0}% - ${data.processing_message || ''}`;
+            log(progressText, 'info');
+        }
+        
+        // 定期发送心跳
+        setInterval(() => {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: 'ping' }));
+            }
+        }, 30000);
+    </script>
+</body>
+</html>

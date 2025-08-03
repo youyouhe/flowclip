@@ -1,0 +1,1415 @@
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, BackgroundTasks, Form, Body
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
+from typing import List
+import uuid
+import os
+from app.core.database import get_db
+from app.core.security import get_current_user, get_current_user_from_token
+from app.core.config import settings
+from app.models.user import User
+from app.models.video import Video
+from app.models.project import Project
+from app.models.processing_task import ProcessingTask, ProcessingStatus
+from app.schemas.video import VideoResponse, VideoDownloadRequest, VideoUpdate
+from app.services.youtube_downloader import downloader
+from app.services.youtube_downloader_minio import downloader_minio
+from app.services.minio_client import minio_service
+from app.services.state_manager import get_state_manager
+from app.core.constants import ProcessingTaskType
+from app.tasks.video_tasks import extract_audio, split_audio, generate_srt
+
+# 简单的内存缓存，用于减少数据库查询
+progress_cache = {}
+CACHE_DURATION = 5  # 5秒缓存
+from app.core.celery import celery_app
+
+router = APIRouter()
+
+import logging
+
+logger = logging.getLogger(__name__)
+
+async def download_video_task(
+    video_id: int,
+    url: str,
+    project_id: int,
+    user_id: int,
+    quality: str,
+    db: AsyncSession,
+    cookies_path: str = None  # 新增cookie文件路径参数
+):
+    """后台下载视频任务（使用MinIO存储）"""
+    logger.info(f"开始后台下载任务: video_id={video_id}, url={url}")
+    
+    try:
+        # 获取视频实例
+        stmt = select(Video).where(Video.id == video_id)
+        result = await db.execute(stmt)
+        video = result.scalar_one()
+        
+        # 更新进度
+        video.download_progress = 10.0
+        await db.commit()
+        
+        logger.info("开始下载视频...")
+        # 下载并上传到MinIO
+        download_result = await downloader_minio.download_and_upload_video(
+            url=url,
+            project_id=project_id,
+            user_id=user_id,
+            quality=quality,
+            cookies_file=cookies_path  # 传递cookie文件路径
+        )
+        
+        logger.info("视频下载完成，开始更新数据库...")
+        # 更新视频记录
+        video.status = "completed"
+        video.download_progress = 100.0
+        video.file_path = download_result['minio_path']
+        video.filename = download_result['filename']
+        video.file_size = download_result['filesize']
+        video.thumbnail_url = download_result.get('thumbnail_url')
+        
+        await db.commit()
+        logger.info("数据库更新完成")
+        
+    except Exception as e:
+        logger.error(f"下载任务失败: {str(e)}", exc_info=True)
+        # 更新失败状态
+        try:
+            stmt = select(Video).where(Video.id == video_id)
+            result = await db.execute(stmt)
+            video = result.scalar_one()
+            video.status = "failed"
+            video.download_progress = 0.0
+            await db.commit()
+            logger.error(f"失败状态已更新到数据库: {str(e)}")
+        except Exception as db_error:
+            logger.error(f"更新数据库失败状态失败: {str(db_error)}")
+        
+        # 清理cookie文件
+        if cookies_path and os.path.exists(cookies_path):
+            try:
+                os.remove(cookies_path)
+                logger.info(f"已清理cookie文件: {cookies_path}")
+            except Exception as cleanup_error:
+                logger.warning(f"清理cookie文件失败: {cleanup_error}")
+        
+        # 重新抛出异常让调用者知道
+        raise
+    finally:
+        # 清理cookie文件（如果存在）
+        if cookies_path and os.path.exists(cookies_path):
+            try:
+                os.remove(cookies_path)
+                logger.info(f"已清理cookie文件: {cookies_path}")
+            except Exception as cleanup_error:
+                logger.warning(f"清理cookie文件失败: {cleanup_error}")
+
+@router.get("/", response_model=List[VideoResponse])
+async def get_videos(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """获取当前用户的所有视频"""
+    stmt = select(Video, Project.name.label('project_name')).join(Project).where(Project.user_id == current_user.id)
+    result = await db.execute(stmt)
+    videos_with_project = result.all()
+    
+    # 构建包含项目名称的视频列表
+    videos = []
+    for video, project_name in videos_with_project:
+        video_dict = {
+            'id': video.id,
+            'title': video.title,
+            'description': video.description,
+            'url': video.url,
+            'project_id': video.project_id,
+            'filename': video.filename,
+            'file_path': video.file_path,
+            'duration': video.duration,
+            'file_size': video.file_size,
+            'thumbnail_url': video.thumbnail_url,
+            'status': video.status,
+            'download_progress': video.download_progress,
+            'created_at': video.created_at,
+            'updated_at': video.updated_at,
+            'project_name': project_name
+        }
+        videos.append(video_dict)
+    
+    return videos
+
+@router.post("/download", response_model=VideoResponse)
+async def download_video(
+    url: str = Form(...),
+    project_id: int = Form(...),
+    quality: str = 'best',  # 新增质量参数
+    cookies_file: UploadFile = File(None),  # 新增cookie文件上传
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """下载YouTube视频"""
+    # 验证项目属于当前用户
+    stmt = select(Project).where(
+        Project.id == project_id,
+        Project.user_id == current_user.id
+    )
+    result = await db.execute(stmt)
+    project = result.scalar_one_or_none()
+    if not project:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Project not found"
+        )
+    
+    # 处理cookie文件
+    cookies_path = None
+    logger.info(f"收到cookie_file: {cookies_file}")
+    
+    if cookies_file:
+        # 保存上传的cookie文件
+        cookies_dir = "/tmp/cookies"
+        os.makedirs(cookies_dir, exist_ok=True)
+        cookies_path = os.path.join(cookies_dir, f"cookies_{current_user.id}_{uuid.uuid4()}.txt")
+        
+        try:
+            content = await cookies_file.read()
+            with open(cookies_path, "wb") as f:
+                f.write(content)
+            logger.info(f"已保存上传的cookie文件到: {cookies_path}, 大小: {len(content)} bytes")
+            
+            # 验证文件是否存在
+            if os.path.exists(cookies_path):
+                logger.info(f"cookie文件验证成功: {cookies_path}")
+            else:
+                logger.error(f"cookie文件保存失败: {cookies_path}")
+                
+        except Exception as e:
+            logger.error(f"保存cookie文件失败: {str(e)}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"保存cookie文件失败: {str(e)}"
+            )
+    else:
+        logger.info("未上传cookie文件")
+
+    # 获取视频信息
+    try:
+        video_info = await downloader_minio.get_video_info(url, cookies_path)
+    except Exception as e:
+        # 清理cookie文件
+        if cookies_path and os.path.exists(cookies_path):
+            os.remove(cookies_path)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"无法获取视频信息: {str(e)}"
+        )
+    
+    # 创建视频记录
+    new_video = Video(
+        title=video_info['title'],
+        description=video_info['description'][:500] if video_info['description'] else None,
+        url=url,
+        project_id=project_id,
+        filename=f"{video_info['title'][:50]}.mp4",
+        duration=video_info['duration'],
+        file_size=0,  # 将在下载完成后更新
+        thumbnail_url=video_info['thumbnail'],
+        status="downloading",
+        download_progress=0.0
+    )
+    
+    db.add(new_video)
+    await db.commit()
+    await db.refresh(new_video)
+    
+    # 启动Celery下载任务
+    try:
+        from app.tasks.video_tasks import download_video as celery_download_video
+        from app.core.constants import ProcessingTaskType
+        
+        task = celery_app.send_task('app.tasks.video_tasks.download_video', 
+            args=[url, project_id, current_user.id, quality, cookies_path]
+        )
+        
+        # 创建处理任务记录，使用实际的Celery任务ID
+        state_manager = get_state_manager(db)
+        processing_task = await state_manager.create_processing_task(
+            video_id=new_video.id,
+            task_type=ProcessingTaskType.DOWNLOAD,
+            task_name="视频下载",
+            celery_task_id=task.id,
+            input_data={"url": url, "quality": quality, "cookies_path": cookies_path}
+        )
+        
+        await db.commit()
+        
+        logger.info(f"Celery下载任务已启动 - task_id: {task.id}, processing_task_id: {processing_task.id}")
+        
+    except Exception as e:
+        logger.error(f"启动Celery下载任务失败: {str(e)}")
+        # 如果Celery启动失败，回退到原来的BackgroundTasks方式
+        logger.info("回退到BackgroundTasks方式")
+        background_tasks = BackgroundTasks()
+        background_tasks.add_task(
+            download_video_task,
+            new_video.id,
+            url,
+            project_id,
+            current_user.id,
+            quality,
+            db,
+            cookies_path
+        )
+    
+    # 返回包含项目名称的视频数据
+    video_dict = {
+        'id': new_video.id,
+        'title': new_video.title,
+        'description': new_video.description,
+        'url': new_video.url,
+        'project_id': new_video.project_id,
+        'filename': new_video.filename,
+        'file_path': new_video.file_path,
+        'duration': new_video.duration,
+        'file_size': new_video.file_size,
+        'thumbnail_url': new_video.thumbnail_url,
+        'status': new_video.status,
+        'download_progress': new_video.download_progress,
+        'created_at': new_video.created_at,
+        'updated_at': new_video.updated_at,
+        'project_name': project.name
+    }
+    
+    return video_dict
+
+@router.get("/{video_id}", response_model=VideoResponse)
+async def get_video(
+    video_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """获取特定视频详情"""
+    stmt = select(Video, Project.name.label('project_name')).join(Project).where(
+        Video.id == video_id,
+        Project.user_id == current_user.id
+    )
+    result = await db.execute(stmt)
+    video_with_project = result.first()
+    if not video_with_project:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Video not found"
+        )
+    
+    video, project_name = video_with_project
+    
+    video_dict = {
+        'id': video.id,
+        'title': video.title,
+        'description': video.description,
+        'url': video.url,
+        'project_id': video.project_id,
+        'filename': video.filename,
+        'file_path': video.file_path,
+        'duration': video.duration,
+        'file_size': video.file_size,
+        'thumbnail_url': video.thumbnail_url,
+        'status': video.status,
+        'download_progress': video.download_progress,
+        'created_at': video.created_at,
+        'updated_at': video.updated_at,
+        'project_name': project_name
+    }
+    
+    return video_dict
+
+@router.delete("/{video_id}")
+async def delete_video(
+    video_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """删除视频"""
+    stmt = select(Video).join(Project).where(
+        Video.id == video_id,
+        Project.user_id == current_user.id
+    )
+    result = await db.execute(stmt)
+    video = result.scalar_one_or_none()
+    if not video:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Video not found"
+        )
+    
+    # 删除MinIO中的文件（如果存在）
+    if video.file_path:
+        # 从minio_path中提取对象名称
+        object_name = video.file_path
+        if object_name.startswith(f"{settings.minio_bucket_name}/"):
+            object_name = object_name[len(f"{settings.minio_bucket_name}/"):]
+        
+        await minio_service.delete_file(object_name)
+        
+        # 删除相关的缩略图和音频文件
+        video_id_str = video.filename.split('.')[0] if video.filename else str(video.id)
+        
+        # 删除缩略图
+        thumbnail_object = f"users/{current_user.id}/projects/{video.project_id}/thumbnails/{video_id_str}.jpg"
+        await minio_service.delete_file(thumbnail_object)
+        
+        # 删除音频文件（如果存在）
+        audio_object = f"users/{current_user.id}/projects/{video.project_id}/audio/{video_id_str}.mp3"
+        await minio_service.delete_file(audio_object)
+    
+    await db.delete(video)
+    await db.commit()
+    return {"message": "Video deleted successfully"}
+
+@router.put("/{video_id}", response_model=VideoResponse)
+async def update_video(
+    video_id: int,
+    video_update: VideoUpdate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """更新视频信息"""
+    stmt = select(Video, Project.name.label('project_name')).join(Project).where(
+        Video.id == video_id,
+        Project.user_id == current_user.id
+    )
+    result = await db.execute(stmt)
+    video_with_project = result.first()
+    if not video_with_project:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Video not found"
+        )
+    
+    video, project_name = video_with_project
+    
+    if video_update.title is not None:
+        video.title = video_update.title
+    if video_update.description is not None:
+        video.description = video_update.description
+    
+    await db.commit()
+    await db.refresh(video)
+    
+    video_dict = {
+        'id': video.id,
+        'title': video.title,
+        'description': video.description,
+        'url': video.url,
+        'project_id': video.project_id,
+        'filename': video.filename,
+        'file_path': video.file_path,
+        'duration': video.duration,
+        'file_size': video.file_size,
+        'thumbnail_url': video.thumbnail_url,
+        'status': video.status,
+        'download_progress': video.download_progress,
+        'created_at': video.created_at,
+        'updated_at': video.updated_at,
+        'project_name': project_name
+    }
+    
+    return video_dict
+
+@router.get("/{video_id}/download-url")
+async def get_video_download_url(
+    video_id: int,
+    expiry: int = 3600,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """获取视频文件的预签名下载URL"""
+    stmt = select(Video).join(Project).where(
+        Video.id == video_id,
+        Project.user_id == current_user.id
+    )
+    result = await db.execute(stmt)
+    video = result.scalar_one_or_none()
+    if not video:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Video not found"
+        )
+    
+    if not video.file_path:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Video file not uploaded"
+        )
+    
+    # 从minio_path中提取对象名称
+    # 移除bucket名称前缀
+    bucket_prefix = f"{settings.minio_bucket_name}/"
+    if video.file_path.startswith(bucket_prefix):
+        object_name = video.file_path[len(bucket_prefix):]
+    else:
+        object_name = video.file_path
+    
+    url = await minio_service.get_file_url(object_name, expiry)
+    
+    if not url:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to generate download URL"
+        )
+    
+    return {"download_url": url, "expires_in": expiry, "object_name": object_name}
+
+@router.get("/{video_id}/stream")
+async def stream_video(
+    video_id: int,
+    token: str = None,
+    db: AsyncSession = Depends(get_db)
+):
+    """流式传输视频内容（避免CORS问题）"""
+    # 如果提供了token参数，使用token验证
+    if token:
+        current_user = await get_current_user_from_token(token=token, db=db)
+    else:
+        # 否则使用标准的Authorization头验证
+        current_user = await get_current_user(db=db)
+    
+    stmt = select(Video).join(Project).where(
+        Video.id == video_id,
+        Project.user_id == current_user.id
+    )
+    result = await db.execute(stmt)
+    video = result.scalar_one_or_none()
+    if not video:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Video not found"
+        )
+    
+    if not video.file_path:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Video file not uploaded"
+        )
+    
+    # 从minio_path中提取对象名称
+    # 移除bucket名称前缀
+    bucket_prefix = f"{settings.minio_bucket_name}/"
+    if video.file_path.startswith(bucket_prefix):
+        object_name = video.file_path[len(bucket_prefix):]
+    else:
+        object_name = video.file_path
+    
+    # 获取文件流
+    try:
+        def _get_file_stream():
+            try:
+                response = minio_service.client.get_object(
+                    settings.minio_bucket_name, 
+                    object_name
+                )
+                return response
+            except Exception as e:
+                print(f"获取文件流失败: {e}")
+                raise
+        
+        # 获取文件信息
+        stat = minio_service.client.stat_object(settings.minio_bucket_name, object_name)
+        
+        # 创建文件流响应
+        from fastapi.responses import StreamingResponse
+        
+        file_stream = _get_file_stream()
+        
+        return StreamingResponse(
+            file_stream,
+            media_type=f"video/{object_name.split('.')[-1]}",
+            headers={
+                "Content-Disposition": f"inline; filename=\"{video.filename or 'video'}\"",
+                "Accept-Ranges": "bytes",
+                "Access-Control-Allow-Origin": "*",
+            }
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"无法获取视频文件: {str(e)}"
+        )
+
+
+@router.post("/{video_id}/extract-audio")
+async def extract_audio_endpoint(
+    video_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """提取视频音频"""
+    
+    logger.info(f"开始提取音频 - video_id: {video_id}, user_id: {current_user.id}")
+    
+    # 验证视频属于当前用户
+    stmt = select(Video).join(Project).where(
+        Video.id == video_id,
+        Project.user_id == current_user.id
+    )
+    result = await db.execute(stmt)
+    video = result.scalar_one_or_none()
+    
+    if not video:
+        logger.error(f"视频未找到 - video_id: {video_id}, user_id: {current_user.id}")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Video not found"
+        )
+    
+    logger.info(f"找到视频 - video_id: {video_id}, title: {video.title}, file_path: {video.file_path}")
+    
+    if not video.file_path:
+        logger.error(f"视频文件路径为空 - video_id: {video_id}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Video file not available"
+        )
+    
+    # 启动音频提取任务
+    try:
+        logger.info(f"准备启动Celery任务 - video_id: {video.id}, project_id: {video.project_id}, user_id: {current_user.id}, video_minio_path: {video.file_path}")
+        
+        task = celery_app.send_task('app.tasks.video_tasks.extract_audio', 
+            args=[str(video.id), video.project_id, current_user.id, video.file_path]
+        )
+        
+        # 创建处理任务记录，使用实际的Celery任务ID
+        state_manager = get_state_manager(db)
+        processing_task = await state_manager.create_processing_task(
+            video_id=video.id,
+            task_type=ProcessingTaskType.EXTRACT_AUDIO,
+            task_name="音频提取",
+            celery_task_id=task.id,
+            input_data={"video_minio_path": video.file_path}
+        )
+        
+        await db.commit()
+        
+        logger.info(f"Celery任务已启动 - task_id: {task.id}, processing_task_id: {processing_task.id}")
+        
+    except Exception as e:
+        logger.error(f"启动Celery任务失败 - video_id: {video_id}, error: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to start audio extraction task: {str(e)}"
+        )
+    
+    response_data = {
+        "task_id": task.id,
+        "processing_task_id": processing_task.id,
+        "message": "Audio extraction started",
+        "status": "processing"
+    }
+    logger.info(f"返回响应数据: {response_data}")
+    return response_data
+
+@router.post("/{video_id}/split-audio")
+async def split_audio_endpoint(
+    video_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """分割音频文件"""
+    
+    # 验证视频属于当前用户
+    stmt = select(Video).join(Project).where(
+        Video.id == video_id,
+        Project.user_id == current_user.id
+    )
+    result = await db.execute(stmt)
+    video = result.scalar_one_or_none()
+    if not video:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Video not found"
+        )
+    
+    # 检查音频文件是否存在
+    # 首先从数据库获取音频文件路径
+    stmt = select(Video).where(Video.id == video_id)
+    result = await db.execute(stmt)
+    video_record = result.scalar_one()
+    
+    # 构建音频文件路径
+    if video_record.processing_metadata and video_record.processing_metadata.get('audio_path'):
+        audio_minio_path = video_record.processing_metadata['audio_path']
+    else:
+        # 使用标准路径格式
+        audio_minio_path = f"users/{current_user.id}/projects/{video.project_id}/audio/{video.id}.wav"
+    
+    # 启动音频分割任务
+    task = celery_app.send_task('app.tasks.video_tasks.split_audio', 
+        args=[str(video.id), video.project_id, current_user.id, audio_minio_path]
+    )
+    
+    # 创建处理任务记录，使用实际的Celery任务ID
+    state_manager = get_state_manager(db)
+    processing_task = await state_manager.create_processing_task(
+        video_id=video.id,
+        task_type=ProcessingTaskType.SPLIT_AUDIO,
+        task_name="音频分割",
+        celery_task_id=task.id,
+        input_data={"audio_minio_path": audio_minio_path}
+    )
+    await db.commit()
+    
+    return {
+        "task_id": task.id,
+        "processing_task_id": processing_task.id,
+        "message": "Audio splitting started",
+        "status": "processing"
+    }
+
+@router.post("/{video_id}/generate-srt")
+async def generate_srt_endpoint(
+    video_id: int,
+    request_data: dict = Body({}),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """生成SRT字幕文件"""
+    
+    # 验证视频属于当前用户
+    stmt = select(Video).join(Project).where(
+        Video.id == video_id,
+        Project.user_id == current_user.id
+    )
+    result = await db.execute(stmt)
+    video = result.scalar_one_or_none()
+    if not video:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Video not found"
+        )
+    
+    # 从请求数据中获取分割文件列表
+    split_files = request_data.get('split_files', [])
+    
+    # 如果没有提供分割文件列表，尝试从数据库查询分割文件信息
+    if not split_files:
+        # 从视频的处理元数据中获取分割文件信息
+        if video.processing_metadata and video.processing_metadata.get('split_files'):
+            split_files = video.processing_metadata.get('split_files', [])
+        else:
+            # 如果没有分割文件信息，尝试从数据库查询最近的分割任务
+            from app.models.processing_task import ProcessingTask
+            stmt = select(ProcessingTask).where(
+                ProcessingTask.video_id == video_id,
+                ProcessingTask.task_type == ProcessingTaskType.SPLIT_AUDIO,
+                ProcessingTask.status == "success"
+            ).order_by(ProcessingTask.created_at.desc()).limit(1)
+            
+            result = await db.execute(stmt)
+            split_task = result.scalar_one_or_none()
+            
+            if split_task and split_task.output_data:
+                split_files = split_task.output_data.get('split_files', [])
+            else:
+                split_files = []
+    
+    # 启动SRT生成任务
+    task = celery_app.send_task('app.tasks.video_tasks.generate_srt', 
+        args=[str(video.id), video.project_id, current_user.id, split_files]
+    )
+    
+    # 创建处理任务记录，使用实际的Celery任务ID
+    state_manager = get_state_manager(db)
+    processing_task = await state_manager.create_processing_task(
+        video_id=video.id,
+        task_type=ProcessingTaskType.GENERATE_SRT,
+        task_name="字幕生成",
+        celery_task_id=task.id,
+        input_data={"split_files": split_files}
+    )
+    await db.commit()
+    
+    return {
+        "task_id": task.id,
+        "processing_task_id": processing_task.id,
+        "message": "SRT generation started",
+        "status": "processing"
+    }
+
+@router.get("/{video_id}/task-status/{task_id}")
+async def get_task_status(
+    video_id: int,
+    task_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """获取任务状态"""
+    
+    # 验证视频属于当前用户
+    stmt = select(Video).join(Project).where(
+        Video.id == video_id,
+        Project.user_id == current_user.id
+    )
+    result = await db.execute(stmt)
+    video = result.scalar_one_or_none()
+    if not video:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Video not found"
+        )
+    
+    # 获取处理任务
+    stmt = select(ProcessingTask).where(
+        ProcessingTask.celery_task_id == task_id
+    )
+    result = await db.execute(stmt)
+    processing_task = result.scalar_one_or_none()
+    
+    if not processing_task:
+        # 回退到旧的任务状态查询
+        from celery.result import AsyncResult
+        task_result = AsyncResult(task_id)
+        return {
+            "task_id": task_id,
+            "status": task_result.status,
+            "progress": 0,
+            "stage": None,
+            "message": None,
+            "error": None,
+            "result": task_result.result if task_result.ready() else None
+        }
+    
+    # 映射数据库状态到前端期望的状态
+    status_mapping = {
+        "pending": "pending",
+        "running": "running", 
+        "success": "completed",
+        "failure": "failed",
+        "retry": "retrying",
+        "revoked": "cancelled"
+    }
+    
+    # 如果任务已经完成，确保状态正确映射
+    actual_status = processing_task.status
+    if processing_task.status == "success" and processing_task.progress == 100:
+        actual_status = "completed"
+    elif processing_task.status == "failure":
+        actual_status = "failed"
+    
+    return {
+        "task_id": task_id,
+        "status": status_mapping.get(actual_status, actual_status),
+        "progress": processing_task.progress,
+        "stage": processing_task.stage,
+        "stage_description": processing_task.stage_description,
+        "message": processing_task.message,
+        "error": processing_task.error_message,
+        "result": processing_task.output_data if processing_task.is_completed else None,
+        "is_completed": processing_task.is_completed
+    }
+
+@router.get("/{video_id}/audio-download-url")
+async def get_audio_download_url(
+    video_id: int,
+    expiry: int = 3600,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """获取音频文件的预签名下载URL"""
+    
+    # 验证视频属于当前用户
+    stmt = select(Video).join(Project).where(
+        Video.id == video_id,
+        Project.user_id == current_user.id
+    )
+    result = await db.execute(stmt)
+    video = result.scalar_one_or_none()
+    if not video:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Video not found"
+        )
+    
+    # 构建音频文件对象名称
+    audio_object_name = f"users/{current_user.id}/projects/{video.project_id}/audio/{video.id}.wav"
+    
+    # 检查文件是否存在
+    file_exists = await minio_service.file_exists(audio_object_name)
+    if not file_exists:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Audio file not found"
+        )
+    
+    # 生成预签名URL
+    url = await minio_service.get_file_url(audio_object_name, expiry)
+    
+    if not url:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to generate audio download URL"
+        )
+    
+    # 从处理元数据中获取音频时长
+    duration = 0
+    if video.processing_metadata and video.processing_metadata.get('audio_info'):
+        audio_info = video.processing_metadata.get('audio_info', {})
+        duration = audio_info.get('duration', 0)
+    
+    return {
+        "download_url": url, 
+        "expires_in": expiry, 
+        "object_name": audio_object_name,
+        "duration": duration,
+        "content_type": "audio/wav"
+    }
+
+@router.get("/{video_id}/audio-download")
+async def download_audio_direct(
+    video_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """直接下载音频文件，确保正确的文件头和编码"""
+    
+    # 验证视频属于当前用户
+    stmt = select(Video).join(Project).where(
+        Video.id == video_id,
+        Project.user_id == current_user.id
+    )
+    result = await db.execute(stmt)
+    video = result.scalar_one_or_none()
+    if not video:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Video not found"
+        )
+    
+    # 构建音频文件对象名称
+    audio_object_name = f"users/{current_user.id}/projects/{video.project_id}/audio/{video.id}.wav"
+    
+    # 检查文件是否存在
+    file_exists = await minio_service.file_exists(audio_object_name)
+    if not file_exists:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Audio file not found"
+        )
+    
+    # 获取文件内容
+    try:
+        response = minio_service.client.get_object(
+            settings.minio_bucket_name, 
+            audio_object_name
+        )
+        content = response.read()
+        response.close()
+        response.release_conn()
+        
+        # 直接返回音频文件
+        from fastapi.responses import StreamingResponse
+        import io
+        
+        return StreamingResponse(
+            io.BytesIO(content),
+            media_type="audio/wav",
+            headers={
+                "Content-Disposition": f"attachment; filename*=UTF-8''{video.title}_audio.wav",
+                "Content-Type": "audio/wav",
+            }
+        )
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to read audio content: {str(e)}"
+        )
+
+@router.get("/{video_id}/srt-download-url")
+async def get_srt_download_url(
+    video_id: int,
+    expiry: int = 3600,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """获取SRT字幕文件的预签名下载URL"""
+    
+    # 验证视频属于当前用户
+    stmt = select(Video).join(Project).where(
+        Video.id == video_id,
+        Project.user_id == current_user.id
+    )
+    result = await db.execute(stmt)
+    video = result.scalar_one_or_none()
+    if not video:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Video not found"
+        )
+    
+    # 构建SRT文件对象名称
+    srt_object_name = f"users/{current_user.id}/projects/{video.project_id}/subtitles/{video.id}.srt"
+    
+    # 检查文件是否存在
+    file_exists = await minio_service.file_exists(srt_object_name)
+    if not file_exists:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="SRT file not found"
+        )
+    
+    # 生成预签名URL
+    url = await minio_service.get_file_url(srt_object_name, expiry)
+    
+    if not url:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to generate SRT download URL"
+        )
+    
+    # 对于SRT文件，返回直接下载接口而不是预签名URL
+    # 确保通过我们自己的接口下载，避免MinIO编码问题
+    from app.core.config import settings
+    base_url = settings.api_base_url or "http://localhost:8001"
+    return {
+        "download_url": f"{base_url}/api/v1/videos/{video_id}/srt-download", 
+        "expires_in": expiry, 
+        "object_name": srt_object_name,
+        "content_type": "text/plain; charset=utf-8"
+    }
+
+@router.get("/{video_id}/srt-download")
+async def download_srt_direct(
+    video_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """直接下载SRT文件，确保正确的UTF-8编码"""
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    logger.info(f"=== SRT下载请求开始 ===")
+    logger.info(f"用户ID: {current_user.id}, 视频ID: {video_id}")
+    
+    try:
+        # 验证视频属于当前用户
+        stmt = select(Video).join(Project).where(
+            Video.id == video_id,
+            Project.user_id == current_user.id
+        )
+        result = await db.execute(stmt)
+        video = result.scalar_one_or_none()
+        
+        if not video:
+            logger.error(f"视频未找到: video_id={video_id}, user_id={current_user.id}")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Video not found"
+            )
+        
+        logger.info(f"找到视频: {video.title} (ID: {video.id})")
+        
+        # 构建SRT文件对象名称
+        srt_object_name = f"users/{current_user.id}/projects/{video.project_id}/subtitles/{video.id}.srt"
+        logger.info(f"SRT对象名称: {srt_object_name}")
+        
+        # 检查文件是否存在
+        file_exists = await minio_service.file_exists(srt_object_name)
+        if not file_exists:
+            logger.error(f"SRT文件不存在: {srt_object_name}")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="SRT file not found"
+            )
+        
+        logger.info(f"SRT文件存在: {srt_object_name}")
+        
+        # 获取文件内容
+        try:
+            response = minio_service.client.get_object(
+                settings.minio_bucket_name, 
+                srt_object_name
+            )
+            content = response.read()
+            response.close()
+            response.release_conn()
+            
+            logger.info(f"成功读取SRT文件, 大小: {len(content)} 字节")
+            
+            # 确保内容以UTF-8编码返回
+            from fastapi.responses import StreamingResponse
+            import io
+            
+            try:
+                # 直接使用UTF-8解码，因为SRT文件应该是UTF-8编码的
+                try:
+                    logger.info("尝试UTF-8解码SRT内容")
+                    text_content = content.decode('utf-8')
+                    # 检查是否已经包含BOM，如果包含则直接使用，否则添加
+                    if text_content.startswith('\ufeff'):
+                        utf8_content = text_content.encode('utf-8')
+                        logger.info("SRT内容已包含BOM")
+                    else:
+                        utf8_content = text_content.encode('utf-8-sig')  # 带BOM的UTF-8
+                        logger.info("添加UTF-8 BOM到SRT内容")
+                    logger.info(f"成功解码UTF-8内容，长度: {len(text_content)} 字符")
+                except UnicodeDecodeError as e:
+                    logger.error(f"UTF-8解码失败，尝试GBK: {str(e)}")
+                    try:
+                        text_content = content.decode('gbk')
+                        utf8_content = text_content.encode('utf-8-sig')
+                        logger.info("使用GBK解码成功")
+                    except UnicodeDecodeError as e2:
+                        logger.error(f"GBK解码也失败，使用Latin-1: {str(e2)}")
+                        text_content = content.decode('latin-1')
+                        utf8_content = text_content.encode('utf-8-sig')
+                        logger.info("使用Latin-1解码作为最后手段")
+                
+                # 安全处理文件名中的特殊字符 - 使用URL编码处理中文
+                import urllib.parse
+                safe_filename = urllib.parse.quote(video.title.replace(' ', '_').replace('/', '_').replace('\\', '_'), safe='')
+                
+                logger.info(f"准备返回SRT文件, 内容长度: {len(utf8_content)} 字节")
+                
+                return StreamingResponse(
+                    io.BytesIO(utf8_content),
+                    media_type="text/plain; charset=utf-8",
+                    headers={
+                        "Content-Disposition": f"attachment; filename*=UTF-8''{safe_filename}.srt",
+                        "Content-Type": "text/plain; charset=utf-8",
+                        "Cache-Control": "no-cache",
+                    }
+                )
+                
+            except UnicodeDecodeError as e:
+                logger.error(f"Unicode解码错误: {str(e)}")
+                # 如果解码失败，尝试用更宽松的方式处理
+                text_content = content.decode('utf-8', errors='replace')
+                utf8_content = text_content.encode('utf-8-sig')
+                
+                import urllib.parse
+                safe_filename = urllib.parse.quote(video.title.replace(' ', '_').replace('/', '_').replace('\\', '_'), safe='')
+                
+                return StreamingResponse(
+                    io.BytesIO(utf8_content),
+                    media_type="text/plain; charset=utf-8",
+                    headers={
+                        "Content-Disposition": f"attachment; filename*=UTF-8''{safe_filename}.srt",
+                        "Content-Type": "text/plain; charset=utf-8",
+                        "Cache-Control": "no-cache",
+                    }
+                )
+            except Exception as e:
+                logger.error(f"SRT内容处理错误: {str(e)}")
+                raise
+                
+        except Exception as e:
+            logger.error(f"从MinIO获取文件错误: {str(e)}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to read SRT content: {str(e)}"
+            )
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"SRT下载处理错误: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"服务器错误: {str(e)}"
+        )
+
+@router.get("/{video_id}/srt-content")
+async def get_srt_content(
+    video_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """获取SRT字幕文件内容用于预览"""
+    
+    # 验证视频属于当前用户
+    stmt = select(Video).join(Project).where(
+        Video.id == video_id,
+        Project.user_id == current_user.id
+    )
+    result = await db.execute(stmt)
+    video = result.scalar_one_or_none()
+    if not video:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Video not found"
+        )
+    
+    # 构建SRT文件对象名称
+    srt_object_name = f"users/{current_user.id}/projects/{video.project_id}/subtitles/{video.id}.srt"
+    
+    # 检查文件是否存在
+    file_exists = await minio_service.file_exists(srt_object_name)
+    if not file_exists:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="SRT file not found"
+        )
+    
+    # 获取文件内容
+    try:
+        response = minio_service.client.get_object(
+            settings.minio_bucket_name, 
+            srt_object_name
+        )
+        content_bytes = response.read()
+        response.close()
+        response.release_conn()
+        
+        # 尝试多种编码解码字节内容
+        try:
+            content = content_bytes.decode('utf-8')
+        except UnicodeDecodeError:
+            try:
+                content = content_bytes.decode('utf-8-sig')
+            except UnicodeDecodeError:
+                try:
+                    content = content_bytes.decode('gbk')
+                except UnicodeDecodeError:
+                    content = content_bytes.decode('latin-1')
+        
+        # 解析SRT内容
+        import re
+        subtitles = []
+        
+        # 按字幕块分割
+        blocks = re.split(r'\n\s*\n', content.strip())
+        for block in blocks:
+            lines = block.strip().split('\n')
+            if len(lines) >= 3:
+                subtitle = {
+                    'id': lines[0],
+                    'time': lines[1],
+                    'text': '\n'.join(lines[2:])
+                }
+                subtitles.append(subtitle)
+        
+        return {
+            "content": content,
+            "subtitles": subtitles,
+            "total_subtitles": len(subtitles),
+            "file_size": len(content.encode('utf-8'))
+        }
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to read SRT content: {str(e)}"
+        )
+
+@router.get("/{video_id}/progress")
+async def get_video_progress(
+    video_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """获取视频下载和处理进度"""
+    
+    # 检查缓存
+    cache_key = f"{current_user.id}_{video_id}"
+    current_time = time.time()
+    
+    if cache_key in progress_cache:
+        cached_data, cache_time = progress_cache[cache_key]
+        if current_time - cache_time < CACHE_DURATION:
+            # 返回缓存数据
+            from fastapi.responses import JSONResponse
+            response = JSONResponse(content=cached_data)
+            response.headers["Cache-Control"] = "public, max-age=5"
+            return response
+    
+    # 验证视频属于当前用户
+    stmt = select(Video, Project.name.label('project_name')).join(Project).where(
+        Video.id == video_id,
+        Project.user_id == current_user.id
+    )
+    result = await db.execute(stmt)
+    video_with_project = result.first()
+    if not video_with_project:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Video not found"
+        )
+    
+    video, project_name = video_with_project
+    
+    # 获取相关的处理任务
+    stmt = select(ProcessingTask).where(
+        ProcessingTask.video_id == video_id
+    ).order_by(ProcessingTask.created_at.desc())
+    result = await db.execute(stmt)
+    processing_tasks = result.scalars().all()
+    
+    # 构建进度信息
+    progress_info = {
+        'video_id': video.id,
+        'title': video.title,
+        'status': video.status,
+        'download_progress': video.download_progress,
+        'processing_progress': video.processing_progress,
+        'processing_stage': video.processing_stage,
+        'processing_message': video.processing_message,
+        'processing_error': video.processing_error,
+        'file_size': video.file_size,
+        'duration': video.duration,
+        'created_at': video.created_at,
+        'updated_at': video.updated_at,
+        'project_name': project_name,
+        'processing_tasks': [
+            {
+                'id': task.id,
+                'task_type': task.task_type,
+                'status': task.status,
+                'progress': task.progress,
+                'stage': task.stage,
+                'message': task.message,
+                'error_message': task.error_message,
+                'created_at': task.created_at,
+                'updated_at': task.updated_at,
+                'is_completed': task.is_completed
+            }
+            for task in processing_tasks
+        ]
+    }
+    
+    # 添加到缓存
+    progress_cache[cache_key] = (progress_info, current_time)
+    
+    # 添加缓存头，减少频繁查询
+    from fastapi.responses import JSONResponse
+    response = JSONResponse(content=progress_info)
+    response.headers["Cache-Control"] = "public, max-age=5"  # 5秒缓存
+    return response
+
+@router.get("/{video_id}/processing-status")
+async def get_video_processing_status(
+    video_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """获取视频的处理状态"""
+    try:
+        # 验证视频是否存在且属于当前用户
+        stmt = select(Video).join(Project).where(
+            Video.id == video_id,
+            Project.user_id == current_user.id
+        )
+        result = await db.execute(stmt)
+        video = result.scalar_one_or_none()
+        
+        if not video:
+            raise HTTPException(status_code=404, detail="视频不存在")
+        
+        # 获取处理状态
+        stmt = select(ProcessingStatus).where(ProcessingStatus.video_id == video_id)
+        result = await db.execute(stmt)
+        processing_status = result.scalar_one_or_none()
+        
+        if not processing_status:
+            return {
+                "extract_audio_status": "pending",
+                "extract_audio_progress": 0.0,
+                "split_audio_status": "pending",
+                "split_audio_progress": 0.0,
+                "generate_srt_status": "pending",
+                "generate_srt_progress": 0.0,
+                "overall_status": "pending",
+                "overall_progress": 0.0,
+                "current_stage": None
+            }
+        
+        return {
+            "extract_audio_status": processing_status.extract_audio_status,
+            "extract_audio_progress": processing_status.extract_audio_progress,
+            "split_audio_status": processing_status.split_audio_status,
+            "split_audio_progress": processing_status.split_audio_progress,
+            "generate_srt_status": processing_status.generate_srt_status,
+            "generate_srt_progress": processing_status.generate_srt_progress,
+            "overall_status": processing_status.overall_status,
+            "overall_progress": processing_status.overall_progress,
+            "current_stage": processing_status.current_stage,
+            "updated_at": processing_status.updated_at.isoformat() if processing_status.updated_at else None
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取处理状态失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/{video_id}/thumbnail-download-url")
+async def get_thumbnail_download_url(
+    video_id: int,
+    expiry: int = 3600,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """获取缩略图的预签名下载URL"""
+    
+    # 验证视频属于当前用户
+    stmt = select(Video).join(Project).where(
+        Video.id == video_id,
+        Project.user_id == current_user.id
+    )
+    result = await db.execute(stmt)
+    video = result.scalar_one_or_none()
+    if not video:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Video not found"
+        )
+    
+    # 如果视频ID为空，返回错误
+    if not video.url:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Video URL is empty"
+        )
+    
+    # 从YouTube URL中提取视频ID
+    import re
+    video_id_match = re.search(r'(?:v=|\/)([0-9A-Za-z_-]{11}).*', video.url)
+    if not video_id_match:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid YouTube URL"
+        )
+    
+    youtube_video_id = video_id_match.group(1)
+    
+    # 生成缩略图对象名称
+    thumbnail_object_name = minio_service.generate_thumbnail_object_name(
+        current_user.id, 
+        video.project_id, 
+        youtube_video_id
+    )
+    
+    # 检查缩略图是否存在
+    thumbnail_exists = await minio_service.file_exists(thumbnail_object_name)
+    if not thumbnail_exists:
+        # 如果缩略图不存在，返回原始YouTube缩略图URL
+        if video.thumbnail_url:
+            return {"download_url": video.thumbnail_url, "expires_in": expiry, "object_name": None}
+        else:
+            # 如果也没有原始缩略图，返回默认缩略图
+            default_thumbnail = f"https://img.youtube.com/vi/{youtube_video_id}/default.jpg"
+            return {"download_url": default_thumbnail, "expires_in": expiry, "object_name": None}
+    
+    # 生成预签名URL
+    url = await minio_service.get_file_url(thumbnail_object_name, expiry)
+    if not url:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to generate thumbnail download URL"
+        )
+    
+    return {"download_url": url, "expires_in": expiry, "object_name": thumbnail_object_name}

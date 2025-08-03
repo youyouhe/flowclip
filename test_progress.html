@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>实时进度测试</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .container { max-width: 800px; margin: 0 auto; }
+        .status { padding: 10px; margin: 10px 0; border-radius: 5px; }
+        .connected { background: #d4edda; color: #155724; }
+        .disconnected { background: #f8d7da; color: #721c24; }
+        .progress { background: #d1ecf1; color: #0c5460; }
+        .video-item { border: 1px solid #ddd; margin: 10px 0; padding: 15px; border-radius: 5px; }
+        .progress-bar { width: 100%; height: 20px; background: #f0f0f0; border-radius: 10px; overflow: hidden; }
+        .progress-fill { height: 100%; background: #007bff; transition: width 0.3s; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>YouTube Slicer - 实时进度测试</h1>
+        
+        <div id="connection-status" class="status disconnected">WebSocket: 未连接</div>
+        
+        <div id="video-list">
+            <h2>视频列表</h2>
+            <div id="videos-container">加载中...</div>
+        </div>
+        
+        <div id="test-controls">
+            <h3>测试控制</h3>
+            <button onclick="loadVideos()">刷新视频列表</button>
+            <button onclick="testDownload()">测试下载</button>
+        </div>
+    </div>
+
+    <script>
+        const TOKEN = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI2IiwiZXhwIjoxNzU0MTIyNDc5fQ.B1wVvRpZGMgz3s_bgH_WfSB_SnmHTkHoz6piZMzQsMA';
+        let ws = null;
+        
+        function connectWebSocket() {
+            const statusDiv = document.getElementById('connection-status');
+            
+            try {
+                ws = new WebSocket(`ws://localhost:8001/ws/progress/${TOKEN}`);
+                
+                ws.onopen = function() {
+                    statusDiv.textContent = 'WebSocket: 已连接';
+                    statusDiv.className = 'status connected';
+                    console.log('WebSocket连接成功');
+                };
+                
+                ws.onmessage = function(event) {
+                    const data = JSON.parse(event.data);
+                    console.log('收到进度更新:', data);
+                    updateVideoProgress(data);
+                };
+                
+                ws.onclose = function() {
+                    statusDiv.textContent = 'WebSocket: 已断开';
+                    statusDiv.className = 'status disconnected';
+                    console.log('WebSocket连接断开');
+                };
+                
+                ws.onerror = function(error) {
+                    statusDiv.textContent = 'WebSocket: 连接错误';
+                    statusDiv.className = 'status disconnected';
+                    console.error('WebSocket错误:', error);
+                };
+            } catch (error) {
+                console.error('WebSocket连接失败:', error);
+                statusDiv.textContent = 'WebSocket: 连接失败';
+                statusDiv.className = 'status disconnected';
+            }
+        }
+        
+        async function loadVideos() {
+            try {
+                const response = await fetch('http://localhost:8001/api/v1/videos/', {
+                    headers: {
+                        'Authorization': `Bearer ${TOKEN}`
+                    }
+                });
+                const videos = await response.json();
+                
+                const container = document.getElementById('videos-container');
+                if (videos.length === 0) {
+                    container.innerHTML = '<p>暂无视频</p>';
+                    return;
+                }
+                
+                container.innerHTML = videos.map(video => `
+                    <div class="video-item" data-video-id="${video.id}">
+                        <h3>${video.title}</h3>
+                        <p>状态: ${video.status}</p>
+                        <p>阶段: ${video.processing_stage}</p>
+                        <p>进度: ${video.download_progress || 0}% / ${video.processing_progress || 0}%</p>
+                        <p>消息: ${video.processing_message || '等待中...'}</p>
+                        <div class="progress-bar">
+                            <div class="progress-fill" style="width: ${video.download_progress || 0}%"></div>
+                        </div>
+                    </div>
+                `).join('');
+            } catch (error) {
+                console.error('加载视频失败:', error);
+            }
+        }
+        
+        function updateVideoProgress(data) {
+            const videoElement = document.querySelector(`[data-video-id="${data.video_id}"]`);
+            if (videoElement) {
+                const progressBar = videoElement.querySelector('.progress-fill');
+                const progressText = videoElement.querySelector('p:nth-child(3)');
+                const messageText = videoElement.querySelector('p:nth-child(4)');
+                
+                if (progressBar) progressBar.style.width = `${data.download_progress || 0}%`;
+                if (progressText) progressText.textContent = `进度: ${data.download_progress || 0}% / ${data.processing_progress || 0}%`;
+                if (messageText) messageText.textContent = `消息: ${data.processing_message || '处理中...'}`;
+            }
+        }
+        
+        async function testDownload() {
+            try {
+                const response = await fetch('http://localhost:8001/api/v1/videos/download', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${TOKEN}`
+                    },
+                    body: JSON.stringify({
+                        video_url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+                        project_id: 1,
+                        quality: '720p'
+                    })
+                });
+                
+                const result = await response.json();
+                console.log('下载任务已启动:', result);
+                alert('测试下载已启动，请观察进度更新！');
+            } catch (error) {
+                console.error('启动下载失败:', error);
+                alert('启动下载失败: ' + error.message);
+            }
+        }
+        
+        // 页面加载后自动连接和加载视频
+        window.addEventListener('load', () => {
+            connectWebSocket();
+            loadVideos();
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,151 @@
+version: '3.8'
+
+services:
+  # MySQL Database
+  mysql:
+    image: mysql:8.0
+    container_name: youtube-slicer-mysql
+    ports:
+      - "3307:3306"  # Using 3307 to avoid conflict with existing MySQL on 3306
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: youtube_slicer
+      MYSQL_USER: youtube_user
+      MYSQL_PASSWORD: youtube_password
+    volumes:
+      - mysql_data:/var/lib/mysql
+    networks:
+      - youtube-slicer-network
+    command: --default-authentication-plugin=mysql_native_password
+
+  # Redis for caching and task queue
+  redis:
+    image: redis:7-alpine
+    container_name: youtube-slicer-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    networks:
+      - youtube-slicer-network
+
+  # MinIO for file storage
+  minio:
+    image: minio/minio:latest
+    container_name: youtube-slicer-minio
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    volumes:
+      - minio_data:/data
+    command: server /data --console-address ":9001"
+    networks:
+      - youtube-slicer-network
+
+  # Backend API
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: youtube-slicer-backend
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=mysql+aiomysql://youtube_user:youtube_password@mysql:3306/youtube_slicer
+      - REDIS_URL=redis://redis:6379
+      - MINIO_ENDPOINT=minio:9000
+      - MINIO_ACCESS_KEY=minioadmin
+      - MINIO_SECRET_KEY=minioadmin
+      - MINIO_BUCKET_NAME=youtube-videos
+      - SECRET_KEY=your-secret-key-change-in-production
+      - DEBUG=true
+    depends_on:
+      - mysql
+      - redis
+      - minio
+    volumes:
+      - ./backend:/app
+      - media_files:/app/media
+    networks:
+      - youtube-slicer-network
+
+  # Celery Worker
+  celery-worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: youtube-slicer-celery
+    command: celery -A app.core.celery worker --loglevel=info
+    environment:
+      - DATABASE_URL=mysql+aiomysql://youtube_user:youtube_password@mysql:3306/youtube_slicer
+      - REDIS_URL=redis://redis:6379
+      - MINIO_ENDPOINT=minio:9000
+      - MINIO_ACCESS_KEY=minioadmin
+      - MINIO_SECRET_KEY=minioadmin
+      - MINIO_BUCKET_NAME=youtube-videos
+      - SECRET_KEY=your-secret-key-change-in-production
+    depends_on:
+      - mysql
+      - redis
+      - minio
+    volumes:
+      - ./backend:/app
+      - media_files:/app/media
+    networks:
+      - youtube-slicer-network
+
+  # Celery Beat (for scheduled tasks)
+  celery-beat:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: youtube-slicer-celery-beat
+    command: celery -A app.core.celery beat --loglevel=info
+    environment:
+      - DATABASE_URL=mysql+aiomysql://youtube_user:youtube_password@mysql:3306/youtube_slicer
+      - REDIS_URL=redis://redis:6379
+      - MINIO_ENDPOINT=minio:9000
+      - MINIO_ACCESS_KEY=minioadmin
+      - MINIO_SECRET_KEY=minioadmin
+      - MINIO_BUCKET_NAME=youtube-videos
+      - SECRET_KEY=your-secret-key-change-in-production
+    depends_on:
+      - mysql
+      - redis
+      - minio
+    volumes:
+      - ./backend:/app
+    networks:
+      - youtube-slicer-network
+
+  # Frontend
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: youtube-slicer-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - REACT_APP_API_URL=http://localhost:8000
+    depends_on:
+      - backend
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    networks:
+      - youtube-slicer-network
+
+volumes:
+  redis_data:
+  minio_data:
+  media_files:
+  mysql_data:
+
+networks:
+  youtube-slicer-network:
+    driver: bridge

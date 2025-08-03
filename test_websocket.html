@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>WebSocket Progress Test</title>
+</head>
+<body>
+    <h1>实时进度测试</h1>
+    <div id="status">连接状态: 未连接</div>
+    <div id="progress">进度: --</div>
+    
+    <script>
+        const statusDiv = document.getElementById('status');
+        const progressDiv = document.getElementById('progress');
+        
+        function connectWebSocket() {
+            statusDiv.textContent = '连接状态: 连接中...';
+            
+            // 使用测试令牌连接WebSocket
+            const ws = new WebSocket('ws://localhost:8001/ws/progress/test_token');
+            
+            ws.onopen = function() {
+                statusDiv.textContent = '连接状态: 已连接';
+                console.log('WebSocket连接成功');
+            };
+            
+            ws.onmessage = function(event) {
+                const data = JSON.parse(event.data);
+                progressDiv.textContent = `进度: ${data.download_progress || '--'}%`;
+                console.log('收到进度更新:', data);
+            };
+            
+            ws.onclose = function() {
+                statusDiv.textContent = '连接状态: 已断开';
+                console.log('WebSocket连接断开');
+            };
+            
+            ws.onerror = function(error) {
+                statusDiv.textContent = '连接状态: 连接错误';
+                console.error('WebSocket错误:', error);
+            };
+        }
+        
+        // 页面加载后自动连接
+        window.addEventListener('load', connectWebSocket);
+    </script>
+</body>
+</html>
