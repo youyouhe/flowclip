@@ -67,7 +67,7 @@ const Layout: React.FC = () => {
   return (
     <AntLayout style={{ minHeight: '100vh' }}>
       <Header style={{ color: 'white', fontSize: '18px', fontWeight: 'bold', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'linear-gradient(135deg, #1e3c72 0%, #2a5298 100%)' }}>
-        <div>YouTube视频分析平台</div>
+        <div>Video slicing tool</div>
       </Header>
       <AntLayout>
         <Sider width={200} theme="light">

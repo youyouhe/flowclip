@@ -24,8 +24,8 @@ logging.getLogger('aiosqlite').setLevel(logging.WARNING)
 logging.getLogger('urllib3.connectionpool').setLevel(logging.WARNING)
 
 app = FastAPI(
-    title="YouTube Slicer API",
-    description="A comprehensive API for YouTube video processing and slicing",
+    title="video slice tools API",
+    description="A comprehensive API for video processing and slicing",
     version="1.0.0",
     docs_url="/docs",
     redoc_url="/redoc"
@@ -69,7 +69,7 @@ async def startup_event():
 @app.get("/")
 async def root():
     return {
-        "message": "YouTube Slicer API",
+        "message": "video slice tools API",
         "version": "1.0.0",
         "docs": "/docs"
     }

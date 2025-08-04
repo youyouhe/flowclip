@@ -43,8 +43,8 @@ export const authAPI = {
 
 // 项目相关API
 export const projectAPI = {
-  getProjects: () =>
-    api.get('/projects'),
+  getProjects: (params?: any) =>
+    api.get('/projects', { params }),
   getProject: (id: number) =>
     api.get(`/projects/${id}`),
   createProject: (data: any) =>
@@ -53,12 +53,16 @@ export const projectAPI = {
     api.put(`/projects/${id}`, data),
   deleteProject: (id: number) =>
     api.delete(`/projects/${id}`),
+  getProjectVideos: (projectId: number) =>
+    api.get(`/projects/${projectId}/videos`),
 };
 
 // 视频相关API
 export const videoAPI = {
-  getVideos: () =>
-    api.get('/videos'),
+  getVideos: (params?: any) =>
+    api.get('/videos', { params }),
+  getActiveVideos: () =>
+    api.get('/videos/active'),
   getVideo: (id: number) =>
     api.get(`/videos/${id}`),
   createVideo: (data: any) =>
@@ -129,6 +133,8 @@ export const videoSliceAPI = {
     api.get(`/video-slice/slice-detail/${sliceId}`),
   getSliceDownloadUrl: (sliceId: number, expiry: number = 3600) =>
     api.get(`/video-slice/slice-download-url/${sliceId}?expiry=${expiry}`),
+  getSubSliceDownloadUrl: (subSliceId: number, expiry: number = 3600) =>
+    api.get(`/video-slice/sub-slice-download-url/${subSliceId}?expiry=${expiry}`),
   getSliceSubSlices: (sliceId: number) =>
     api.get(`/video-slice/slice-sub-slices/${sliceId}`),
   deleteAnalysis: (analysisId: number) =>
@@ -139,10 +145,72 @@ export const videoSliceAPI = {
     api.delete(`/video-slice/sub-slice/${subSliceId}`),
 };
 
+// 日志管理相关API
+export const logAPI = {
+  // 获取处理日志列表
+  getProcessingLogs: (params: {
+    video_id?: number;
+    task_id?: number;
+    task_type?: string;
+    status?: string;
+    start_date?: string;
+    end_date?: string;
+    level?: string;
+    search?: string;
+    page?: number;
+    page_size?: number;
+  }) => {
+    const queryParams = new URLSearchParams();
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== '') {
+        queryParams.append(key, value.toString());
+      }
+    });
+    return api.get(`/processing/logs?${queryParams.toString()}`);
+  },
+
+  // 获取特定任务的所有日志
+  getTaskLogs: (taskId: number) =>
+    api.get(`/processing/logs/task/${taskId}`),
+
+  // 获取视频的日志汇总
+  getVideoLogsSummary: (videoId: number) =>
+    api.get(`/processing/logs/video/${videoId}`),
+
+  // 获取日志统计信息
+  getLogsStatistics: (params: {
+    video_id?: number;
+    start_date?: string;
+    end_date?: string;
+  }) => {
+    const queryParams = new URLSearchParams();
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== '') {
+        queryParams.append(key, value.toString());
+      }
+    });
+    return api.get(`/processing/logs/statistics?${queryParams.toString()}`);
+  },
+
+  // 删除特定日志
+  deleteLog: (logId: number) =>
+    api.delete(`/processing/logs/${logId}`),
+
+  // 删除任务的所有日志
+  deleteTaskLogs: (taskId: number) =>
+    api.delete(`/processing/logs/task/${taskId}`),
+
+  // 删除视频的所有日志
+  deleteVideoLogs: (videoId: number) =>
+    api.delete(`/processing/logs/video/${videoId}`),
+};
+
 // Dashboard相关API
 export const dashboardAPI = {
   getDashboardStats: () =>
     api.get('/status/dashboard'),
+  getRunningVideoIds: () =>
+    api.get('/status/videos/running'),
 };
 
 export default api;

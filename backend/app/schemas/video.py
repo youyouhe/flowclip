@@ -38,3 +38,8 @@ class VideoDownloadRequest(BaseModel):
 class VideoUploadRequest(BaseModel):
     title: str
     description: Optional[str] = None
+
+class PaginatedVideoResponse(BaseModel):
+    videos: List[VideoResponse]
+    pagination: dict
+    total: int

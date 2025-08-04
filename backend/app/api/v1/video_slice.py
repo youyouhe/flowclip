@@ -221,6 +221,8 @@ async def process_slices(
         
         # 启动Celery任务处理视频切片
         from app.tasks.video_tasks import process_video_slices
+        from app.models.processing_task import ProcessingTask, ProcessingTaskType, ProcessingTaskStatus
+        from app.services.state_manager import ProcessingStage
         
         task = process_video_slices.delay(
             analysis_id=request.analysis_id,
@@ -230,7 +232,28 @@ async def process_slices(
             slice_items=request.slice_items
         )
         
-        logger.info(f"启动视频切片Celery任务 - task_id: {task.id}, analysis_id: {request.analysis_id}")
+        # 创建处理任务记录
+        processing_task = ProcessingTask(
+            video_id=video.id,
+            task_type=ProcessingTaskType.VIDEO_SLICE,
+            task_name="视频切片处理",
+            celery_task_id=task.id,
+            status=ProcessingTaskStatus.PENDING,
+            progress=0,
+            stage=ProcessingStage.SLICE_VIDEO,
+            message="视频切片处理任务已启动",
+            input_data={
+                "analysis_id": request.analysis_id,
+                "slice_items": request.slice_items,
+                "total_slices": len(request.slice_items)
+            }
+        )
+        
+        db.add(processing_task)
+        await db.commit()
+        await db.refresh(processing_task)
+        
+        logger.info(f"启动视频切片Celery任务 - task_id: {task.id}, analysis_id: {request.analysis_id}, processing_task_id: {processing_task.id}")
         
         return SliceProcessResponse(
             message="切片处理任务已启动",
@@ -479,7 +502,7 @@ async def delete_slice(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    """删除切片及其子切片"""
+    """删除切片及其子切片和对应文件"""
     
     try:
         # 验证切片权限
@@ -496,11 +519,27 @@ async def delete_slice(
                 detail="切片不存在或无权限访问"
             )
         
-        # 删除切片（级联删除子切片）
+        # 删除MinIO中的切片文件
+        if slice_data.sliced_file_path:
+            await minio_service.delete_file(slice_data.sliced_file_path)
+        
+        # 获取并删除子切片的MinIO文件
+        from app.models import VideoSubSlice
+        sub_slices_stmt = select(VideoSubSlice).where(VideoSubSlice.slice_id == slice_id)
+        sub_slices_result = await db.execute(sub_slices_stmt)
+        sub_slices = sub_slices_result.scalars().all()
+        
+        for sub_slice in sub_slices:
+            if sub_slice.sliced_file_path:
+                await minio_service.delete_file(sub_slice.sliced_file_path)
+        
+        # 删除数据库记录（级联删除子切片）
         await db.delete(slice_data)
         await db.commit()
         
-        return {"message": "切片删除成功"}
+        logger.info(f"已删除切片 {slice_id} 及其所有子切片和文件")
+        
+        return {"message": "切片及其所有相关文件删除成功"}
         
     except Exception as e:
         logger.error(f"删除切片失败: {str(e)}")
@@ -509,13 +548,61 @@ async def delete_slice(
             detail=f"删除失败: {str(e)}"
         )
 
+@router.get("/sub-slice-download-url/{sub_slice_id}")
+async def get_sub_slice_download_url(
+    sub_slice_id: int,
+    expiry: int = 3600,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """获取子切片文件的下载URL"""
+    
+    try:
+        # 获取子切片数据
+        stmt = select(VideoSubSlice).join(VideoSlice).join(Video).join(Project).where(
+            VideoSubSlice.id == sub_slice_id,
+            Project.user_id == current_user.id
+        )
+        result = await db.execute(stmt)
+        sub_slice_data = result.scalar_one_or_none()
+        
+        if not sub_slice_data:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="子切片不存在或无权限访问"
+            )
+        
+        if not sub_slice_data.sliced_file_path:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="子切片文件不存在"
+            )
+        
+        # 生成预签名URL
+        url = await minio_service.get_file_url(sub_slice_data.sliced_file_path, expiry)
+        
+        if not url:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="无法生成下载URL"
+            )
+        
+        return {"url": url}
+        
+    except Exception as e:
+        logger.error(f"获取子切片下载URL失败: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"获取失败: {str(e)}"
+        )
+
 @router.delete("/sub-slice/{sub_slice_id}")
 async def delete_sub_slice(
     sub_slice_id: int,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    """删除子切片"""
+    """删除子切片及其文件"""
     
     try:
         # 验证子切片权限
@@ -532,11 +619,17 @@ async def delete_sub_slice(
                 detail="子切片不存在或无权限访问"
             )
         
-        # 删除子切片
+        # 删除MinIO中的子切片文件
+        if sub_slice.sliced_file_path:
+            await minio_service.delete_file(sub_slice.sliced_file_path)
+        
+        # 删除数据库记录
         await db.delete(sub_slice)
         await db.commit()
         
-        return {"message": "子切片删除成功"}
+        logger.info(f"已删除子切片 {sub_slice_id} 及其文件")
+        
+        return {"message": "子切片及其文件删除成功"}
         
     except Exception as e:
         logger.error(f"删除子切片失败: {str(e)}")

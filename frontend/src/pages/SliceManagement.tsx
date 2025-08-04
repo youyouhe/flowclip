@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { Card, Input, Button, Select, Space, message, Spin, Typography, Row, Col, Table, Tag, Modal, Form, Tabs, Divider, Alert } from 'antd';
+import { Card, Input, Button, Select, Space, message, Spin, Typography, Row, Col, Table, Tag, Modal, Form, Tabs, Divider, Alert, Progress } from 'antd';
 import { PlayCircleOutlined, ScissorOutlined, UploadOutlined, EyeOutlined, EditOutlined, DeleteOutlined, PlusOutlined } from '@ant-design/icons';
 import { llmAPI } from '../services/api';
 import { videoAPI } from '../services/api';
 import { videoSliceAPI } from '../services/api';
+import { wsService, startHeartbeat, stopHeartbeat } from '../services/websocket';
 
 const { Title, Text, Paragraph } = Typography;
 const { TextArea } = Input;
@@ -71,24 +72,104 @@ const SliceManagement: React.FC = () => {
   const [jsonInput, setJsonInput] = useState('');
   const [coverTitle, setCoverTitle] = useState('');
   const [form] = Form.useForm();
+  
+  // 切片处理进度状态
+  const [sliceProgress, setSliceProgress] = useState<{
+    isProcessing: boolean;
+    progress: number;
+    message: string;
+    taskId: string | null;
+  }>({
+    isProcessing: false,
+    progress: 0,
+    message: '',
+    taskId: null
+  });
 
   useEffect(() => {
     loadVideos();
+    initWebSocket();
+    return () => {
+      stopHeartbeat();
+      wsService.disconnect();
+    };
   }, []);
 
   useEffect(() => {
     if (selectedVideo) {
       loadAnalyses();
       loadSlices();
+      // 订阅视频进度更新
+      if (wsService.connected) {
+        wsService.subscribeVideoProgress(selectedVideo);
+      }
     }
   }, [selectedVideo]);
+
+  const initWebSocket = () => {
+    const token = localStorage.getItem('token');
+    if (token) {
+      wsService.connect(token);
+      startHeartbeat();
+      
+      // 监听进度更新
+      wsService.on('progress_update', (data) => {
+        console.log('收到进度更新:', data);
+        
+        // 检查是否是切片任务的进度更新
+        if (data.task_id === sliceProgress.taskId && sliceProgress.isProcessing) {
+          setSliceProgress(prev => ({
+            ...prev,
+            progress: data.progress || 0,
+            message: data.message || '处理中...'
+          }));
+        }
+        
+        // 如果切片任务完成，刷新数据
+        if (data.status === 'completed' && sliceProgress.isProcessing) {
+          setSliceProgress(prev => ({
+            ...prev,
+            isProcessing: false,
+            progress: 100,
+            message: '切片处理完成'
+          }));
+          
+          // 延迟刷新数据，确保数据库已更新
+          setTimeout(() => {
+            loadAnalyses();
+            loadSlices();
+          }, 1000);
+        }
+        
+        // 如果切片任务失败
+        if (data.status === 'failed' && sliceProgress.isProcessing) {
+          setSliceProgress(prev => ({
+            ...prev,
+            isProcessing: false,
+            message: `处理失败: ${data.error || '未知错误'}`
+          }));
+          message.error(`切片处理失败: ${data.error || '未知错误'}`);
+        }
+      });
+      
+      // 监听连接状态
+      wsService.on('connected', () => {
+        console.log('WebSocket连接已建立');
+        if (selectedVideo) {
+          wsService.subscribeVideoProgress(selectedVideo);
+        }
+      });
+    }
+  };
 
   const loadVideos = async () => {
     try {
       setVideosLoading(true);
-      const response = await videoAPI.getVideos();
+      const response = await videoAPI.getVideos({ status: 'completed' });
+      // 处理分页响应格式
+      const videosData = response.data.videos || response.data;
       // 只加载已完成且可能有SRT文件的视频
-      const completedVideos = response.data.filter((video: Video) => 
+      const completedVideos = videosData.filter((video: Video) => 
         video.status === 'completed'
       );
       setVideos(completedVideos);
@@ -200,13 +281,19 @@ const SliceManagement: React.FC = () => {
         slice_items: selectedAnalysis.analysis_data
       });
 
-      message.success(`切片处理完成！成功处理 ${response.data.processed_slices}/${response.data.total_slices} 个切片`);
+      // 设置处理状态
+      setSliceProgress({
+        isProcessing: true,
+        progress: 0,
+        message: '正在启动切片任务...',
+        taskId: response.data.task_id
+      });
+
+      message.success('切片处理任务已启动，请查看进度');
       setProcessModalVisible(false);
-      loadAnalyses();
-      loadSlices();
     } catch (error: any) {
-      console.error('处理失败:', error);
-      message.error('处理失败: ' + (error.response?.data?.detail || error.message));
+      console.error('启动处理失败:', error);
+      message.error('启动处理失败: ' + (error.response?.data?.detail || error.message));
     } finally {
       setLoading(false);
     }
@@ -353,6 +440,8 @@ const SliceManagement: React.FC = () => {
                 setSelectedAnalysis(record);
                 setProcessModalVisible(true);
               }}
+              disabled={sliceProgress.isProcessing}
+              loading={sliceProgress.isProcessing}
             >
               切片
             </Button>
@@ -499,6 +588,49 @@ const SliceManagement: React.FC = () => {
         <Col span={24}>
           <Card title="视频切片管理">
             <Space direction="vertical" style={{ width: '100%' }} size="large">
+              {/* 切片处理进度显示 */}
+              {sliceProgress.isProcessing && (
+                <Alert
+                  message="切片处理中"
+                  description={
+                    <div>
+                      <Progress percent={sliceProgress.progress} status="active" />
+                      <p>{sliceProgress.message}</p>
+                      {sliceProgress.taskId && (
+                        <Text type="secondary">任务ID: {sliceProgress.taskId}</Text>
+                      )}
+                    </div>
+                  }
+                  type="info"
+                  showIcon
+                  style={{ marginBottom: 16 }}
+                />
+              )}
+              
+              {/* 切片处理完成或失败提示 */}
+              {!sliceProgress.isProcessing && sliceProgress.progress === 100 && (
+                <Alert
+                  message="切片处理完成"
+                  description={sliceProgress.message}
+                  type="success"
+                  showIcon
+                  style={{ marginBottom: 16 }}
+                  closable
+                  onClose={() => setSliceProgress(prev => ({ ...prev, progress: 0, message: '' }))}
+                />
+              )}
+              
+              {!sliceProgress.isProcessing && sliceProgress.progress > 0 && sliceProgress.progress < 100 && (
+                <Alert
+                  message="切片处理失败"
+                  description={sliceProgress.message}
+                  type="error"
+                  showIcon
+                  style={{ marginBottom: 16 }}
+                  closable
+                  onClose={() => setSliceProgress(prev => ({ ...prev, progress: 0, message: '' }))}
+                />
+              )}
               <Row gutter={16}>
                 <Col span={8}>
                   <Text strong>选择视频：</Text>
@@ -612,7 +744,7 @@ const SliceManagement: React.FC = () => {
                                           icon={<PlayCircleOutlined />}
                                           onClick={async () => {
                                             try {
-                                              const response = await videoSliceAPI.getSliceDownloadUrl(record.id);
+                                              const response = await videoSliceAPI.getSubSliceDownloadUrl(subSlice.id);
                                               window.open(response.data.url, '_blank');
                                             } catch (error) {
                                               message.error('获取播放链接失败');

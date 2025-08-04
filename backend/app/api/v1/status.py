@@ -381,3 +381,20 @@ async def get_dashboard_stats(
         "recent_projects": recent_projects_data,
         "recent_activities": recent_activities
     }
+
+@router.get("/videos/running", response_model=List[int])
+async def get_running_video_ids(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """获取所有正在运行的视频IDs"""
+    # 获取所有有运行中任务的视频
+    stmt = select(Video.id).join(Project).join(ProcessingTask).where(
+        Project.user_id == current_user.id,
+        ProcessingTask.status.in_(['pending', 'running'])
+    ).distinct()
+    
+    result = await db.execute(stmt)
+    running_video_ids = [row[0] for row in result.fetchall()]
+    
+    return running_video_ids

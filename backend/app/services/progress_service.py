@@ -164,15 +164,19 @@ class ProgressUpdateService:
         self,
         video_id: int,
         user_id: int,
-        progress_data: Dict[str, Any]
+        data: Dict[str, Any] = None,
+        progress_data: Dict[str, Any] = None
     ):
         """同步版本的进度更新 - 用于Celery任务"""
         try:
+            # 兼容旧的 progress_data 参数和新的 data 参数
+            actual_data = data or progress_data or {}
+            
             # 将更新任务放入队列
             asyncio.run(self._update_queue.put({
                 'video_id': video_id,
                 'user_id': user_id,
-                'data': progress_data
+                'data': actual_data
             }))
             
             logger.debug(f"进度更新已加入队列 (sync) - video_id: {video_id}")

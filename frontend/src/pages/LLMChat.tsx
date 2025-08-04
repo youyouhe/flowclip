@@ -55,9 +55,11 @@ const LLMChat: React.FC = () => {
   const loadVideos = async () => {
     try {
       setVideosLoading(true);
-      const response = await videoAPI.getVideos();
+      const response = await videoAPI.getVideos({ status: 'completed' });
+      // 处理分页响应格式
+      const videosData = response.data.videos || response.data;
       // 只加载已完成且可能有SRT文件的视频
-      const completedVideos = response.data.filter((video: Video) => 
+      const completedVideos = videosData.filter((video: Video) => 
         video.status === 'completed'
       );
       setVideos(completedVideos);
@@ -390,7 +392,7 @@ const LLMChat: React.FC = () => {
             取消
           </Button>,
           <Button key="slice-management" type="primary" onClick={() => {
-            window.open('/slice-management', '_blank');
+            window.open('/dashboard/slice-management', '_blank');
             setSliceModalVisible(false);
           }}>
             进入切片管理

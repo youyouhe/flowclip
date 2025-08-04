@@ -28,7 +28,7 @@ const Register: React.FC = () => {
         password: values.password
       });
       message.success('注册成功');
-      navigate('/');
+      navigate('/dashboard');
     } catch (error: any) {
       message.error(error.message || '注册失败');
     } finally {
@@ -41,7 +41,7 @@ const Register: React.FC = () => {
       <Card className="w-full max-w-md shadow-xl">
         <div className="text-center mb-6">
           <h1 className="text-3xl font-bold text-gray-800">创建账号</h1>
-          <p className="text-gray-600 mt-2">注册YouTube下载管理器</p>
+          <p className="text-gray-600 mt-2">注册Video Slice Tools</p>
         </div>
         
         <Form

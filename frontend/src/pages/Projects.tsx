@@ -1,8 +1,34 @@
 import React, { useState, useEffect } from 'react';
-import { Table, Button, Card, Space, Modal, Form, Input, message, Tag, Popconfirm } from 'antd';
-import { PlusOutlined, EyeOutlined, EditOutlined, DeleteOutlined, FolderOutlined } from '@ant-design/icons';
+import { 
+  Table, 
+  Button, 
+  Card, 
+  Space, 
+  Modal, 
+  Form, 
+  Input, 
+  message, 
+  Tag, 
+  Popconfirm, 
+  Select, 
+  Row, 
+  Col,
+  DatePicker 
+} from 'antd';
+import { 
+  PlusOutlined, 
+  EyeOutlined, 
+  EditOutlined, 
+  DeleteOutlined, 
+  FolderOutlined, 
+  SearchOutlined, 
+  FilterOutlined, 
+  ClearOutlined,
+  ReloadOutlined 
+} from '@ant-design/icons';
 import { projectAPI } from '../services/api';
 import { useNavigate } from 'react-router-dom';
+import dayjs from 'dayjs';
 
 interface Project {
   id: number;
@@ -21,12 +47,54 @@ const Projects: React.FC = () => {
   const [editingProject, setEditingProject] = useState<Project | null>(null);
   const [form] = Form.useForm();
   const navigate = useNavigate();
+  
+  // 筛选状态
+  const [filters, setFilters] = useState({
+    status: undefined as string | undefined,
+    search: '',
+    start_date: undefined as string | undefined,
+    end_date: undefined as string | undefined,
+    min_video_count: undefined as number | undefined,
+    max_video_count: undefined as number | undefined,
+    page: 1,
+    page_size: 10
+  });
+  
+  const [pagination, setPagination] = useState({
+    total: 0,
+    page: 1,
+    page_size: 10,
+    total_pages: 0
+  });
 
   const fetchProjects = async () => {
     setLoading(true);
     try {
-      const response = await projectAPI.getProjects();
-      setProjects(response.data);
+      // 构建查询参数
+      const params: any = {};
+      if (filters.status) params.status = filters.status;
+      if (filters.search) params.search = filters.search;
+      if (filters.start_date) params.start_date = filters.start_date;
+      if (filters.end_date) params.end_date = filters.end_date;
+      if (filters.min_video_count !== undefined) params.min_video_count = filters.min_video_count;
+      if (filters.max_video_count !== undefined) params.max_video_count = filters.max_video_count;
+      if (filters.page) params.page = filters.page;
+      if (filters.page_size) params.page_size = filters.page_size;
+      
+      const response = await projectAPI.getProjects(params);
+      setProjects(response.data.projects || response.data);
+      
+      // 更新分页信息
+      if (response.data.pagination) {
+        setPagination(response.data.pagination);
+      } else {
+        setPagination({
+          total: response.data.length || 0,
+          page: filters.page,
+          page_size: filters.page_size,
+          total_pages: Math.ceil((response.data.length || 0) / filters.page_size)
+        });
+      }
     } catch (error) {
       message.error('获取项目列表失败');
     } finally {
@@ -36,7 +104,7 @@ const Projects: React.FC = () => {
 
   useEffect(() => {
     fetchProjects();
-  }, []);
+  }, [filters]);
 
   const handleCreateProject = async (values: any) => {
     try {
@@ -73,6 +141,36 @@ const Projects: React.FC = () => {
     } catch (error) {
       message.error('项目删除失败');
     }
+  };
+
+  const handleFilterChange = (key: string, value: any) => {
+    setFilters(prev => ({
+      ...prev,
+      [key]: value,
+      page: 1 // 重置页码
+    }));
+  };
+
+  const handleDateRangeChange = (dates: any, dateStrings: [string, string]) => {
+    setFilters(prev => ({
+      ...prev,
+      start_date: dateStrings[0],
+      end_date: dateStrings[1],
+      page: 1
+    }));
+  };
+
+  const clearFilters = () => {
+    setFilters({
+      status: undefined,
+      search: '',
+      start_date: undefined,
+      end_date: undefined,
+      min_video_count: undefined,
+      max_video_count: undefined,
+      page: 1,
+      page_size: 10
+    });
   };
 
   const showCreateModal = () => {
@@ -188,13 +286,98 @@ const Projects: React.FC = () => {
         </Button>
       </div>
 
+      {/* 筛选器 */}
+      <Card style={{ marginBottom: 24 }}>
+        <Row gutter={[16, 16]}>
+          <Col span={4}>
+            <Select
+              placeholder="项目状态"
+              value={filters.status}
+              onChange={(value) => handleFilterChange('status', value)}
+              style={{ width: '100%' }}
+              allowClear
+            >
+              <Select.Option value="active">活跃</Select.Option>
+              <Select.Option value="completed">已完成</Select.Option>
+              <Select.Option value="paused">暂停</Select.Option>
+              <Select.Option value="archived">已归档</Select.Option>
+            </Select>
+          </Col>
+          <Col span={4}>
+            <Input.Group compact>
+              <Input
+                style={{ width: '50%' }}
+                placeholder="最少视频数"
+                type="number"
+                value={filters.min_video_count}
+                onChange={(e) => handleFilterChange('min_video_count', e.target.value ? parseInt(e.target.value) : undefined)}
+              />
+              <Input
+                style={{ width: '50%' }}
+                placeholder="最多视频数"
+                type="number"
+                value={filters.max_video_count}
+                onChange={(e) => handleFilterChange('max_video_count', e.target.value ? parseInt(e.target.value) : undefined)}
+              />
+            </Input.Group>
+          </Col>
+          <Col span={6}>
+            <DatePicker.RangePicker
+              style={{ width: '100%' }}
+              onChange={handleDateRangeChange}
+              placeholder={['开始日期', '结束日期']}
+            />
+          </Col>
+          <Col span={6}>
+            <Input
+              placeholder="搜索项目名称或描述"
+              value={filters.search}
+              onChange={(e) => handleFilterChange('search', e.target.value)}
+              onPressEnter={fetchProjects}
+            />
+          </Col>
+          <Col span={4}>
+            <Space>
+              <Button
+                type="primary"
+                icon={<SearchOutlined />}
+                onClick={fetchProjects}
+                loading={loading}
+              >
+                搜索
+              </Button>
+              <Button
+                icon={<ClearOutlined />}
+                onClick={clearFilters}
+              >
+                清除
+              </Button>
+            </Space>
+          </Col>
+        </Row>
+      </Card>
+
       <Card>
         <Table
           columns={columns}
           dataSource={projects}
           rowKey="id"
           loading={loading}
-          pagination={{ pageSize: 10, showTotal: (total) => `共 ${total} 个项目` }}
+          pagination={{
+            current: pagination.page,
+            pageSize: pagination.page_size,
+            total: pagination.total,
+            showSizeChanger: true,
+            showQuickJumper: true,
+            showTotal: (total, range) => `第 ${range[0]}-${range[1]} 条，共 ${total} 条`,
+            onChange: (page, pageSize) => {
+              setFilters(prev => ({
+                ...prev,
+                page,
+                page_size: pageSize || 10
+              }));
+            },
+          }}
         />
       </Card>
 

@@ -1,4 +1,4 @@
-# YouTube Slicer 前端实时进度集成指南
+# video slice tools 前端实时进度集成指南
 
 ## 🚀 功能特性
 

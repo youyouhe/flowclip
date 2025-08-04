@@ -308,15 +308,12 @@ const VideoDetail: React.FC = () => {
     fetchProcessingStatus();
     setupWebSocket();
     
-    // 定期从数据库刷新处理状态
-    const processingStatusInterval = setInterval(() => {
-      fetchProcessingStatus();
-    }, 3000); // 每3秒刷新一次
+    // 移除轮询定时器，使用WebSocket实时更新
+    // 注意：WebSocket已经提供实时更新，不需要轮询
     
     return () => {
       // 清理WebSocket连接
       cleanupWebSocket();
-      clearInterval(processingStatusInterval);
     };
   }, [id]);
 
@@ -593,8 +590,9 @@ const VideoDetail: React.FC = () => {
         return;
       }
       
-      console.log('开始轮询任务状态，taskId:', taskId);
-      pollTaskStatus(taskId);
+      console.log('任务已启动，等待WebSocket更新，taskId:', taskId);
+      // 移除轮询，使用WebSocket实时更新
+      // pollTaskStatus(taskId);
       message.success('音频提取任务已启动');
     } catch (error) {
       console.error('启动音频提取失败:', error);
@@ -626,8 +624,9 @@ const VideoDetail: React.FC = () => {
         return;
       }
       
-      console.log('开始轮询任务状态，taskId:', taskId);
-      pollTaskStatus(taskId);
+      console.log('任务已启动，等待WebSocket更新，taskId:', taskId);
+      // 移除轮询，使用WebSocket实时更新
+      // pollTaskStatus(taskId);
       message.success('音频分割任务已启动');
     } catch (error) {
       console.error('启动音频分割失败:', error);
@@ -671,8 +670,9 @@ const VideoDetail: React.FC = () => {
         return;
       }
       
-      console.log('开始轮询任务状态，taskId:', taskId);
-      pollTaskStatus(taskId);
+      console.log('任务已启动，等待WebSocket更新，taskId:', taskId);
+      // 移除轮询，使用WebSocket实时更新
+      // pollTaskStatus(taskId);
       message.success('SRT生成任务已启动');
     } catch (error) {
       console.error('启动SRT生成失败:', error);
@@ -1249,28 +1249,31 @@ const VideoDetail: React.FC = () => {
                   
                   <Divider orientation="left">音频处理</Divider>
                   <Button
-                    type="primary"
+                    type={audioInfo ? "default" : "primary"}
                     icon={<SoundOutlined />}
                     onClick={handleExtractAudio}
                     block
+                    disabled={audioInfo ? true : false}
                   >
-                    提取音频
+                    提取音频 {audioInfo && "✓"}
                   </Button>
                   <Button
-                    type="default"
+                    type={splitInfo ? "default" : (audioInfo ? "primary" : "default")}
                     icon={<ScissorOutlined />}
                     onClick={handleSplitAudio}
                     block
+                    disabled={!audioInfo || splitInfo ? true : false}
                   >
-                    分割音频
+                    分割音频 {splitInfo && "✓"}
                   </Button>
                   <Button
-                    type="default"
+                    type={srtInfo ? "default" : (splitInfo ? "primary" : "default")}
                     icon={<FileTextOutlined />}
                     onClick={handleGenerateSrt}
                     block
+                    disabled={!splitInfo || srtInfo ? true : false}
                   >
-                    生成字幕
+                    生成字幕 {srtInfo && "✓"}
                   </Button>
                   
                     

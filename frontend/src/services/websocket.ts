@@ -104,6 +104,9 @@ class WebSocketService {
       case 'progress_update':
         this.emit('progress_update', data);
         break;
+      case 'log_update':
+        this.emit('log_update', data);
+        break;
       case 'pong':
         this.emit('pong', data);
         break;

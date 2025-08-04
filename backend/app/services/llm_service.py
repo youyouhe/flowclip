@@ -53,7 +53,7 @@ class LLMService:
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
             "HTTP-Referer": "https://youtube-slicer.local",  # 你的应用域名
-            "X-Title": "YouTube Slicer",  # 你的应用名称
+            "X-Title": "video slice tools",  # 你的应用名称
         }
         
         # 构建消息列表

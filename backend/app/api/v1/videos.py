@@ -1,9 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, BackgroundTasks, Form, Body
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, BackgroundTasks, Form, Body, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
-from typing import List
+from sqlalchemy import select, and_, or_, func
+from typing import List, Optional
 import uuid
 import os
+import time
+from datetime import datetime, timedelta
 from app.core.database import get_db
 from app.core.security import get_current_user, get_current_user_from_token
 from app.core.config import settings
@@ -11,7 +13,7 @@ from app.models.user import User
 from app.models.video import Video
 from app.models.project import Project
 from app.models.processing_task import ProcessingTask, ProcessingStatus
-from app.schemas.video import VideoResponse, VideoDownloadRequest, VideoUpdate
+from app.schemas.video import VideoResponse, VideoDownloadRequest, VideoUpdate, PaginatedVideoResponse
 from app.services.youtube_downloader import downloader
 from app.services.youtube_downloader_minio import downloader_minio
 from app.services.minio_client import minio_service
@@ -107,13 +109,18 @@ async def download_video_task(
             except Exception as cleanup_error:
                 logger.warning(f"清理cookie文件失败: {cleanup_error}")
 
-@router.get("/", response_model=List[VideoResponse])
-async def get_videos(
+@router.get("/active", response_model=List[VideoResponse])
+async def get_active_videos(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    """获取当前用户的所有视频"""
-    stmt = select(Video, Project.name.label('project_name')).join(Project).where(Project.user_id == current_user.id)
+    """获取当前用户所有非完成状态的视频"""
+    # 查询所有非完成状态的视频
+    stmt = select(Video, Project.name.label('project_name')).join(Project).where(
+        Project.user_id == current_user.id,
+        Video.status.notin_(['completed', 'failed'])
+    ).order_by(Video.created_at.desc())
+    
     result = await db.execute(stmt)
     videos_with_project = result.all()
     
@@ -140,6 +147,134 @@ async def get_videos(
         videos.append(video_dict)
     
     return videos
+
+@router.get("/", response_model=PaginatedVideoResponse)
+async def get_videos(
+    project_id: Optional[int] = Query(None, description="项目ID筛选"),
+    status: Optional[str] = Query(None, description="视频状态筛选"),
+    search: Optional[str] = Query(None, description="搜索视频标题"),
+    start_date: Optional[str] = Query(None, description="开始日期 (YYYY-MM-DD)"),
+    end_date: Optional[str] = Query(None, description="结束日期 (YYYY-MM-DD)"),
+    min_duration: Optional[int] = Query(None, description="最小时长（秒）"),
+    max_duration: Optional[int] = Query(None, description="最大时长（秒）"),
+    min_file_size: Optional[int] = Query(None, description="最小文件大小（字节）"),
+    max_file_size: Optional[int] = Query(None, description="最大文件大小（字节）"),
+    page: int = Query(1, ge=1, description="页码"),
+    page_size: int = Query(10, ge=1, le=100, description="每页数量"),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """获取当前用户的所有视频（支持筛选功能）"""
+    # 构建基础查询
+    stmt = select(Video, Project.name.label('project_name')).join(Project).where(Project.user_id == current_user.id)
+    
+    # 添加筛选条件
+    if project_id:
+        stmt = stmt.where(Video.project_id == project_id)
+    
+    if status:
+        stmt = stmt.where(Video.status == status)
+    
+    if search:
+        stmt = stmt.where(
+            or_(
+                Video.title.ilike(f"%{search}%"),
+                Video.description.ilike(f"%{search}%")
+            )
+        )
+    
+    if start_date:
+        start_datetime = datetime.strptime(start_date, "%Y-%m-%d")
+        stmt = stmt.where(Video.created_at >= start_datetime)
+    
+    if end_date:
+        end_datetime = datetime.strptime(end_date, "%Y-%m-%d") + timedelta(days=1)
+        stmt = stmt.where(Video.created_at <= end_datetime)
+    
+    if min_duration is not None:
+        stmt = stmt.where(Video.duration >= min_duration)
+    
+    if max_duration is not None:
+        stmt = stmt.where(Video.duration <= max_duration)
+    
+    if min_file_size is not None:
+        stmt = stmt.where(Video.file_size >= min_file_size)
+    
+    if max_file_size is not None:
+        stmt = stmt.where(Video.file_size <= max_file_size)
+    
+    # 获取总数
+    count_stmt = select(func.count(Video.id)).join(Project).where(Project.user_id == current_user.id)
+    if project_id:
+        count_stmt = count_stmt.where(Video.project_id == project_id)
+    if status:
+        count_stmt = count_stmt.where(Video.status == status)
+    if search:
+        count_stmt = count_stmt.where(
+            or_(
+                Video.title.ilike(f"%{search}%"),
+                Video.description.ilike(f"%{search}%")
+            )
+        )
+    if start_date:
+        count_stmt = count_stmt.where(Video.created_at >= start_datetime)
+    if end_date:
+        count_stmt = count_stmt.where(Video.created_at <= end_datetime)
+    if min_duration is not None:
+        count_stmt = count_stmt.where(Video.duration >= min_duration)
+    if max_duration is not None:
+        count_stmt = count_stmt.where(Video.duration <= max_duration)
+    if min_file_size is not None:
+        count_stmt = count_stmt.where(Video.file_size >= min_file_size)
+    if max_file_size is not None:
+        count_stmt = count_stmt.where(Video.file_size <= max_file_size)
+    
+    count_result = await db.execute(count_stmt)
+    total_count = count_result.scalar()
+    
+    # 添加分页
+    offset = (page - 1) * page_size
+    stmt = stmt.offset(offset).limit(page_size)
+    stmt = stmt.order_by(Video.created_at.desc())
+    
+    result = await db.execute(stmt)
+    videos_with_project = result.all()
+    
+    # 构建包含项目名称的视频列表
+    videos = []
+    for video, project_name in videos_with_project:
+        video_dict = {
+            'id': video.id,
+            'title': video.title,
+            'description': video.description,
+            'url': video.url,
+            'project_id': video.project_id,
+            'filename': video.filename,
+            'file_path': video.file_path,
+            'duration': video.duration,
+            'file_size': video.file_size,
+            'thumbnail_url': video.thumbnail_url,
+            'status': video.status,
+            'download_progress': video.download_progress,
+            'created_at': video.created_at,
+            'updated_at': video.updated_at,
+            'project_name': project_name
+        }
+        videos.append(video_dict)
+    
+    # 构建分页信息
+    pagination = {
+        "page": page,
+        "page_size": page_size,
+        "total": total_count,
+        "total_pages": (total_count + page_size - 1) // page_size
+    }
+    
+    return {
+        "videos": videos,
+        "pagination": pagination,
+        "total": total_count
+    }
 
 @router.post("/download", response_model=VideoResponse)
 async def download_video(
@@ -231,7 +366,7 @@ async def download_video(
         from app.core.constants import ProcessingTaskType
         
         task = celery_app.send_task('app.tasks.video_tasks.download_video', 
-            args=[url, project_id, current_user.id, quality, cookies_path]
+            args=[url, project_id, current_user.id, quality, cookies_path, new_video.id]
         )
         
         # 创建处理任务记录，使用实际的Celery任务ID
@@ -332,7 +467,7 @@ async def delete_video(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    """删除视频"""
+    """删除视频及相关文件"""
     stmt = select(Video).join(Project).where(
         Video.id == video_id,
         Project.user_id == current_user.id
@@ -345,7 +480,7 @@ async def delete_video(
             detail="Video not found"
         )
     
-    # 删除MinIO中的文件（如果存在）
+    # 删除MinIO中的视频相关文件（如果存在）
     if video.file_path:
         # 从minio_path中提取对象名称
         object_name = video.file_path
@@ -364,10 +499,48 @@ async def delete_video(
         # 删除音频文件（如果存在）
         audio_object = f"users/{current_user.id}/projects/{video.project_id}/audio/{video_id_str}.mp3"
         await minio_service.delete_file(audio_object)
+        
+        # 删除字幕文件（如果存在）
+        srt_object = f"users/{current_user.id}/projects/{video.project_id}/subtitles/{video_id_str}.srt"
+        await minio_service.delete_file(srt_object)
     
+    # 删除相关的切片文件（MinIO中的文件）
+    try:
+        # 获取所有相关的切片和子切片
+        from app.models import VideoSlice, VideoSubSlice
+        
+        # 获取主切片
+        slices_stmt = select(VideoSlice).where(VideoSlice.video_id == video_id)
+        slices_result = await db.execute(slices_stmt)
+        slices = slices_result.scalars().all()
+        
+        # 删除每个切片的MinIO文件
+        for slice in slices:
+            if slice.sliced_file_path:
+                await minio_service.delete_file(slice.sliced_file_path)
+            
+            # 获取并删除子切片的MinIO文件
+            sub_slices_stmt = select(VideoSubSlice).where(VideoSubSlice.slice_id == slice.id)
+            sub_slices_result = await db.execute(sub_slices_stmt)
+            sub_slices = sub_slices_result.scalars().all()
+            
+            for sub_slice in sub_slices:
+                if sub_slice.sliced_file_path:
+                    await minio_service.delete_file(sub_slice.sliced_file_path)
+        
+        logger.info(f"已删除视频 {video_id} 的所有相关MinIO文件")
+        
+    except Exception as e:
+        logger.warning(f"删除切片文件时出现错误: {str(e)}")
+        # 继续执行数据库删除，不因为文件删除失败而阻止整个删除操作
+    
+    # 删除数据库记录（会自动级联删除相关的分析、切片等记录）
     await db.delete(video)
     await db.commit()
-    return {"message": "Video deleted successfully"}
+    
+    logger.info(f"视频 {video_id} 及其所有相关数据已删除")
+    
+    return {"message": "Video and all related files deleted successfully"}
 
 @router.put("/{video_id}", response_model=VideoResponse)
 async def update_video(

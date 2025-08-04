@@ -34,6 +34,7 @@ class ProcessingTaskType(str, Enum):
     EXTRACT_AUDIO = "extract_audio"  # 提取音频
     SPLIT_AUDIO = "split_audio"      # 分割音频
     GENERATE_SRT = "generate_srt"    # 生成字幕
+    VIDEO_SLICE = "video_slice"      # 视频切片
     PROCESS_COMPLETE = "process_complete"  # 完整处理流程
 
 class ProcessingTaskStatus(str, Enum):

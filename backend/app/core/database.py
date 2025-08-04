@@ -15,6 +15,11 @@ if "mysql" in settings.database_url.lower():
         echo=settings.debug,
         pool_pre_ping=True,
         pool_recycle=3600,
+        isolation_level="REPEATABLE READ",  # Prevent dirty reads
+        connect_args={
+            "charset": "utf8mb4",
+            "autocommit": False,  # Disable autocommit for better consistency
+        }
     )
     
     # Sync engine for Celery tasks
@@ -25,6 +30,11 @@ if "mysql" in settings.database_url.lower():
         echo=settings.debug,
         pool_pre_ping=True,
         pool_recycle=3600,
+        isolation_level="REPEATABLE READ",  # Prevent dirty reads
+        connect_args={
+            "charset": "utf8mb4",
+            "autocommit": False,  # Disable autocommit for better consistency
+        }
     )
 else:
     # SQLite configuration

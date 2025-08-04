@@ -338,6 +338,14 @@ def split_audio(input_file=DEFAULT_INPUT_FILE,
             print("检测到的静音段太少，尝试能量检测...")
             energy_regions = detect_sentence_energy(audio)
             if energy_regions:
+                # 调试：检查数据类型
+                print(f"silence_chunks 类型: {[type(x) for x in silence_chunks[:3]]}")
+                print(f"energy_regions 类型: {[type(x) for x in energy_regions[:3]]}")
+                
+                # 确保所有元素都是元组类型
+                silence_chunks = [tuple(chunk) if isinstance(chunk, list) else chunk for chunk in silence_chunks]
+                energy_regions = [tuple(region) if isinstance(region, list) else region for region in energy_regions]
+                
                 # 将能量检测的结果合并到静音检测结果
                 silence_chunks.extend(energy_regions)
                 silence_chunks.sort()

@@ -26,3 +26,8 @@ class ProjectWithStats(ProjectResponse):
     video_count: int
     completed_videos: int
     total_slices: int
+
+class PaginatedProjectResponse(BaseModel):
+    projects: List[ProjectWithStats]
+    pagination: dict
+    total: int
