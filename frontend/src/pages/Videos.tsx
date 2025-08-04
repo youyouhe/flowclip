@@ -1,9 +1,39 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Table, Button, Card, Space, Modal, Form, Input, Select, message, Tag, Progress, Popconfirm, Upload } from 'antd';
-import { PlusOutlined, PlayCircleOutlined, PauseCircleOutlined, DeleteOutlined, DownloadOutlined, UploadOutlined } from '@ant-design/icons';
+import { 
+  Table, 
+  Button, 
+  Card, 
+  Space, 
+  Modal, 
+  Form, 
+  Input, 
+  Select, 
+  message, 
+  Tag, 
+  Progress, 
+  Popconfirm, 
+  Upload, 
+  Row, 
+  Col,
+  DatePicker,
+  InputNumber 
+} from 'antd';
+import { 
+  PlusOutlined, 
+  PlayCircleOutlined, 
+  PauseCircleOutlined, 
+  DeleteOutlined, 
+  DownloadOutlined, 
+  UploadOutlined,
+  SearchOutlined,
+  FilterOutlined,
+  ClearOutlined,
+  ReloadOutlined 
+} from '@ant-design/icons';
 import { videoAPI, projectAPI } from '../services/api';
 import { useNavigate } from 'react-router-dom';
 import { wsService, startHeartbeat, stopHeartbeat } from '../services/websocket';
+import dayjs from 'dayjs';
 
 interface Video {
   id: number;
@@ -38,15 +68,64 @@ const Videos: React.FC = () => {
   const [thumbnailUrls, setThumbnailUrls] = useState<{[key: number]: string}>({});
   const [form] = Form.useForm();
   const navigate = useNavigate();
+  
+  // 筛选状态
+  const [filters, setFilters] = useState({
+    project_id: undefined as number | undefined,
+    status: undefined as string | undefined,
+    search: '',
+    start_date: undefined as string | undefined,
+    end_date: undefined as string | undefined,
+    min_duration: undefined as number | undefined,
+    max_duration: undefined as number | undefined,
+    min_file_size: undefined as number | undefined,
+    max_file_size: undefined as number | undefined,
+    page: 1,
+    page_size: 10
+  });
+  
+  const [pagination, setPagination] = useState({
+    total: 0,
+    page: 1,
+    page_size: 10,
+    total_pages: 0
+  });
 
   const fetchVideos = async () => {
     setLoading(true);
     try {
-      const response = await videoAPI.getVideos();
-      setVideos(response.data);
+      // 构建查询参数
+      const params: any = {};
+      if (filters.project_id) params.project_id = filters.project_id;
+      if (filters.status) params.status = filters.status;
+      if (filters.search) params.search = filters.search;
+      if (filters.start_date) params.start_date = filters.start_date;
+      if (filters.end_date) params.end_date = filters.end_date;
+      if (filters.min_duration !== undefined) params.min_duration = filters.min_duration;
+      if (filters.max_duration !== undefined) params.max_duration = filters.max_duration;
+      if (filters.min_file_size !== undefined) params.min_file_size = filters.min_file_size;
+      if (filters.max_file_size !== undefined) params.max_file_size = filters.max_file_size;
+      if (filters.page) params.page = filters.page;
+      if (filters.page_size) params.page_size = filters.page_size;
+      
+      const response = await videoAPI.getVideos(params);
+      setVideos(response.data.videos || response.data);
+      
+      // 更新分页信息
+      if (response.data.pagination) {
+        setPagination(response.data.pagination);
+      } else {
+        setPagination({
+          total: response.data.length || 0,
+          page: filters.page,
+          page_size: filters.page_size,
+          total_pages: Math.ceil((response.data.length || 0) / filters.page_size)
+        });
+      }
       
       // 获取每个视频的缩略图URL
-      const thumbnailPromises = response.data.map(async (video: Video) => {
+      const videoData = response.data.videos || response.data;
+      const thumbnailPromises = videoData.map(async (video: Video) => {
         if (video.url) {
           try {
             const thumbnailResponse = await videoAPI.getThumbnailDownloadUrl(video.id);
@@ -94,28 +173,21 @@ const Videos: React.FC = () => {
       if (wsService.connected) {
         wsService.requestStatusUpdate();
       }
-    }, 10000); // 每10秒请求一次状态更新
+    }, 15000); // 每15秒请求一次状态更新
     
     return () => {
       cleanupWebSocket();
       clearInterval(statusUpdateInterval); // 清理定时器
     };
-  }, []);
+  }, [filters]); // 添加filters依赖
 
   // Update the ref whenever the videos state changes
   useEffect(() => {
     videosRef.current = videos;
   }, [videos]);
 
-  // 当视频列表更新时，订阅所有视频的进度更新
-  useEffect(() => {
-    if (videos.length > 0 && wsService.connected) {
-      console.log('📡 [Videos] Subscribing to all videos progress updates');
-      videos.forEach(video => {
-        wsService.subscribeVideoProgress(video.id);
-      });
-    }
-  }, [videos]);
+  // 移除旧的订阅逻辑，现在使用状态查询模式
+  // 这个useEffect已被删除，避免重复发送WebSocket消息
 
   const handleDownloadVideo = async (values: any) => {
     setDownloading(true);
@@ -134,7 +206,22 @@ const Videos: React.FC = () => {
       message.success('视频下载任务已创建');
       setModalVisible(false);
       form.resetFields();
-      fetchVideos();
+      
+      // 等待一下让后端创建视频记录，然后查询活跃视频
+      setTimeout(async () => {
+        try {
+          const activeVideos = await videoAPI.getActiveVideos();
+          // 更新videos列表，添加新的活跃视频
+          setVideos(prev => {
+            const existingIds = prev.map(v => v.id);
+            const newVideos = activeVideos.data.filter((v: Video) => !existingIds.includes(v.id));
+            return [...newVideos, ...prev];
+          });
+        } catch (error) {
+          console.error('获取活跃视频失败:', error);
+          fetchVideos(); // 降级到完整刷新
+        }
+      }, 1000);
     } catch (error: any) {
       message.error(error.response?.data?.detail || '视频下载失败');
     } finally {
@@ -150,6 +237,39 @@ const Videos: React.FC = () => {
     } catch (error) {
       message.error('视频删除失败');
     }
+  };
+
+  const handleFilterChange = (key: string, value: any) => {
+    setFilters(prev => ({
+      ...prev,
+      [key]: value,
+      page: 1 // 重置页码
+    }));
+  };
+
+  const handleDateRangeChange = (dates: any, dateStrings: [string, string]) => {
+    setFilters(prev => ({
+      ...prev,
+      start_date: dateStrings[0],
+      end_date: dateStrings[1],
+      page: 1
+    }));
+  };
+
+  const clearFilters = () => {
+    setFilters({
+      project_id: undefined,
+      status: undefined,
+      search: '',
+      start_date: undefined,
+      end_date: undefined,
+      min_duration: undefined,
+      max_duration: undefined,
+      min_file_size: undefined,
+      max_file_size: undefined,
+      page: 1,
+      page_size: 10
+    });
   };
 
   const setupWebSocket = () => {
@@ -173,10 +293,7 @@ const Videos: React.FC = () => {
     // 监听WebSocket事件
     wsService.on('connected', () => {
       console.log('✅ [Videos] WebSocket connected event received');
-      // 连接成功后，订阅所有当前视频的进度更新
-      videos.forEach(video => {
-        wsService.subscribeVideoProgress(video.id);
-      });
+      // 连接成功，不需要订阅，现在使用状态查询模式
     });
 
     wsService.on('progress_update', (data: { video_id: number; video_status?: string; download_progress?: number; processing_progress?: number; processing_stage?: string; processing_message?: string }) => {
@@ -188,11 +305,14 @@ const Videos: React.FC = () => {
       const videoIndex = currentVideos.findIndex(v => v.id === data.video_id);
       if (videoIndex !== -1) {
         console.log('✅ [Videos] Found video in list, updating...');
+        const oldStatus = currentVideos[videoIndex].status;
+        const newStatus = data.video_status || currentVideos[videoIndex].status;
+        
         setVideos(prev => {
           const updated = [...prev];
           updated[videoIndex] = {
             ...updated[videoIndex],
-            status: data.video_status || updated[videoIndex].status,
+            status: newStatus,
             download_progress: data.download_progress || updated[videoIndex].download_progress,
             processing_progress: data.processing_progress || updated[videoIndex].processing_progress,
             processing_stage: data.processing_stage || updated[videoIndex].processing_stage,
@@ -200,6 +320,9 @@ const Videos: React.FC = () => {
           };
           return updated;
         });
+        
+        // 移除订阅逻辑，现在使用状态查询模式
+        // 状态查询会自动获取所有活跃视频的最新状态
         
         // 如果下载完成，刷新列表以获取完整信息
         if (data.video_status === 'completed' && data.download_progress === 100) {
@@ -209,10 +332,23 @@ const Videos: React.FC = () => {
           }, 2000);
         }
       } else {
-        console.log('⚠️ [Videos] Video not found in current list');
+        console.log('⚠️ [Videos] Video not found in current list, ID:', data.video_id);
         // If video not found, it might be a new video being downloaded.
-        // Fetch videos again to get the new video into the list.
-        fetchVideos(); 
+        // Query active videos to get the new video into the list.
+        const fetchActiveVideos = async () => {
+          try {
+            const activeVideos = await videoAPI.getActiveVideos();
+            const newVideo = activeVideos.data.find((v: Video) => v.id === data.video_id);
+            if (newVideo) {
+              setVideos(prev => [...prev, newVideo]);
+              console.log('✅ [Videos] Added new video to list:', newVideo.title);
+            }
+          } catch (error) {
+            console.error('获取活跃视频失败:', error);
+            fetchVideos(); // 降级到完整刷新
+          }
+        };
+        fetchActiveVideos();
       }
     });
 
@@ -377,7 +513,6 @@ const Videos: React.FC = () => {
 
   return (
     <div>
-      
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold">视频管理</h1>
         <Button 
@@ -390,17 +525,137 @@ const Videos: React.FC = () => {
         </Button>
       </div>
 
+      {/* 筛选器 */}
+      <Card style={{ marginBottom: 24 }}>
+        <Row gutter={[16, 16]}>
+          <Col span={4}>
+            <Select
+              placeholder="选择项目"
+              value={filters.project_id}
+              onChange={(value) => handleFilterChange('project_id', value)}
+              style={{ width: '100%' }}
+              allowClear
+            >
+              {projects.map(project => (
+                <Select.Option key={project.id} value={project.id}>
+                  {project.name}
+                </Select.Option>
+              ))}
+            </Select>
+          </Col>
+          <Col span={4}>
+            <Select
+              placeholder="视频状态"
+              value={filters.status}
+              onChange={(value) => handleFilterChange('status', value)}
+              style={{ width: '100%' }}
+              allowClear
+            >
+              <Select.Option value="pending">等待中</Select.Option>
+              <Select.Option value="downloading">下载中</Select.Option>
+              <Select.Option value="downloaded">已下载</Select.Option>
+              <Select.Option value="processing">处理中</Select.Option>
+              <Select.Option value="completed">已完成</Select.Option>
+              <Select.Option value="failed">失败</Select.Option>
+            </Select>
+          </Col>
+          <Col span={4}>
+            <Input.Group compact>
+              <InputNumber
+                style={{ width: '50%' }}
+                placeholder="最小时长(秒)"
+                value={filters.min_duration}
+                onChange={(value) => handleFilterChange('min_duration', value)}
+              />
+              <InputNumber
+                style={{ width: '50%' }}
+                placeholder="最大时长(秒)"
+                value={filters.max_duration}
+                onChange={(value) => handleFilterChange('max_duration', value)}
+              />
+            </Input.Group>
+          </Col>
+          <Col span={4}>
+            <Input.Group compact>
+              <InputNumber
+                style={{ width: '50%' }}
+                placeholder="最小大小(MB)"
+                value={filters.min_file_size}
+                onChange={(value) => handleFilterChange('min_file_size', value)}
+              />
+              <InputNumber
+                style={{ width: '50%' }}
+                placeholder="最大大小(MB)"
+                value={filters.max_file_size}
+                onChange={(value) => handleFilterChange('max_file_size', value)}
+              />
+            </Input.Group>
+          </Col>
+          <Col span={6}>
+            <DatePicker.RangePicker
+              style={{ width: '100%' }}
+              onChange={handleDateRangeChange}
+              placeholder={['开始日期', '结束日期']}
+            />
+          </Col>
+          <Col span={4}>
+            <Input
+              placeholder="搜索视频标题"
+              value={filters.search}
+              onChange={(e) => handleFilterChange('search', e.target.value)}
+              onPressEnter={fetchVideos}
+            />
+          </Col>
+        </Row>
+        <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
+          <Col>
+            <Space>
+              <Button
+                type="primary"
+                icon={<SearchOutlined />}
+                onClick={fetchVideos}
+                loading={loading}
+              >
+                搜索
+              </Button>
+              <Button
+                icon={<ClearOutlined />}
+                onClick={clearFilters}
+              >
+                清除
+              </Button>
+              <Button
+                icon={<ReloadOutlined />}
+                onClick={fetchVideos}
+                loading={loading}
+              >
+                刷新
+              </Button>
+            </Space>
+          </Col>
+        </Row>
+      </Card>
+
       <Card>
         <Table
           columns={columns}
           dataSource={videos}
           rowKey="id"
           loading={loading}
-          pagination={{ 
-            pageSize: 10, 
-            showTotal: (total) => `共 ${total} 个视频`,
+          pagination={{
+            current: pagination.page,
+            pageSize: pagination.page_size,
+            total: pagination.total,
             showSizeChanger: true,
             showQuickJumper: true,
+            showTotal: (total, range) => `第 ${range[0]}-${range[1]} 条，共 ${total} 条`,
+            onChange: (page, pageSize) => {
+              setFilters(prev => ({
+                ...prev,
+                page,
+                page_size: pageSize || 10
+              }));
+            },
           }}
           scroll={{ x: 800 }}
         />
