@@ -145,11 +145,14 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      args:
+        - REACT_APP_API_URL=${API_URL:-http://localhost:8001}
     container_name: youtube-slicer-frontend
     ports:
       - "3000:3000"
     environment:
       - REACT_APP_API_URL=${API_URL:-http://localhost:8001}
+      - NODE_ENV=production
     depends_on:
       - backend
     networks:
