@@ -39,7 +39,8 @@ app.add_middleware(
         "http://localhost:3000",
         "http://127.0.0.1:3000", 
         "http://192.168.8.107:3000",
-        "http://0.0.0.0:3000"
+        "http://0.0.0.0:3000",
+        "http://8.213.226.34:3000"
     ],  # Allow specific frontend origins
     allow_credentials=True,
     allow_methods=["*"],
