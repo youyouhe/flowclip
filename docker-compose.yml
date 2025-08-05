@@ -78,6 +78,7 @@ services:
       - MINIO_BUCKET_NAME=youtube-videos
       - SECRET_KEY=your-secret-key-change-in-production
       - DEBUG=true
+      - FRONTEND_URL=${FRONTEND_URL:-http://localhost:3000}
     depends_on:
       - mysql
       - redis
@@ -148,7 +149,7 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - REACT_APP_API_URL=http://8.213.226.34:8001
+      - REACT_APP_API_URL=${API_URL:-http://localhost:8001}
     depends_on:
       - backend
     networks:

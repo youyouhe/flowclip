@@ -33,15 +33,41 @@ app = FastAPI(
 )
 
 # CORS middleware
+# Get allowed origins from environment or use defaults
+allowed_origins = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000", 
+    "http://0.0.0.0:3000"
+]
+
+# Add frontend URL from environment if provided
+frontend_url = settings.frontend_url
+if frontend_url and frontend_url not in allowed_origins:
+    allowed_origins.append(frontend_url)
+
+# Also add the frontend URL with different formats if it's an IP
+if frontend_url:
+    import re
+    # Extract host:port from URL
+    match = re.match(r'https?://([^:/]+)(?::(\d+))?', frontend_url)
+    if match:
+        host, port = match.groups()
+        port = port or "3000"
+        
+        # Add variations
+        variants = [
+            f"http://{host}:{port}",
+            f"https://{host}:{port}",
+            f"http://{host}:3000",
+            f"https://{host}:3000"
+        ]
+        for variant in variants:
+            if variant not in allowed_origins:
+                allowed_origins.append(variant)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://127.0.0.1:3000", 
-        "http://192.168.8.107:3000",
-        "http://0.0.0.0:3000",
-        "http://8.213.226.34:3000"
-    ],  # Allow specific frontend origins
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

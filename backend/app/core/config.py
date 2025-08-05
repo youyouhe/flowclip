@@ -78,6 +78,7 @@ class Settings(BaseSettings):
     port: int = 8000
     reload: bool = True
     api_base_url: str = "http://localhost:8000"
+    frontend_url: Optional[str] = None
     
     # Temporary directory
     temp_dir: Optional[str] = "/tmp"
