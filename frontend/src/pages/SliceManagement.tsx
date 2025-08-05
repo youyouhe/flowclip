@@ -113,7 +113,7 @@ const SliceManagement: React.FC = () => {
       startHeartbeat();
       
       // 监听进度更新
-      wsService.on('progress_update', (data) => {
+      wsService.on('progress_update', (data: any) => {
         console.log('收到进度更新:', data);
         
         // 检查是否是切片任务的进度更新

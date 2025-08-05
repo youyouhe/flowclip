@@ -17,6 +17,12 @@ services:
     networks:
       - youtube-slicer-network
     command: --default-authentication-plugin=mysql_native_password
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "youtube_user", "-pyoutube_password"]
+      timeout: 20s
+      retries: 10
+      interval: 10s
+      start_period: 30s
 
   # Redis for caching and task queue
   redis:
@@ -29,6 +35,12 @@ services:
     command: redis-server --appendonly yes
     networks:
       - youtube-slicer-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      timeout: 5s
+      retries: 5
+      interval: 5s
+      start_period: 10s
 
   # MinIO for file storage
   minio:
@@ -45,6 +57,12 @@ services:
     command: server /data --console-address ":9001"
     networks:
       - youtube-slicer-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      timeout: 5s
+      retries: 5
+      interval: 10s
+      start_period: 30s
 
   # Backend API
   backend:
@@ -53,7 +71,7 @@ services:
       dockerfile: Dockerfile
     container_name: youtube-slicer-backend
     ports:
-      - "8000:8000"
+      - "8001:8001"
     environment:
       - DATABASE_URL=mysql+aiomysql://youtube_user:youtube_password@mysql:3306/youtube_slicer
       - REDIS_URL=redis://redis:6379
@@ -64,9 +82,12 @@ services:
       - SECRET_KEY=your-secret-key-change-in-production
       - DEBUG=true
     depends_on:
-      - mysql
-      - redis
-      - minio
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
     volumes:
       - ./backend:/app
       - media_files:/app/media
@@ -89,9 +110,14 @@ services:
       - MINIO_BUCKET_NAME=youtube-videos
       - SECRET_KEY=your-secret-key-change-in-production
     depends_on:
-      - mysql
-      - redis
-      - minio
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      backend:
+        condition: service_started
     volumes:
       - ./backend:/app
       - media_files:/app/media
@@ -114,9 +140,14 @@ services:
       - MINIO_BUCKET_NAME=youtube-videos
       - SECRET_KEY=your-secret-key-change-in-production
     depends_on:
-      - mysql
-      - redis
-      - minio
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      backend:
+        condition: service_started
     volumes:
       - ./backend:/app
     networks:
@@ -131,12 +162,10 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - REACT_APP_API_URL=http://localhost:8000
+      - REACT_APP_API_URL=http://localhost:8001
     depends_on:
-      - backend
-    volumes:
-      - ./frontend:/app
-      - /app/node_modules
+      backend:
+        condition: service_started
     networks:
       - youtube-slicer-network
 

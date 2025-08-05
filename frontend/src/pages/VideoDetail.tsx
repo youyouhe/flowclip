@@ -6,7 +6,7 @@ import { videoAPI } from '../services/api';
 import { wsService, startHeartbeat, stopHeartbeat } from '../services/websocket';
 import ReactPlayer from 'react-player';
 
-import { TaskStatus, AudioInfo, SplitInfo, SrtInfo } from '../types';
+import { TaskStatus, AudioInfo, SplitInfo, SrtInfo, ProcessingStatus, StageInfo } from '../types';
 
 const { Title, Text, Paragraph } = Typography;
 const { Step } = Steps;
@@ -25,6 +25,10 @@ interface Video {
   download_progress: number;
   created_at: string;
   file_path?: string;
+  processing_metadata?: any;
+  processing_progress?: number;
+  processing_stage?: string;
+  processing_message?: string;
 }
 
 const VideoDetail: React.FC = () => {
@@ -47,6 +51,9 @@ const VideoDetail: React.FC = () => {
   const [audioInfo, setAudioInfo] = useState<AudioInfo | null>(null);
   const [splitInfo, setSplitInfo] = useState<SplitInfo | null>(null);
   const [srtInfo, setSrtInfo] = useState<SrtInfo | null>(null);
+  const [audioStatus, setAudioStatus] = useState<ProcessingStatus | null>(null);
+  const [splitStatus, setSplitStatus] = useState<ProcessingStatus | null>(null);
+  const [srtStatus, setSrtStatus] = useState<ProcessingStatus | null>(null);
   const [completionNotified, setCompletionNotified] = useState(false);
   const [processingStatusData, setProcessingStatusData] = useState<any>(null);
   
@@ -69,23 +76,23 @@ const VideoDetail: React.FC = () => {
       if (status.extract_audio_status === 'completed' || status.extract_audio_status === 'success') {
         try {
           const audioResponse = await videoAPI.getAudioDownloadUrl(parseInt(id));
-          setAudioInfo({
+          setAudioStatus({
             status: 'completed',
             progress: status.extract_audio_progress,
             duration: audioResponse.data.duration || 0
           });
         } catch (error) {
-          setAudioInfo({
+          setAudioStatus({
             status: 'completed',
             progress: status.extract_audio_progress,
             duration: 0
           });
         }
       } else {
-        setAudioInfo(null);
+        setAudioStatus(null);
       }
       
-      setSplitInfo((status.split_audio_status === 'completed' || status.split_audio_status === 'success') ? {
+      setSplitStatus((status.split_audio_status === 'completed' || status.split_audio_status === 'success') ? {
         status: 'completed',
         progress: status.split_audio_progress
       } : null);
@@ -94,20 +101,20 @@ const VideoDetail: React.FC = () => {
         try {
           // 获取SRT内容来获取条数
           const srtResponse = await videoAPI.getSrtContent(parseInt(id));
-          setSrtInfo({
+          setSrtStatus({
             status: 'completed',
             progress: status.generate_srt_progress,
             totalSegments: srtResponse.data.total_subtitles || 0
           });
         } catch (error) {
-          setSrtInfo({
+          setSrtStatus({
             status: 'completed',
             progress: status.generate_srt_progress,
             totalSegments: 0
           });
         }
       } else {
-        setSrtInfo(null);
+        setSrtStatus(null);
       }
       
       console.log('处理状态数据:', status);
@@ -221,8 +228,8 @@ const VideoDetail: React.FC = () => {
               {stageInfo.status === 'completed' || stageInfo.status === 'SUCCESS' || stageInfo.status === 'COMPLETED' ? 
                 '✅ 已完成' : 
                 stageInfo.status === 'processing' || stageInfo.status === 'RUNNING' ? 
-                '⏳ ' + processingText[current_stage] : 
-                '⏸️ ' + (statusText[stageInfo.status] || stageInfo.status || '未知状态')}
+                '⏳ ' + (processingText as any)[current_stage] : 
+                '⏸️ ' + ((statusText as any)[stageInfo.status] || stageInfo.status || '未知状态')}
             </Tag>
           </div>
         </div>
@@ -356,7 +363,7 @@ const VideoDetail: React.FC = () => {
       }
     });
 
-    wsService.on('progress_update', (data) => {
+    wsService.on('progress_update', (data: any) => {
       console.log('📊 [VideoDetail] Progress update received:', data);
       console.log('📊 [VideoDetail] Update video ID:', data.video_id);
       console.log('📊 [VideoDetail] Current page video ID:', id);
@@ -440,11 +447,11 @@ const VideoDetail: React.FC = () => {
       console.log('🔌 [VideoDetail] WebSocket disconnected event received');
     });
 
-    wsService.on('error', (error) => {
+    wsService.on('error', (error: any) => {
       console.error('❌ [VideoDetail] WebSocket error event received:', error);
     });
 
-    wsService.on('pong', (data) => {
+    wsService.on('pong', (data: any) => {
       console.log('💓 [VideoDetail] Pong response received:', data);
     });
   };

@@ -1,5 +1,8 @@
 import { useEffect, useState, useRef } from 'react';
 
+// Fix for NodeJS.Timeout type in browser environment
+type Timeout = ReturnType<typeof setTimeout>;
+
 const Terminal = () => {
   const [terminalText, setTerminalText] = useState('');
   const [cursorVisible, setCursorVisible] = useState(true);
@@ -21,7 +24,7 @@ const Terminal = () => {
     ];
 
     let currentText = '';
-    let timeoutId: NodeJS.Timeout;
+    let timeoutId: Timeout;
     let currentLineIndex = 0;
     let currentCharIndex = 0;
 

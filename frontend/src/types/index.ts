@@ -135,3 +135,16 @@ export interface SrtInfo {
     maxWorkers: number;
   };
 }
+
+export interface ProcessingStatus {
+  status: string;
+  progress: number;
+  duration?: number;
+  totalSegments?: number;
+}
+
+export interface StageInfo {
+  status: string;
+  progress: number;
+  color?: string;
+}

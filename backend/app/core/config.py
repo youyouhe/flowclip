@@ -75,9 +75,9 @@ class Settings(BaseSettings):
     # Application
     debug: bool = True
     host: str = "0.0.0.0"
-    port: int = 8001
+    port: int = 8000
     reload: bool = True
-    api_base_url: str = "http://localhost:8001"
+    api_base_url: str = "http://localhost:8000"
     
     # Temporary directory
     temp_dir: Optional[str] = "/tmp"

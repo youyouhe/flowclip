@@ -5,6 +5,7 @@
 ![YouTube Slicer](https://img.shields.io/badge/YouTube-Slicer-red?style=for-the-badge&logo=youtube&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-005571?style=for-the-badge&logo=fastapi&logoColor=white)
 ![React](https://img.shields.io/badge/React-20232A?style=for-the-badge&logo=react&logoColor=61DAFB)
+![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=for-the-badge&logo=typescript&logoColor=white)
 ![Docker](https://img.shields.io/badge/Docker-2496ED?style=for-the-badge&logo=docker&logoColor=white)
 
 ## 🚀 Features
@@ -12,7 +13,7 @@
 ### 🎬 Video Processing
 - **YouTube Video Download**: Download videos with real-time progress tracking
 - **Audio Extraction**: Extract and split audio by silence detection
-- **Transcript Generation**: ASR-powered transcripts with timestamps
+- **Transcript Generation**: ASR-powered transcripts with timestamps using OpenAI Whisper
 - **Video Slicing**: AI-powered content segmentation
 - **Multi-format Support**: Various video quality options
 
@@ -52,11 +53,15 @@
 - **Zustand** - Lightweight state management
 - **Vite** - Fast build tool
 - **Tailwind CSS** - Utility-first CSS
-- **WebSocket** - Real-time communication
+- **React Router** - Client-side routing
+- **React Query** - Data fetching and caching
+- **React Player** - Video player component
+- **React Hot Toast** - Toast notifications
 
 ### Infrastructure
 - **Docker** - Containerization
 - **MySQL 8.0** - Production database
+- **SQLite** - Development database
 - **Redis 7** - Message broker
 - **MinIO** - Object storage
 
@@ -70,7 +75,7 @@ The system follows a sophisticated multi-stage processing pipeline:
 4. **Converting** (55-60%) - Format conversion
 5. **Audio Extraction** (60-70%) - Audio extraction
 6. **Audio Splitting** (70-80%) - Silence-based splitting
-7. **ASR Processing** (80-90%) - Speech recognition
+7. **ASR Processing** (80-90%) - Speech recognition with OpenAI Whisper
 8. **LLM Analysis** (90-95%) - AI content analysis
 9. **Video Slicing** (95-100%) - Final segmentation
 10. **Complete** (100%) - Processing finished
@@ -83,6 +88,7 @@ The system follows a sophisticated multi-stage processing pipeline:
 - Docker & Docker Compose
 - FFmpeg
 - Redis
+- MinIO
 
 ### Development Setup
 
@@ -103,6 +109,7 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8001
 
 # Start Celery worker
 celery -A app.core.celery worker --loglevel=info
+celery -A app.core.celery beat --loglevel=info  # for scheduled tasks
 ```
 
 #### Frontend
@@ -171,7 +178,7 @@ REACT_APP_API_URL=http://localhost:8001
 ## 🗂️ Project Structure
 
 ```
-slice-youtube/
+youtube-slicer/
 ├── backend/                    # FastAPI backend
 │   ├── app/
 │   │   ├── api/v1/            # API endpoints
@@ -182,16 +189,22 @@ slice-youtube/
 │   │   ├── tasks/             # Celery tasks
 │   │   └── main.py            # Application entry point
 │   ├── requirements.txt       # Python dependencies
+│   ├── requirements-audio.txt # Audio processing dependencies
+│   ├── tests/                 # Test suite
+│   ├── alembic/              # Database migrations
 │   └── Dockerfile            # Backend container
 ├── frontend/                 # React frontend
 │   ├── src/
 │   │   ├── components/       # Reusable components
 │   │   ├── pages/            # Page components
 │   │   ├── services/         # API services
-│   │   └── store/            # State management
+│   │   ├── store/            # State management
+│   │   └── types/            # TypeScript types
 │   ├── package.json          # Node.js dependencies
-│   └── Dockerfile           # Frontend container
-└── docker-compose.yml       # Full stack orchestration
+│   ├── tailwind.config.js    # Tailwind CSS configuration
+│   └── vite.config.ts        # Vite configuration
+├── docker-compose.yml       # Full stack orchestration
+└── CLAUDE.md               # Claude Code instructions
 ```
 
 ## 🔍 Database Schema
@@ -204,6 +217,8 @@ slice-youtube/
 - **Transcript**: Generated subtitles and ASR results
 - **VideoSlice**: AI-generated video segments
 - **LLMAnalysis**: AI analysis results for video content
+- **AudioTrack**: Audio processing metadata
+- **Slice**: Video slice metadata and processing status
 
 ## 🧪 Testing
 
@@ -212,12 +227,15 @@ slice-youtube/
 cd backend
 pytest tests/
 pytest tests/test_video_api.py -v
+pytest tests/test_project_api.py -v
+pytest tests/test_minio_service.py -v
 ```
 
 ### Frontend Tests
 ```bash
 cd frontend
 npm test
+npm run lint
 ```
 
 ### Manual Testing
@@ -227,6 +245,14 @@ curl -X POST http://localhost:8001/api/v1/videos/download \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer YOUR_TOKEN" \
   -d '{"url": "https://www.youtube.com/watch?v=VIDEO_ID", "project_id": 1}'
+
+# Test WebSocket connection
+curl -i -N \
+  -H "Connection: Upgrade" \
+  -H "Upgrade: websocket" \
+  -H "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==" \
+  -H "Sec-WebSocket-Version: 13" \
+  http://localhost:8001/ws/progress/YOUR_TOKEN
 ```
 
 ## 🐳 Docker Commands
@@ -239,9 +265,14 @@ docker-compose up -d
 # View logs
 docker-compose logs -f backend
 docker-compose logs -f celery-worker
+docker-compose logs -f redis
+docker-compose logs -f minio
 
 # Stop services
 docker-compose down
+
+# Clean up volumes
+docker-compose down -v
 ```
 
 ### Production
@@ -251,6 +282,10 @@ docker-compose -f docker-compose.prod.yml up -d
 
 # Scale workers
 docker-compose up -d --scale celery-worker=3
+
+# View resource usage
+docker-compose ps
+docker-compose stats
 ```
 
 ## 🔧 Common Issues & Solutions
