@@ -1,21 +1,36 @@
 #!/bin/bash
 
 # YouTube Slicer 部署脚本
-# 使用方法: ./deploy.sh <server-ip>
+# 使用方法: ./deploy.sh <public-ip> [private-ip]
 
 set -e
 
 # 检查参数
 if [ -z "$1" ]; then
-    echo "使用方法: $0 <server-ip>"
+    echo "使用方法: $0 <public-ip> [private-ip]"
     echo "例如: $0 8.213.226.34"
+    echo "或者: $0 8.213.226.34 172.16.0.10"
     exit 1
 fi
 
-SERVER_IP=$1
+PUBLIC_IP=$1
+PRIVATE_IP=$2
+
+# 如果没有提供 private IP，自动检测
+if [ -z "$PRIVATE_IP" ]; then
+    echo "🔍 自动检测 Private IP..."
+    # 尝试多种方法获取 private IP
+    PRIVATE_IP=$(ip route get 8.8.8.8 | awk '{print $7; exit}' 2>/dev/null || \
+                 hostname -I | awk '{print $1}' 2>/dev/null || \
+                 echo "127.0.0.1")
+    echo "✅ 检测到 Private IP: $PRIVATE_IP"
+fi
+
 ENV_FILE=".env"
 
-echo "🚀 开始部署 YouTube Slicer 到服务器 $SERVER_IP"
+echo "🚀 开始部署 YouTube Slicer"
+echo "📡 Public IP: $PUBLIC_IP (用户访问)"
+echo "🔒 Private IP: $PRIVATE_IP (内部服务通信)"
 
 # 检查是否已存在 .env 文件
 if [ -f "$ENV_FILE" ]; then
@@ -33,13 +48,14 @@ fi
 echo "📝 创建 .env 文件..."
 cat > "$ENV_FILE" << EOF
 # Server Configuration
-SERVER_IP=$SERVER_IP
+PUBLIC_IP=$PUBLIC_IP
+PRIVATE_IP=$PRIVATE_IP
 
 # Frontend URL (where users access the application)
-FRONTEND_URL=http://$SERVER_IP:3000
+FRONTEND_URL=http://$PUBLIC_IP:3000
 
 # Backend API URL (used by frontend to call backend)
-API_URL=http://$SERVER_IP:8001
+API_URL=http://$PUBLIC_IP:8001
 
 # Database Configuration
 DATABASE_URL=mysql+aiomysql://youtube_user:youtube_password@mysql:3306/youtube_slicer
@@ -79,11 +95,13 @@ docker-compose up -d --build
 
 echo "🎉 部署完成！"
 echo ""
-echo "🌐 访问地址:"
-echo "   前端: http://$SERVER_IP:3000"
-echo "   后端 API: http://$SERVER_IP:8001"
-echo "   API 文档: http://$SERVER_IP:8001/docs"
-echo "   MinIO 控制台: http://$SERVER_IP:9001"
+echo "🌐 访问地址 (Public IP):"
+echo "   前端: http://$PUBLIC_IP:3000"
+echo "   后端 API: http://$PUBLIC_IP:8001"
+echo "   API 文档: http://$PUBLIC_IP:8001/docs"
+echo "   MinIO 控制台: http://$PUBLIC_IP:9001"
+echo ""
+echo "🔒 内部服务通信 (Private IP): $PRIVATE_IP"
 echo ""
 echo "📋 查看日志: docker-compose logs -f"
 echo "📊 查看状态: docker-compose ps"

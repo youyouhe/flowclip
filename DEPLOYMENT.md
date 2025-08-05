@@ -5,11 +5,14 @@
 ### 方法一：使用自动部署脚本（推荐）
 
 ```bash
-# 一键部署到指定服务器
-./deploy.sh <your-server-ip>
+# 一键部署到指定服务器（自动检测 private IP）
+./deploy.sh <public-ip>
 
 # 例如：
 ./deploy.sh 8.213.226.34
+
+# 或者指定 private IP：
+./deploy.sh 8.213.226.34 172.16.0.10
 ```
 
 ### 方法二：手动配置
@@ -27,13 +30,14 @@ nano .env
 3. **修改关键配置**
 ```env
 # 服务器 IP 地址
-SERVER_IP=your-server-ip
+PUBLIC_IP=your-public-ip
+PRIVATE_IP=your-private-ip
 
 # 前端访问地址
-FRONTEND_URL=http://your-server-ip:3000
+FRONTEND_URL=http://your-public-ip:3000
 
 # 后端 API 地址
-API_URL=http://your-server-ip:8001
+API_URL=http://your-public-ip:8001
 
 # OpenAI API 密钥（用于 AI 功能）
 OPENAI_API_KEY=your-openai-api-key
@@ -52,7 +56,8 @@ docker-compose up -d --build
 
 | 变量名 | 说明 | 默认值 |
 |--------|------|--------|
-| `SERVER_IP` | 服务器公网 IP | - |
+| `PUBLIC_IP` | 服务器公网 IP（用户访问） | - |
+| `PRIVATE_IP` | 服务器内网 IP（内部服务通信） | 同 `PUBLIC_IP` |
 | `FRONTEND_URL` | 前端访问地址 | `http://localhost:3000` |
 | `API_URL` | 后端 API 地址 | `http://localhost:8001` |
 | `DATABASE_URL` | 数据库连接字符串 | `mysql+aiomysql://...` |
@@ -89,12 +94,37 @@ cd youtube-slicer
 
 2. **运行部署脚本**
 ```bash
-./deploy.sh <new-server-ip>
+# 自动检测 private IP
+./deploy.sh <new-public-ip>
+
+# 或者指定 private IP
+./deploy.sh <new-public-ip> <new-private-ip>
 ```
 
 3. **验证所有服务正常运行**
 ```bash
 docker-compose ps
+```
+
+## 网络架构说明
+
+### Public IP vs Private IP
+
+- **Public IP**: 用于用户访问前端和 API
+- **Private IP**: 用于内部服务通信（数据库、Redis、MinIO）
+
+### 服务通信架构
+
+```
+用户访问 (Public IP)
+    ↓
+前端 (3000端口) ←→ 后端 API (8001端口)
+    ↓                    ↓
+[Public IP]          [Private IP 内部通信]
+                        ↓
+                    MySQL (3306端口)
+                    Redis (6379端口)  
+                    MinIO (9000端口)
 ```
 
 ## 故障排除
