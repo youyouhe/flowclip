@@ -52,19 +52,20 @@ PUBLIC_IP=$PUBLIC_IP
 PRIVATE_IP=$PRIVATE_IP
 
 # Frontend URL (where users access the application)
-FRONTEND_URL=http://$PUBLIC_IP:3000
+FRONTEND_URL=http://frontend:3000
 
 # Backend API URL (used by frontend to call backend)
-API_URL=http://$PUBLIC_IP:8001
+API_URL=http://backend:8001
 
 # Database Configuration
-DATABASE_URL=mysql+aiomysql://youtube_user:youtube_password@mysql:3306/youtube_slicer
+DATABASE_URL=mysql+aiomysql://youtube_user:youtube_password@mysql:3306/youtube_slicer?charset=utf8mb4
 
 # Redis Configuration
 REDIS_URL=redis://redis:6379
 
 # MinIO Configuration
 MINIO_ENDPOINT=minio:9000
+MINIO_PUBLIC_ENDPOINT=http://$PUBLIC_IP:9000
 MINIO_ACCESS_KEY=minioadmin
 MINIO_SECRET_KEY=minioadmin
 MINIO_BUCKET_NAME=youtube-videos
@@ -83,6 +84,18 @@ DEBUG=true
 EOF
 
 echo "✅ .env 文件已创建"
+
+# 替换 docker-compose.yml 中的占位符
+echo "🔄 更新 docker-compose.yml 配置..."
+if [ -f "docker-compose.yml" ]; then
+    # 备份原文件
+    cp docker-compose.yml docker-compose.yml.backup
+    # 替换占位符
+    sed -i "s/__PUBLIC_IP__/$PUBLIC_IP/g" docker-compose.yml
+    echo "✅ docker-compose.yml 已更新"
+else
+    echo "⚠️  docker-compose.yml 未找到，跳过更新"
+fi
 
 # 检查 Docker 环境
 echo "🐳 检查 Docker 环境..."
@@ -123,14 +136,31 @@ docker-compose up -d --build
 
 echo "🎉 部署完成！"
 echo ""
-echo "🌐 访问地址 (Public IP):"
+echo "🌐 外部访问地址 (Public IP):"
 echo "   前端: http://$PUBLIC_IP:3000"
 echo "   后端 API: http://$PUBLIC_IP:8001"
 echo "   API 文档: http://$PUBLIC_IP:8001/docs"
 echo "   MinIO 控制台: http://$PUBLIC_IP:9001"
 echo ""
-echo "🔒 内部服务通信 (Private IP): $PRIVATE_IP"
+echo "🔒 内部服务通信 (Docker 网络):"
+echo "   Frontend: http://frontend:3000"
+echo "   Backend: http://backend:8001"
+echo "   MinIO: http://minio:9000"
 echo ""
-echo "📋 查看日志: docker-compose logs -f"
-echo "📊 查看状态: docker-compose ps"
-echo "🛑 停止服务: docker-compose down"
+echo "📋 部署特性:"
+echo "   ✅ 自动配置 MinIO 双端点 (内部/外部)"
+echo "   ✅ 修复 CORS 跨域问题"
+echo "   ✅ UTF-8 字符集支持 (中文)"
+echo "   ✅ WebSocket 实时进度更新"
+echo "   ✅ Docker 内部服务发现"
+echo ""
+echo "📋 管理命令:"
+echo "   查看日志: docker-compose logs -f"
+echo "   查看状态: docker-compose ps"
+echo "   重新构建: docker-compose up -d --build"
+echo "   停止服务: docker-compose down"
+echo ""
+echo "🔧 配置文件:"
+echo "   .env: 环境变量配置"
+echo "   docker-compose.yml: Docker 服务配置"
+echo "   docker-compose.yml.backup: 原始配置备份"

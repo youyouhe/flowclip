@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     
     # MinIO
     minio_endpoint: str = "localhost:9000"
+    minio_public_endpoint: Optional[str] = None
     minio_access_key: str = "minioadmin"
     minio_secret_key: str = "minioadmin"
     minio_bucket_name: str = "youtube-videos"

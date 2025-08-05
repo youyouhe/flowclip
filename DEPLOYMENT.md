@@ -1,268 +1,228 @@
-# 🚀 部署指南
+# YouTube Slicer 部署指南
 
-## 快速部署
+## 🚀 快速开始
 
-### 前置要求
+### 1. 自动部署（推荐）
 
-确保服务器已安装：
-- Docker
-- Docker Compose
-- Git
-
-如果未安装，请先运行 Docker 安装脚本：
-```bash
-./install-docker.sh
-```
-
-### 方法一：使用自动部署脚本（推荐）
+使用部署脚本自动完成所有配置：
 
 ```bash
-# 一键部署到指定服务器（自动检测 private IP）
-./deploy.sh <public-ip>
-
-# 例如：
+# 单 IP 环境（自动检测内网 IP）
 ./deploy.sh 8.213.226.34
 
-# 或者指定 private IP：
+# 或者指定内网 IP
 ./deploy.sh 8.213.226.34 172.16.0.10
 ```
 
-### 方法二：手动配置
+### 2. 验证部署
 
-1. **复制环境变量模板**
-```bash
-cp .env.template .env
-```
-
-2. **编辑配置文件**
-```bash
-nano .env
-```
-
-3. **修改关键配置**
-```env
-# 服务器 IP 地址
-PUBLIC_IP=your-public-ip
-PRIVATE_IP=your-private-ip
-
-# 前端访问地址
-FRONTEND_URL=http://your-public-ip:3000
-
-# 后端 API 地址
-API_URL=http://your-public-ip:8001
-
-# OpenAI API 密钥（用于 AI 功能）
-OPENAI_API_KEY=your-openai-api-key
-```
-
-4. **启动服务**
-```bash
-# 拉取最新代码
-git pull origin main
-
-# 重新构建并启动
-docker-compose up -d --build
-```
-
-## 环境变量说明
-
-| 变量名 | 说明 | 默认值 |
-|--------|------|--------|
-| `PUBLIC_IP` | 服务器公网 IP（用户访问） | - |
-| `PRIVATE_IP` | 服务器内网 IP（内部服务通信） | 同 `PUBLIC_IP` |
-| `FRONTEND_URL` | 前端访问地址 | `http://localhost:3000` |
-| `API_URL` | 后端 API 地址 | `http://localhost:8001` |
-| `DATABASE_URL` | 数据库连接字符串 | `mysql+aiomysql://...` |
-| `REDIS_URL` | Redis 连接字符串 | `redis://redis:6379` |
-| `MINIO_ENDPOINT` | MinIO 服务地址 | `minio:9000` |
-| `OPENAI_API_KEY` | OpenAI API 密钥 | - |
-| `DEBUG` | 调试模式 | `true` |
-
-## 验证部署
-
-1. **检查服务状态**
-```bash
-docker-compose ps
-```
-
-2. **查看日志**
-```bash
-docker-compose logs -f backend
-docker-compose logs -f frontend
-```
-
-3. **访问测试**
-   - 前端: `http://your-server-ip:3000`
-   - 后端: `http://your-server-ip:8001`
-   - API 文档: `http://your-server-ip:8001/docs`
-
-## 迁移到新主机
-
-1. **在新主机上克隆项目**
-```bash
-git clone https://github.com/your-username/youtube-slicer.git
-cd youtube-slicer
-```
-
-2. **运行部署脚本**
-```bash
-# 自动检测 private IP
-./deploy.sh <new-public-ip>
-
-# 或者指定 private IP
-./deploy.sh <new-public-ip> <new-private-ip>
-```
-
-3. **验证所有服务正常运行**
-```bash
-docker-compose ps
-```
-
-## 网络架构说明
-
-### Public IP vs Private IP
-
-- **Public IP**: 用于用户访问前端和 API
-- **Private IP**: 用于内部服务通信（数据库、Redis、MinIO）
-
-### 服务通信架构
-
-```
-用户访问 (Public IP)
-    ↓
-前端 (3000端口) ←→ 后端 API (8001端口)
-    ↓                    ↓
-[Public IP]          [Private IP 内部通信]
-                        ↓
-                    MySQL (3306端口)
-                    Redis (6379端口)  
-                    MinIO (9000端口)
-```
-
-## Docker 安装指南
-
-### 自动安装（推荐）
+运行配置验证脚本检查部署状态：
 
 ```bash
-# 运行 Docker 安装脚本
-./install-docker.sh
-
-# 安装完成后重新登录或运行
-newgrp docker
+./verify-config.sh
 ```
 
-### 手动安装
+## 📋 系统要求
 
-#### CentOS/RHEL
+### 必需软件
+- **Docker**: >= 20.10
+- **Docker Compose**: >= 1.29
+- **Git**: 用于代码拉取
+
+### 推荐配置
+- **CPU**: 2核心以上
+- **内存**: 4GB以上
+- **存储**: 20GB以上可用空间
+- **网络**: 稳定的互联网连接
+
+## 🔧 部署脚本详解
+
+### deploy.sh 功能
+
+1. **环境检测**
+   - 自动检测内网 IP
+   - 验证 Docker 环境
+   - 检查必要工具
+
+2. **配置生成**
+   - 创建 `.env` 文件
+   - 更新 `docker-compose.yml`
+   - 配置双端点 MinIO
+
+3. **服务部署**
+   - 拉取最新代码
+   - 构建容器镜像
+   - 启动所有服务
+
+4. **部署验证**
+   - 显示访问地址
+   - 提供管理命令
+   - 输出系统状态
+
+### 生成的配置
+
+#### .env 文件
 ```bash
-# 更新包管理器
-sudo yum update -y
+# 服务器配置
+PUBLIC_IP=8.213.226.34
+PRIVATE_IP=172.16.0.10
 
-# 安装 Docker
-sudo yum install -y docker
+# Docker 内部通信
+FRONTEND_URL=http://frontend:3000
+API_URL=http://backend:8001
 
-# 启动 Docker 服务
-sudo systemctl start docker
-sudo systemctl enable docker
+# 数据库配置
+DATABASE_URL=mysql+aiomysql://youtube_user:youtube_password@mysql:3306/youtube_slicer?charset=utf8mb4
 
-# 添加用户到 docker 组
-sudo usermod -aG docker $USER
-
-# 安装 Docker Compose
-sudo curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
-sudo chmod +x /usr/local/bin/docker-compose
-
-# 重新登录或运行
-newgrp docker
+# MinIO 双端点配置
+MINIO_ENDPOINT=minio:9000
+MINIO_PUBLIC_ENDPOINT=http://8.213.226.34:9000
+MINIO_ACCESS_KEY=minioadmin
+MINIO_SECRET_KEY=minioadmin
+MINIO_BUCKET_NAME=youtube-videos
 ```
 
-#### Ubuntu/Debian
+#### docker-compose.yml 特性
+- **服务发现**: 使用容器名称进行内部通信
+- **网络隔离**: 独立的 Docker 网络
+- **数据持久化**: 自动管理数据卷
+- **健康检查**: 自动服务监控
+
+## 🌐 访问地址
+
+### 外部访问（用户）
+- **前端**: http://[PUBLIC_IP]:3000
+- **API**: http://[PUBLIC_IP]:8001
+- **API 文档**: http://[PUBLIC_IP]:8001/docs
+- **MinIO 控制台**: http://[PUBLIC_IP]:9001
+
+### 内部通信（Docker）
+- **Frontend**: http://frontend:3000
+- **Backend**: http://backend:8001
+- **MinIO**: http://minio:9000
+- **MySQL**: mysql:3306
+- **Redis**: redis:6379
+
+## 📊 系统架构
+
+```
+┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
+│   User Browser   │───▶│   Frontend      │────│   Backend       │
+│   (外部访问)      │    │   (React)       │    │   (FastAPI)     │
+└─────────────────┘    └─────────────────┘    └─────────────────┘
+         │                       │                       │
+         │                       ▼                       ▼
+         │              ┌─────────────────┐    ┌─────────────────┐
+         │              │   MinIO Public  │    │   MinIO Internal│
+         └─────────────▶│   (文件下载)     │◀───│   (存储管理)     │
+                        └─────────────────┘    └─────────────────┘
+```
+
+## 🔧 管理命令
+
+### 查看状态
 ```bash
-# 更新包管理器
-sudo apt update
-sudo apt install -y docker.io docker-compose
-
-# 启动 Docker 服务
-sudo systemctl start docker
-sudo systemctl enable docker
-
-# 添加用户到 docker 组
-sudo usermod -aG docker $USER
-
-# 重新登录或运行
-newgrp docker
+docker-compose ps                    # 服务状态
+docker-compose logs -f               # 实时日志
+docker-compose logs backend          # 后端日志
+docker-compose logs frontend         # 前端日志
 ```
 
-## 故障排除
+### 服务管理
+```bash
+docker-compose up -d --build        # 重新构建并启动
+docker-compose restart               # 重启所有服务
+docker-compose down                  # 停止所有服务
+docker-compose down -v               # 停止并删除数据
+```
+
+### 数据管理
+```bash
+# 查看 MySQL
+docker exec -it youtube-slicer-mysql mysql -u youtube_user -pyoutube_password youtube_slicer
+
+# 查看 Redis
+docker exec -it youtube-slicer-redis redis-cli
+
+# 查看 MinIO
+docker exec -it youtube-slicer-minio mc ls local/youtube-videos
+```
+
+## 🐛 故障排除
 
 ### 常见问题
 
-1. **Docker 未安装或未运行**
-   ```bash
-   # 检查 Docker 状态
-   docker --version
-   docker info
-   
-   # 如果未安装，运行安装脚本
-   ./install-docker.sh
-   ```
+1. **CORS 错误**
+   - 检查 `.env` 中的 IP 配置
+   - 重新运行部署脚本
+   - 清除浏览器缓存
 
-2. **权限错误**
-   ```bash
-   # 添加用户到 docker 组
-   sudo usermod -aG docker $USER
-   
-   # 重新登录或运行
-   newgrp docker
-   ```
+2. **WebSocket 连接失败**
+   - 确认后端服务正常运行
+   - 检查防火墙设置
+   - 验证网络连接
 
-3. **CORS 错误**
-   - 检查 `.env` 文件中的 `FRONTEND_URL` 是否正确
-   - 确保后端服务已重启
+3. **MinIO 下载失败**
+   - 检查 `MINIO_PUBLIC_ENDPOINT` 配置
+   - 确认端口 9000 已开放
+   - 验证 MinIO 服务状态
 
-4. **数据库连接失败**
-   - 等待 MySQL 容器完全启动
-   - 检查数据库连接字符串
+4. **数据库连接错误**
+   - 等待 MySQL 完全启动
+   - 检查数据库配置
+   - 查看容器日志
 
-5. **前端构建失败**
-   - 确保所有依赖已安装
-   - 检查 Node.js 版本兼容性
-
-### 日志查看
-
+### 日志分析
 ```bash
-# 查看所有服务日志
-docker-compose logs -f
+# 查看特定服务错误
+docker-compose logs backend | grep ERROR
+docker-compose logs celery | grep ERROR
 
-# 查看特定服务日志
-docker-compose logs -f backend
-docker-compose logs -f mysql
-docker-compose logs -f redis
+# 查看最近日志
+docker-compose logs --tail=50 backend
 ```
 
-### 重启服务
-
+### 性能优化
 ```bash
-# 重启特定服务
-docker-compose restart backend
+# 扩展 Celery 工作进程
+docker-compose up -d --scale celery-worker=3
 
-# 重启所有服务
+# 清理未使用的资源
+docker system prune -f
+```
+
+## 🔄 更新流程
+
+### 代码更新
+```bash
+git pull origin main
+./deploy.sh <public-ip>
+```
+
+### 配置更新
+```bash
+# 修改 .env 文件后重启
 docker-compose restart
 ```
 
-## 生产环境建议
+### 版本回滚
+```bash
+git checkout <tag>
+./deploy.sh <public-ip>
+```
 
-1. **安全性**
-   - 更改默认密码和密钥
-   - 使用 HTTPS（配置 Nginx 反向代理）
-   - 关闭调试模式 `DEBUG=false`
+## 📞 技术支持
 
-2. **性能优化**
-   - 配置 SSL 终止
-   - 使用 CDN 加速静态资源
-   - 监控资源使用情况
+如果遇到问题，请按以下步骤排查：
 
-3. **备份策略**
-   - 定期备份数据库
-   - 备份重要配置文件
-   - 备份上传的文件
+1. **运行验证脚本**：`./verify-config.sh`
+2. **检查服务日志**：`docker-compose logs -f`
+3. **查看本文档**：故障排除部分
+4. **提交 Issue**：在 GitHub 仓库中创建问题
+
+## 📝 开发环境
+
+如需本地开发，请参考开发文档：
+- [开发指南](./DEVELOPMENT.md)
+- [API 文档](./backend/docs/)
+- [前端开发](./frontend/README.md)

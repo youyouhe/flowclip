@@ -264,18 +264,18 @@ const VideoDetail: React.FC = () => {
   const getProcessingStatusFromVideo = () => {
     if (processingStatusData) {
       return {
-        hasAudio: processingStatusData.extract_audio_status === 'completed',
-        hasSplits: processingStatusData.split_audio_status === 'completed',
-        hasSrt: processingStatusData.generate_srt_status === 'completed',
-        audioInfo: processingStatusData.extract_audio_status === 'completed' ? {
+        hasAudio: processingStatusData.extract_audio_status === 'completed' || processingStatusData.extract_audio_status === 'success',
+        hasSplits: processingStatusData.split_audio_status === 'completed' || processingStatusData.split_audio_status === 'success',
+        hasSrt: processingStatusData.generate_srt_status === 'completed' || processingStatusData.generate_srt_status === 'success',
+        audioInfo: processingStatusData.extract_audio_status === 'completed' || processingStatusData.extract_audio_status === 'success' ? {
           status: processingStatusData.extract_audio_status,
           progress: processingStatusData.extract_audio_progress
         } : null,
-        splitInfo: processingStatusData.split_audio_status === 'completed' ? {
+        splitInfo: processingStatusData.split_audio_status === 'completed' || processingStatusData.split_audio_status === 'success' ? {
           status: processingStatusData.split_audio_status,
           progress: processingStatusData.split_audio_progress
         } : null,
-        srtInfo: processingStatusData.generate_srt_status === 'completed' ? {
+        srtInfo: processingStatusData.generate_srt_status === 'completed' || processingStatusData.generate_srt_status === 'success' ? {
           status: processingStatusData.generate_srt_status,
           progress: processingStatusData.generate_srt_progress
         } : null
@@ -296,7 +296,7 @@ const VideoDetail: React.FC = () => {
     };
   };
 
-  // 监听视频数据变化，更新处理状态
+  // 监听视频数据变化，更新处理状态（向后兼容）
   useEffect(() => {
     if (video?.processing_metadata) {
       const status = getProcessingStatusFromVideo();
@@ -305,6 +305,16 @@ const VideoDetail: React.FC = () => {
       setSrtInfo(status.srtInfo || null);
     }
   }, [video]);
+
+  // 监听processingStatusData变化，更新处理状态
+  useEffect(() => {
+    if (processingStatusData) {
+      const status = getProcessingStatusFromVideo();
+      setAudioInfo(status.audioInfo || null);
+      setSplitInfo(status.splitInfo || null);
+      setSrtInfo(status.srtInfo || null);
+    }
+  }, [processingStatusData]);
 
   useEffect(() => {
     console.log('🔧 [VideoDetail] Component mounted with ID:', id);

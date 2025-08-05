@@ -152,19 +152,19 @@ class MinioService:
                 
                 parsed = urlparse(url)
                 
-                # 如果当前endpoint不是localhost，进行替换
-                if settings.minio_endpoint != "localhost:9000" and "localhost" in parsed.netloc:
-                    # 构建新的netloc，保持端口
-                    if ":" in settings.minio_endpoint:
-                        new_netloc = settings.minio_endpoint
-                    else:
-                        # 如果settings.minio_endpoint没有端口，使用原端口
-                        port = parsed.port or 9000
-                        new_netloc = f"{settings.minio_endpoint}:{port}"
+                # 如果配置了公共端点，使用公共端点
+                if settings.minio_public_endpoint:
+                    # 解析公共端点，移除协议前缀
+                    from urllib.parse import urlparse
+                    public_parsed = urlparse(settings.minio_public_endpoint)
+                    new_netloc = public_parsed.netloc
+                    
+                    # 如果公共端点没有指定协议，使用原协议
+                    new_scheme = public_parsed.scheme if public_parsed.scheme else parsed.scheme
                     
                     # 重建URL，保持所有其他部分不变
                     new_url = urlunparse((
-                        parsed.scheme,
+                        new_scheme,
                         new_netloc,
                         parsed.path,
                         parsed.params,
@@ -173,6 +173,7 @@ class MinioService:
                     ))
                     return new_url
                 
+                # 如果没有配置公共端点，使用原始URL
                 return url
             except S3Error as e:
                 print(f"✗ 获取URL失败: {e}")

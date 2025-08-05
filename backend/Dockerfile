@@ -15,6 +15,9 @@ RUN pip install -r requirements.txt
 # Copy application code
 COPY . .
 
+# Ensure yt-dlp is always up to date
+RUN pip install --upgrade yt-dlp
+
 # Create downloads directory for temporary files
 RUN mkdir -p downloads
 

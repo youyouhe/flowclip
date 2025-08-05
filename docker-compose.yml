@@ -70,15 +70,16 @@ services:
     ports:
       - "8001:8001"
     environment:
-      - DATABASE_URL=mysql+aiomysql://youtube_user:youtube_password@mysql:3306/youtube_slicer
+      - DATABASE_URL=mysql+aiomysql://youtube_user:youtube_password@mysql:3306/youtube_slicer?charset=utf8mb4
       - REDIS_URL=redis://redis:6379
       - MINIO_ENDPOINT=minio:9000
+      - MINIO_PUBLIC_ENDPOINT=__PUBLIC_IP__:9000
       - MINIO_ACCESS_KEY=minioadmin
       - MINIO_SECRET_KEY=minioadmin
       - MINIO_BUCKET_NAME=youtube-videos
       - SECRET_KEY=your-secret-key-change-in-production
       - DEBUG=true
-      - FRONTEND_URL=${FRONTEND_URL:-http://localhost:3000}
+      - FRONTEND_URL=http://frontend:3000
     depends_on:
       - mysql
       - redis
@@ -86,6 +87,7 @@ services:
     volumes:
       - ./backend:/app
       - media_files:/app/media
+      - /tmp/cookies:/tmp/cookies
     networks:
       - youtube-slicer-network
 
@@ -97,9 +99,10 @@ services:
     container_name: youtube-slicer-celery
     command: celery -A app.core.celery worker --loglevel=info
     environment:
-      - DATABASE_URL=mysql+aiomysql://youtube_user:youtube_password@mysql:3306/youtube_slicer
+      - DATABASE_URL=mysql+aiomysql://youtube_user:youtube_password@mysql:3306/youtube_slicer?charset=utf8mb4
       - REDIS_URL=redis://redis:6379
       - MINIO_ENDPOINT=minio:9000
+      - MINIO_PUBLIC_ENDPOINT=__PUBLIC_IP__:9000
       - MINIO_ACCESS_KEY=minioadmin
       - MINIO_SECRET_KEY=minioadmin
       - MINIO_BUCKET_NAME=youtube-videos
@@ -112,6 +115,7 @@ services:
     volumes:
       - ./backend:/app
       - media_files:/app/media
+      - /tmp/cookies:/tmp/cookies
     networks:
       - youtube-slicer-network
 
@@ -123,9 +127,10 @@ services:
     container_name: youtube-slicer-celery-beat
     command: celery -A app.core.celery beat --loglevel=info
     environment:
-      - DATABASE_URL=mysql+aiomysql://youtube_user:youtube_password@mysql:3306/youtube_slicer
+      - DATABASE_URL=mysql+aiomysql://youtube_user:youtube_password@mysql:3306/youtube_slicer?charset=utf8mb4
       - REDIS_URL=redis://redis:6379
       - MINIO_ENDPOINT=minio:9000
+      - MINIO_PUBLIC_ENDPOINT=__PUBLIC_IP__:9000
       - MINIO_ACCESS_KEY=minioadmin
       - MINIO_SECRET_KEY=minioadmin
       - MINIO_BUCKET_NAME=youtube-videos
@@ -151,7 +156,7 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - REACT_APP_API_URL=${API_URL:-http://localhost:8001}
+      - REACT_APP_API_URL=http://__PUBLIC_IP__:8001
       - NODE_ENV=production
     depends_on:
       - backend
