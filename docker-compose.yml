@@ -62,7 +62,6 @@ services:
       timeout: 5s
       retries: 5
       interval: 10s
-      start_period: 30s
 
   # Backend API
   backend:
@@ -82,12 +81,9 @@ services:
       - SECRET_KEY=your-secret-key-change-in-production
       - DEBUG=true
     depends_on:
-      mysql:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      minio:
-        condition: service_healthy
+      - mysql
+      - redis
+      - minio
     volumes:
       - ./backend:/app
       - media_files:/app/media
@@ -110,14 +106,10 @@ services:
       - MINIO_BUCKET_NAME=youtube-videos
       - SECRET_KEY=your-secret-key-change-in-production
     depends_on:
-      mysql:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      minio:
-        condition: service_healthy
-      backend:
-        condition: service_started
+      - mysql
+      - redis
+      - minio
+      - backend
     volumes:
       - ./backend:/app
       - media_files:/app/media
@@ -140,14 +132,10 @@ services:
       - MINIO_BUCKET_NAME=youtube-videos
       - SECRET_KEY=your-secret-key-change-in-production
     depends_on:
-      mysql:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      minio:
-        condition: service_healthy
-      backend:
-        condition: service_started
+      - mysql
+      - redis
+      - minio
+      - backend
     volumes:
       - ./backend:/app
     networks:
@@ -164,8 +152,7 @@ services:
     environment:
       - REACT_APP_API_URL=http://localhost:8001
     depends_on:
-      backend:
-        condition: service_started
+      - backend
     networks:
       - youtube-slicer-network
 
