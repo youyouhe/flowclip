@@ -2,6 +2,18 @@
 
 ## 快速部署
 
+### 前置要求
+
+确保服务器已安装：
+- Docker
+- Docker Compose
+- Git
+
+如果未安装，请先运行 Docker 安装脚本：
+```bash
+./install-docker.sh
+```
+
 ### 方法一：使用自动部署脚本（推荐）
 
 ```bash
@@ -127,19 +139,92 @@ docker-compose ps
                     MinIO (9000端口)
 ```
 
+## Docker 安装指南
+
+### 自动安装（推荐）
+
+```bash
+# 运行 Docker 安装脚本
+./install-docker.sh
+
+# 安装完成后重新登录或运行
+newgrp docker
+```
+
+### 手动安装
+
+#### CentOS/RHEL
+```bash
+# 更新包管理器
+sudo yum update -y
+
+# 安装 Docker
+sudo yum install -y docker
+
+# 启动 Docker 服务
+sudo systemctl start docker
+sudo systemctl enable docker
+
+# 添加用户到 docker 组
+sudo usermod -aG docker $USER
+
+# 安装 Docker Compose
+sudo curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+sudo chmod +x /usr/local/bin/docker-compose
+
+# 重新登录或运行
+newgrp docker
+```
+
+#### Ubuntu/Debian
+```bash
+# 更新包管理器
+sudo apt update
+sudo apt install -y docker.io docker-compose
+
+# 启动 Docker 服务
+sudo systemctl start docker
+sudo systemctl enable docker
+
+# 添加用户到 docker 组
+sudo usermod -aG docker $USER
+
+# 重新登录或运行
+newgrp docker
+```
+
 ## 故障排除
 
 ### 常见问题
 
-1. **CORS 错误**
+1. **Docker 未安装或未运行**
+   ```bash
+   # 检查 Docker 状态
+   docker --version
+   docker info
+   
+   # 如果未安装，运行安装脚本
+   ./install-docker.sh
+   ```
+
+2. **权限错误**
+   ```bash
+   # 添加用户到 docker 组
+   sudo usermod -aG docker $USER
+   
+   # 重新登录或运行
+   newgrp docker
+   ```
+
+3. **CORS 错误**
    - 检查 `.env` 文件中的 `FRONTEND_URL` 是否正确
    - 确保后端服务已重启
 
-2. **数据库连接失败**
+4. **数据库连接失败**
    - 等待 MySQL 容器完全启动
    - 检查数据库连接字符串
 
-3. **前端构建失败**
+5. **前端构建失败**
    - 确保所有依赖已安装
    - 检查 Node.js 版本兼容性
 

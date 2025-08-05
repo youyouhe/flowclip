@@ -84,6 +84,34 @@ EOF
 
 echo "✅ .env 文件已创建"
 
+# 检查 Docker 环境
+echo "🐳 检查 Docker 环境..."
+if ! command -v docker &> /dev/null; then
+    echo "❌ Docker 未安装！"
+    echo "请先运行安装脚本："
+    echo "  ./install-docker.sh"
+    echo "安装完成后重新运行部署脚本："
+    echo "  ./deploy.sh $PUBLIC_IP $PRIVATE_IP"
+    exit 1
+fi
+
+if ! docker info &> /dev/null; then
+    echo "❌ Docker 服务未运行！"
+    echo "请启动 Docker 服务："
+    echo "  sudo systemctl start docker"
+    echo "  sudo systemctl enable docker"
+    exit 1
+fi
+
+if ! command -v docker-compose &> /dev/null; then
+    echo "❌ Docker Compose 未安装！"
+    echo "请先运行安装脚本："
+    echo "  ./install-docker.sh"
+    exit 1
+fi
+
+echo "✅ Docker 环境检查通过"
+
 # 拉取最新代码
 echo "📥 拉取最新代码..."
 git pull origin main
