@@ -24,10 +24,8 @@ class WebSocketService {
     }
 
     this.token = token;
-    const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://192.168.8.107:8001';
-    const wsUrl = `${API_BASE_URL.startsWith('https') ? 'wss' : 'ws'}://${API_BASE_URL.split('://')[1]}/api/v1/ws/progress/${token}`;
+    const wsUrl = `/api/v1/ws/progress/${token}`;
     
-    console.log('🔌 [WebSocket] API_BASE_URL:', API_BASE_URL);
     console.log('🔌 [WebSocket] Connection URL:', wsUrl);
     console.log('🔌 [WebSocket] Ready state before connection:', this.ws?.readyState);
     console.log('🔌 [WebSocket] Browser WebSocket support:', typeof WebSocket !== 'undefined');

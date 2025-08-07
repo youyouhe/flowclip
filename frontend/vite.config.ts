@@ -11,7 +11,11 @@ export default defineConfig({
       '/api': {
         target: 'http://192.168.8.107:8001',
         changeOrigin: true,
+        ws: true, // Enable WebSocket proxy for API connections
       },
     },
+  },
+  optimizeDeps: {
+    include: ['react', 'react-dom', 'react-router-dom'],
   },
 })
