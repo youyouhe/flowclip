@@ -4,7 +4,7 @@ services:
   # MySQL Database
   mysql:
     image: mysql:8.0
-    container_name: youtube-slicer-mysql
+    container_name: yt-slicer-mysql
     ports:
       - "3307:3306"  # Using 3307 to avoid conflict with existing MySQL on 3306
     environment:
@@ -15,7 +15,7 @@ services:
     volumes:
       - mysql_data:/var/lib/mysql
     networks:
-      - youtube-slicer-network
+      - yt-slicer-network
     command: --default-authentication-plugin=mysql_native_password
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "youtube_user", "-pyoutube_password"]
@@ -26,14 +26,14 @@ services:
   # Redis for caching and task queue
   redis:
     image: redis:7-alpine
-    container_name: youtube-slicer-redis
+    container_name: yt-slicer-redis
     ports:
       - "6379:6379"
     volumes:
       - redis_data:/data
     command: redis-server --appendonly yes
     networks:
-      - youtube-slicer-network
+      - yt-slicer-network
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       timeout: 5s
@@ -43,7 +43,7 @@ services:
   # MinIO for file storage
   minio:
     image: minio/minio:latest
-    container_name: youtube-slicer-minio
+    container_name: yt-slicer-minio
     ports:
       - "9000:9000"
       - "9001:9001"
@@ -54,7 +54,7 @@ services:
       - minio_data:/data
     command: server /data --console-address ":9001"
     networks:
-      - youtube-slicer-network
+      - yt-slicer-network
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
       timeout: 5s
@@ -66,7 +66,7 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: youtube-slicer-backend
+    container_name: yt-slicer-backend
     ports:
       - "8001:8001"
     environment:
@@ -89,14 +89,14 @@ services:
       - media_files:/app/media
       - /tmp/cookies:/tmp/cookies
     networks:
-      - youtube-slicer-network
+      - yt-slicer-network
 
   # Celery Worker
   celery-worker:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: youtube-slicer-celery
+    container_name: yt-slicer-celery
     command: celery -A app.core.celery worker --loglevel=info
     environment:
       - DATABASE_URL=mysql+aiomysql://youtube_user:youtube_password@mysql:3306/youtube_slicer?charset=utf8mb4
@@ -117,14 +117,14 @@ services:
       - media_files:/app/media
       - /tmp/cookies:/tmp/cookies
     networks:
-      - youtube-slicer-network
+      - yt-slicer-network
 
   # Celery Beat (for scheduled tasks)
   celery-beat:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: youtube-slicer-celery-beat
+    container_name: yt-slicer-celery-beat
     command: celery -A app.core.celery beat --loglevel=info
     environment:
       - DATABASE_URL=mysql+aiomysql://youtube_user:youtube_password@mysql:3306/youtube_slicer?charset=utf8mb4
@@ -143,7 +143,7 @@ services:
     volumes:
       - ./backend:/app
     networks:
-      - youtube-slicer-network
+      - yt-slicer-network
 
   # Frontend
   frontend:
@@ -152,16 +152,19 @@ services:
       dockerfile: Dockerfile
       args:
         - REACT_APP_API_URL=${API_URL:-http://localhost:8001}
-    container_name: youtube-slicer-frontend
+    container_name: yt-slicer-frontend
     ports:
       - "3000:3000"
     environment:
       - REACT_APP_API_URL=http://__PUBLIC_IP__:8001
-      - NODE_ENV=production
+      - NODE_ENV=development
     depends_on:
       - backend
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
     networks:
-      - youtube-slicer-network
+      - yt-slicer-network
 
 volumes:
   redis_data:
@@ -170,5 +173,5 @@ volumes:
   mysql_data:
 
 networks:
-  youtube-slicer-network:
+  yt-slicer-network:
     driver: bridge
