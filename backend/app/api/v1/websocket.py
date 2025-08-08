@@ -103,6 +103,43 @@ class ConnectionManager:
 
 manager = ConnectionManager()
 
+@router.websocket("/ws/test")
+async def websocket_test_endpoint(websocket: WebSocket):
+    """简单的WebSocket测试端点，不需要token验证"""
+    logger.info(f"WS: Test connection attempt received")
+    
+    try:
+        await websocket.accept()
+        logger.info(f"WS: Test connection accepted")
+        
+        # 发送测试消息
+        await websocket.send_text(json.dumps({
+            "type": "test_ack",
+            "message": "WebSocket test connection successful"
+        }))
+        logger.info(f"WS: Test message sent")
+        
+        # 保持连接并等待消息
+        while True:
+            try:
+                data = await websocket.receive_text()
+                logger.info(f"WS: Received test message: {data}")
+                
+                # 回显消息
+                await websocket.send_text(json.dumps({
+                    "type": "echo",
+                    "message": f"Echo: {data}"
+                }))
+                
+            except WebSocketDisconnect:
+                logger.info(f"WS: Test client disconnected")
+                break
+                
+    except Exception as e:
+        logger.error(f"WS: Test connection error: {str(e)}")
+        await websocket.close(code=1011, reason=f"Server error: {str(e)}")
+
+
 @router.websocket("/ws/progress/{token}")
 async def websocket_progress_endpoint(websocket: WebSocket, token: str): # Removed db dependency
     """WebSocket端点用于实时进度更新"""
@@ -142,11 +179,8 @@ async def websocket_progress_endpoint(websocket: WebSocket, token: str): # Remov
                         elif message.get('type') == 'request_status_update':
                             logger.info(f"收到来自用户 {user_id} 的状态更新请求")
                             
-                            # 使用 consistent read 确保数据一致性
+                            # 查询用户需要状态更新的视频
                             try:
-                                # 开始一个新的事务，确保读取最新数据
-                                await db_session.begin()
-                                
                                 # 获取该用户所有需要状态更新的视频
                                 active_statuses = ["pending", "downloading", "processing", "completed"]
                                 stmt = select(Video).where(
@@ -154,7 +188,7 @@ async def websocket_progress_endpoint(websocket: WebSocket, token: str): # Remov
                                         select(Project.id).where(Project.user_id == user_id)
                                     ),
                                     Video.status.in_(active_statuses)
-                                ).with_for_update()  # 使用 SELECT FOR UPDATE 锁定记录
+                                )
                                 
                                 result = await db_session.execute(stmt)
                                 active_videos = result.scalars().all()
@@ -193,16 +227,13 @@ async def websocket_progress_endpoint(websocket: WebSocket, token: str): # Remov
                                 
                                 logger.info(f"用户 {user_id} 有 {len(videos_to_update)} 个视频需要状态更新")
                                 
-                                # 提交事务
-                                await db_session.commit()
-                                
                                 for video in videos_to_update:
                                     # 为每个需要更新的视频发送当前进度状态
                                     await send_current_progress(websocket, video.id, user_id, db_session)
                                     
                             except Exception as e:
                                 logger.error(f"状态更新查询失败: {str(e)}")
-                                await db_session.rollback()
+                                # 在异常情况下，上下文管理器会自动回滚
                                 # 降级处理：直接查询不使用锁定
                                 try:
                                     active_statuses = ["pending", "downloading", "processing", "completed"]
@@ -235,17 +266,14 @@ async def websocket_progress_endpoint(websocket: WebSocket, token: str): # Remov
 async def send_current_progress(websocket: WebSocket, video_id: int, user_id: int, db: AsyncSession):
     """发送当前进度状态 - 修复权限验证和状态同步，确保数据一致性"""
     try:
-        # 使用 consistent read 读取最新数据
+        # 读取最新数据
         try:
-            await db.begin()
-            
-            # 检查视频是否存在，支持延迟创建的情况
-            stmt = select(Video).where(Video.id == video_id).with_for_update()
+            # 检查视频是否存在
+            stmt = select(Video).where(Video.id == video_id)
             result = await db.execute(stmt)
             video = result.scalar_one_or_none()
             
             if not video:
-                await db.commit()
                 # 可能是新创建的视频，直接返回空数据避免错误
                 await websocket.send_text(json.dumps({
                     "type": "progress_update",
@@ -266,7 +294,6 @@ async def send_current_progress(websocket: WebSocket, video_id: int, user_id: in
             project_user_id = result.scalar_one_or_none()
             
             if project_user_id != user_id:
-                await db.commit()
                 logger.warning(f"用户 {user_id} 尝试访问不属于自己的视频 {video_id}")
                 await websocket.send_text(json.dumps({
                     "type": "error",
@@ -280,7 +307,6 @@ async def send_current_progress(websocket: WebSocket, video_id: int, user_id: in
             video = result.scalar_one_or_none()
             
             if not video:
-                await db.commit()
                 progress_data = {
                     "type": "progress_update",
                     "video_id": video_id,
@@ -328,11 +354,8 @@ async def send_current_progress(websocket: WebSocket, video_id: int, user_id: in
                     }
                     progress_data["tasks"].append(task_data)
             
-            await db.commit()
-            
         except Exception as transaction_error:
-            await db.rollback()
-            logger.error(f"事务查询失败，使用降级模式: {str(transaction_error)}")
+            logger.error(f"查询失败，使用降级模式: {str(transaction_error)}")
             
             # 降级模式：不使用事务
             stmt = select(Video).where(Video.id == video_id)

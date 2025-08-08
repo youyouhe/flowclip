@@ -24,7 +24,8 @@ class WebSocketService {
     }
 
     this.token = token;
-    const wsUrl = `/api/v1/ws/progress/${token}`;
+    // 直接连接到后端WebSocket地址，绕过Vite代理
+    const wsUrl = `ws://192.168.8.107:8001/api/v1/ws/progress/${token}`;
     
     console.log('🔌 [WebSocket] Connection URL:', wsUrl);
     console.log('🔌 [WebSocket] Ready state before connection:', this.ws?.readyState);
