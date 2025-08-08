@@ -14,8 +14,15 @@ class MinioService:
     """MinIO文件存储服务"""
     
     def __init__(self):
+        # 决定使用哪个端点来初始化MinIO客户端
+        # 如果配置了公共端点，使用公共端点，否则使用内部端点
+        endpoint = settings.minio_endpoint
+        if settings.minio_public_endpoint:
+            # 对于URL生成，使用公共端点以确保签名正确
+            endpoint = settings.minio_public_endpoint
+        
         self.client = Minio(
-            settings.minio_endpoint,
+            endpoint,
             access_key=settings.minio_access_key,
             secret_key=settings.minio_secret_key,
             secure=settings.minio_secure,
@@ -140,41 +147,41 @@ class MinioService:
         """获取文件的预签名URL"""
         def _get_url():
             try:
+                # 尝试使用预签名URL
                 url = self.client.presigned_get_object(
                     self.bucket_name, 
                     object_name, 
                     expires=timedelta(seconds=expiry)
                 )
                 
-                # 安全地替换URL中的主机名，不破坏签名
-                # 使用urlparse来正确处理URL，避免破坏查询参数和签名
-                from urllib.parse import urlparse, urlunparse
+                # 验证预签名URL是否可以访问
+                import requests
+                try:
+                    response = requests.head(url, timeout=5)
+                    if response.status_code == 200:
+                        return url
+                    else:
+                        print(f"⚠ 预签名URL验证失败，状态码: {response.status_code}")
+                except requests.RequestException as e:
+                    print(f"⚠ 预签名URL验证异常: {e}")
                 
-                parsed = urlparse(url)
-                
-                # 如果配置了公共端点，使用公共端点
+                # 如果预签名URL不可用，回退到直接URL
                 if settings.minio_public_endpoint:
-                    # 解析公共端点，移除协议前缀
-                    from urllib.parse import urlparse
-                    public_parsed = urlparse(settings.minio_public_endpoint)
-                    new_netloc = public_parsed.netloc
+                    # 如果公共端点没有协议前缀，添加http://
+                    public_endpoint = settings.minio_public_endpoint
+                    if not public_endpoint.startswith(('http://', 'https://')):
+                        public_endpoint = 'http://' + public_endpoint
                     
-                    # 如果公共端点没有指定协议，使用原协议
-                    new_scheme = public_parsed.scheme if public_parsed.scheme else parsed.scheme
+                    # 确保公共端点不以/结尾
+                    public_endpoint = public_endpoint.rstrip('/')
                     
-                    # 重建URL，保持所有其他部分不变
-                    new_url = urlunparse((
-                        new_scheme,
-                        new_netloc,
-                        parsed.path,
-                        parsed.params,
-                        parsed.query,
-                        parsed.fragment
-                    ))
-                    return new_url
-                
-                # 如果没有配置公共端点，使用原始URL
-                return url
+                    # 构建直接URL
+                    direct_url = f"{public_endpoint}/{self.bucket_name}/{object_name}"
+                    print(f"✓ 使用直接URL: {direct_url}")
+                    return direct_url
+                else:
+                    return url
+                    
             except S3Error as e:
                 print(f"✗ 获取URL失败: {e}")
                 return None

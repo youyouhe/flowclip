@@ -296,6 +296,28 @@ def extract_audio(self, video_id: str, project_id: int, user_id: int, video_mini
                         'stage': ProcessingStage.EXTRACT_AUDIO
                     }
                 )
+                
+                # 更新数据库状态，供WebSocket后台查询
+                try:
+                    # 获取task记录以找到video_id
+                    task = db.query(ProcessingTask).filter(
+                        ProcessingTask.celery_task_id == celery_task_id
+                    ).first()
+                    
+                    if task:
+                        # 更新视频记录的进度状态
+                        video = db.query(Video).filter(Video.id == task.video_id).first()
+                        if video:
+                            video.processing_progress = progress
+                            video.processing_stage = ProcessingStage.EXTRACT_AUDIO.value
+                            video.processing_message = message or ""
+                            video.status = "processing"
+                            db.commit()
+                            print(f"数据库状态已更新 - video_id: {task.video_id}, progress: {progress}")
+                            
+                except Exception as db_error:
+                    print(f"数据库更新失败: {db_error}")
+                
         except ValueError as e:
             # 记录详细错误信息
             print(f"Warning: Processing task update failed - {type(e).__name__}: {e}")

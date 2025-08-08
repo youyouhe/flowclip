@@ -607,9 +607,9 @@ const VideoDetail: React.FC = () => {
         return;
       }
       
-      console.log('任务已启动，等待WebSocket更新，taskId:', taskId);
-      // 移除轮询，使用WebSocket实时更新
-      // pollTaskStatus(taskId);
+      console.log('任务已启动，开始轮询状态更新，taskId:', taskId);
+      // 使用轮询获取任务状态
+      pollTaskStatus(taskId);
       message.success('音频提取任务已启动');
     } catch (error) {
       console.error('启动音频提取失败:', error);
@@ -641,9 +641,9 @@ const VideoDetail: React.FC = () => {
         return;
       }
       
-      console.log('任务已启动，等待WebSocket更新，taskId:', taskId);
-      // 移除轮询，使用WebSocket实时更新
-      // pollTaskStatus(taskId);
+      console.log('任务已启动，开始轮询状态更新，taskId:', taskId);
+      // 使用轮询获取任务状态
+      pollTaskStatus(taskId);
       message.success('音频分割任务已启动');
     } catch (error) {
       console.error('启动音频分割失败:', error);
@@ -687,9 +687,9 @@ const VideoDetail: React.FC = () => {
         return;
       }
       
-      console.log('任务已启动，等待WebSocket更新，taskId:', taskId);
-      // 移除轮询，使用WebSocket实时更新
-      // pollTaskStatus(taskId);
+      console.log('任务已启动，开始轮询状态更新，taskId:', taskId);
+      // 使用轮询获取任务状态
+      pollTaskStatus(taskId);
       message.success('SRT生成任务已启动');
     } catch (error) {
       console.error('启动SRT生成失败:', error);

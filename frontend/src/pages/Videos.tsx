@@ -16,7 +16,8 @@ import {
   Row, 
   Col,
   DatePicker,
-  InputNumber 
+  InputNumber,
+  Image
 } from 'antd';
 import { 
   PlusOutlined, 
@@ -28,7 +29,8 @@ import {
   SearchOutlined,
   FilterOutlined,
   ClearOutlined,
-  ReloadOutlined 
+  ReloadOutlined,
+  PictureOutlined 
 } from '@ant-design/icons';
 import { videoAPI, projectAPI } from '../services/api';
 import { useNavigate } from 'react-router-dom';
@@ -57,6 +59,95 @@ interface Project {
   id: number;
   name: string;
 }
+
+const extractYouTubeVideoId = (url: string): string | null => {
+  const regex = /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/|youtube\.com\/v\/|youtube\.com\/shorts\/)([^&\n?#]+)/;
+  const match = url.match(regex);
+  return match ? match[1] : null;
+};
+
+interface ThumbnailRendererProps {
+  video: Video;
+  thumbnailUrl?: string;
+  title: string;
+}
+
+const ThumbnailRenderer: React.FC<ThumbnailRendererProps> = ({ video, thumbnailUrl, title }) => {
+  const [imgError, setImgError] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  const handleImageError = () => {
+    console.warn(`Thumbnail failed to load for video ${video.id}: ${thumbnailUrl}`);
+    setImgError(true);
+  };
+
+  const handleRetry = async () => {
+    setLoading(true);
+    setImgError(false);
+    
+    try {
+      // 尝试重新获取缩略图URL
+      const response = await videoAPI.getThumbnailDownloadUrl(video.id);
+      if (response.data.download_url) {
+        // 通过更新父组件的状态来触发重新渲染
+        window.location.reload();
+      }
+    } catch (error) {
+      console.error(`Failed to retry thumbnail for video ${video.id}:`, error);
+      setImgError(true);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const getThumbnailSrc = () => {
+    if (imgError || !thumbnailUrl) {
+      // 如果图片加载失败或没有缩略图URL，使用默认的YouTube缩略图
+      const youtubeVideoId = extractYouTubeVideoId(video.url);
+      return youtubeVideoId ? `https://img.youtube.com/vi/${youtubeVideoId}/default.jpg` : null;
+    }
+    return thumbnailUrl;
+  };
+
+  const thumbnailSrc = getThumbnailSrc();
+
+  if (!thumbnailSrc) {
+    return (
+      <div className="w-16 h-9 bg-gray-200 rounded mr-2 flex items-center justify-center">
+        <PictureOutlined className="text-gray-400" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="relative">
+      <Image
+        src={thumbnailSrc}
+        alt={title}
+        className="w-16 h-9 object-cover rounded mr-2"
+        preview={false}
+        onError={handleImageError}
+        placeholder={
+          <div className="w-16 h-9 bg-gray-200 rounded mr-2 flex items-center justify-center">
+            <PictureOutlined className="text-gray-400" />
+          </div>
+        }
+      />
+      {imgError && (
+        <div className="absolute inset-0 bg-black bg-opacity-50 rounded mr-2 flex items-center justify-center">
+          <Button
+            type="text"
+            size="small"
+            icon={<PictureOutlined />}
+            onClick={handleRetry}
+            loading={loading}
+            className="text-white hover:text-white"
+          />
+        </div>
+      )}
+    </div>
+  );
+};
 
 const Videos: React.FC = () => {
   const [videos, setVideos] = useState<Video[]>([]);
@@ -132,7 +223,10 @@ const Videos: React.FC = () => {
             return { id: video.id, url: thumbnailResponse.data.download_url };
           } catch (error) {
             console.error(`获取视频 ${video.id} 缩略图失败:`, error);
-            return { id: video.id, url: null };
+            // 生成一个默认的YouTube缩略图URL作为备用
+            const youtubeVideoId = extractYouTubeVideoId(video.url);
+            const fallbackUrl = youtubeVideoId ? `https://img.youtube.com/vi/${youtubeVideoId}/default.jpg` : null;
+            return { id: video.id, url: fallbackUrl };
           }
         }
         return { id: video.id, url: null };
@@ -319,7 +413,7 @@ const Videos: React.FC = () => {
       // 连接成功，不需要订阅，现在使用状态查询模式
     });
 
-    wsService.on('progress_update', (data: { video_id: number; video_status?: string; download_progress?: number; processing_progress?: number; processing_stage?: string; processing_message?: string }) => {
+    wsService.on('progress_update', (data: { video_id: number; video_status?: string; download_progress?: number; processing_progress?: number; processing_stage?: string; processing_message?: string; file_size?: number; file_size_unit?: string; total_size?: number }) => {
       console.log('📊 [Videos] Progress update received:', data);
       console.log('📊 [Videos] Update video ID:', data.video_id);
       
@@ -331,6 +425,19 @@ const Videos: React.FC = () => {
         const oldStatus = currentVideos[videoIndex].status;
         const newStatus = data.video_status || currentVideos[videoIndex].status;
         
+        // 计算文件大小（如果有文件大小信息）
+        let updatedFileSize = currentVideos[videoIndex].file_size;
+        if (data.file_size && data.file_size_unit) {
+          // 将文件大小转换为字节
+          const sizeInBytes = convertSizeToBytes(data.file_size, data.file_size_unit);
+          if (sizeInBytes > 0) {
+            updatedFileSize = sizeInBytes;
+          }
+        } else if (data.total_size) {
+          // 如果有总大小信息（单位可能是MiB或GiB），转换为字节
+          updatedFileSize = Math.round(data.total_size * 1024 * 1024); // 假设是MiB
+        }
+        
         setVideos(prev => {
           const updated = [...prev];
           updated[videoIndex] = {
@@ -339,7 +446,8 @@ const Videos: React.FC = () => {
             download_progress: data.download_progress || updated[videoIndex].download_progress,
             processing_progress: data.processing_progress || updated[videoIndex].processing_progress,
             processing_stage: data.processing_stage || updated[videoIndex].processing_stage,
-            processing_message: data.processing_message || updated[videoIndex].processing_message
+            processing_message: data.processing_message || updated[videoIndex].processing_message,
+            file_size: updatedFileSize
           };
           return updated;
         });
@@ -425,6 +533,22 @@ const Videos: React.FC = () => {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   };
 
+  const convertSizeToBytes = (size: number, unit: string): number => {
+    const unitMap: { [key: string]: number } = {
+      'B': 1,
+      'KB': 1024,
+      'MB': 1024 * 1024,
+      'GB': 1024 * 1024 * 1024,
+      'KiB': 1024,
+      'MiB': 1024 * 1024,
+      'GiB': 1024 * 1024 * 1024,
+      'bytes': 1
+    };
+    
+    const multiplier = unitMap[unit] || 1;
+    return Math.round(size * multiplier);
+  };
+
   const columns = [
     {
       title: '视频标题',
@@ -433,28 +557,11 @@ const Videos: React.FC = () => {
       ellipsis: true,
       render: (title: string, record: Video) => (
         <div className="flex items-center">
-          {thumbnailUrls[record.id] ? (
-            <img
-              src={thumbnailUrls[record.id]}
-              alt={title}
-              className="w-16 h-9 object-cover rounded mr-2"
-              onError={(e) => {
-                // 如果图片加载失败，隐藏图片元素
-                const target = e.target as HTMLImageElement;
-                target.style.display = 'none';
-              }}
-            />
-          ) : record.thumbnail_url ? (
-            <img
-              src={record.thumbnail_url}
-              alt={title}
-              className="w-16 h-9 object-cover rounded mr-2"
-              onError={(e) => {
-                const target = e.target as HTMLImageElement;
-                target.style.display = 'none';
-              }}
-            />
-          ) : null}
+          <ThumbnailRenderer 
+            video={record}
+            thumbnailUrl={thumbnailUrls[record.id]}
+            title={title}
+          />
           <div>
             <div className="font-medium">{title}</div>
             <div className="text-sm text-gray-500">{formatDuration(record.duration)}</div>

@@ -73,7 +73,7 @@ services:
       - DATABASE_URL=mysql+aiomysql://youtube_user:youtube_password@mysql:3306/youtube_slicer?charset=utf8mb4
       - REDIS_URL=redis://redis:6379
       - MINIO_ENDPOINT=minio:9000
-      - MINIO_PUBLIC_ENDPOINT=__PUBLIC_IP__:9000
+      - MINIO_PUBLIC_ENDPOINT=192.168.8.107:9000
       - MINIO_ACCESS_KEY=minioadmin
       - MINIO_SECRET_KEY=minioadmin
       - MINIO_BUCKET_NAME=youtube-videos
@@ -102,7 +102,7 @@ services:
       - DATABASE_URL=mysql+aiomysql://youtube_user:youtube_password@mysql:3306/youtube_slicer?charset=utf8mb4
       - REDIS_URL=redis://redis:6379
       - MINIO_ENDPOINT=minio:9000
-      - MINIO_PUBLIC_ENDPOINT=__PUBLIC_IP__:9000
+      - MINIO_PUBLIC_ENDPOINT=192.168.8.107:9000
       - MINIO_ACCESS_KEY=minioadmin
       - MINIO_SECRET_KEY=minioadmin
       - MINIO_BUCKET_NAME=youtube-videos
@@ -130,7 +130,7 @@ services:
       - DATABASE_URL=mysql+aiomysql://youtube_user:youtube_password@mysql:3306/youtube_slicer?charset=utf8mb4
       - REDIS_URL=redis://redis:6379
       - MINIO_ENDPOINT=minio:9000
-      - MINIO_PUBLIC_ENDPOINT=__PUBLIC_IP__:9000
+      - MINIO_PUBLIC_ENDPOINT=192.168.8.107:9000
       - MINIO_ACCESS_KEY=minioadmin
       - MINIO_SECRET_KEY=minioadmin
       - MINIO_BUCKET_NAME=youtube-videos
@@ -154,7 +154,7 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - REACT_APP_API_URL=http://__PUBLIC_IP__:8001
+      - REACT_APP_API_URL=http://192.168.8.107:8001
       - NODE_ENV=development
     depends_on:
       - backend
