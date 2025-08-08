@@ -74,10 +74,11 @@ class Settings(BaseSettings):
                     '''
     
     # Application
-    debug: bool = True
+    debug: bool = False
     host: str = "0.0.0.0"
     port: int = 8000
-    reload: bool = True
+    reload: bool = False
+    sqlalchemy_echo: bool = False
     api_base_url: str = "http://localhost:8000"
     frontend_url: Optional[str] = None
     

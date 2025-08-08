@@ -10,6 +10,7 @@ from app.models.user import User
 from app.models.video import Video
 from app.models.project import Project
 from app.models.processing_task import ProcessingTask
+from app.models.processing_task import ProcessingStatus
 from app.services.state_manager import get_state_manager
 import logging
 
@@ -55,6 +56,7 @@ class ConnectionManager:
         # 检查是否有状态变化
         is_status_change = False
         is_completion = False
+        is_significant_progress = False
         
         # 与待发送数据对比
         pending_data = self.pending_updates.get(key, {})
@@ -62,15 +64,35 @@ class ConnectionManager:
         # 状态变化或完成立即推送
         is_status_change = progress_data.get('video_status') != pending_data.get('video_status')
         is_completion = progress_data.get('status') == 'completed' or progress_data.get('download_progress') == 100
-        progress_change = abs(progress_data.get('download_progress', 0) - pending_data.get('download_progress', 0))
         
-        if is_status_change or is_completion or progress_change >= 10:  # 进度变化超过10%才推送
+        # 计算进度变化
+        current_progress = progress_data.get('download_progress', 0)
+        pending_progress = pending_data.get('download_progress', 0)
+        progress_change = abs(current_progress - pending_progress)
+        
+        # 判断是否是显著的进度变化
+        # 1. 进度变化超过1%（降低阈值，更频繁更新）
+        # 2. 或者进度是整数变化（如从10.0%到11.0%）
+        is_significant_progress = progress_change >= 1 or (
+            int(current_progress) != int(pending_progress) and progress_change > 0
+        )
+        
+        # 关键状态变化立即推送
+        if is_status_change or is_completion:
             await self._send_progress_update(video_id, user_id, progress_data)
             self.last_sent_time[key] = now
             # 清空待发送数据
             if key in self.pending_updates:
                 del self.pending_updates[key]
-        elif now - last_sent >= 30.0:  # 普通更新最多30秒间隔
+        # 显著的进度变化也推送
+        elif is_significant_progress:
+            await self._send_progress_update(video_id, user_id, progress_data)
+            self.last_sent_time[key] = now
+            # 清空待发送数据
+            if key in self.pending_updates:
+                del self.pending_updates[key]
+        # 普通更新最多5秒间隔（降低时间间隔）
+        elif now - last_sent >= 5.0:
             await self._send_progress_update(video_id, user_id, progress_data)
             self.last_sent_time[key] = now
             if key in self.pending_updates:
@@ -181,55 +203,61 @@ async def websocket_progress_endpoint(websocket: WebSocket, token: str): # Remov
                             
                             # 查询用户需要状态更新的视频
                             try:
-                                # 获取该用户所有需要状态更新的视频
-                                active_statuses = ["pending", "downloading", "processing", "completed"]
-                                stmt = select(Video).where(
-                                    Video.project_id.in_(
-                                        select(Project.id).where(Project.user_id == user_id)
-                                    ),
-                                    Video.status.in_(active_statuses)
-                                )
+                                # 获取video_id参数，支持指定视频查询
+                                video_id = message.get('video_id')
                                 
-                                result = await db_session.execute(stmt)
-                                active_videos = result.scalars().all()
+                                if video_id:
+                                    # 查询特定视频的最新状态（不管是什么状态）
+                                    logger.info(f"查询特定视频状态 - video_id: {video_id}")
+                                    
+                                    stmt = select(Video).where(
+                                        Video.id == video_id,
+                                        Video.project_id.in_(
+                                            select(Project.id).where(Project.user_id == user_id)
+                                        )
+                                    )
+                                    result = await db_session.execute(stmt)
+                                    video = result.scalar_one_or_none()
+                                    
+                                    if video:
+                                        logger.info(f"找到视频 {video_id}，状态: {video.status}，发送更新")
+                                        # 为特定视频发送当前进度状态
+                                        await send_current_progress(websocket, video_id, user_id, db_session)
+                                    else:
+                                        logger.warning(f"未找到视频 {video_id} 或无权限访问")
                                 
-                                # Debug: 添加日志显示查询结果
-                                logger.info(f"用户 {user_id} 的项目查询结果: {len(active_videos)} 个视频")
-                                for video in active_videos:
-                                    logger.info(f"视频 {video.id}: project_id={video.project_id}, status={video.status}")
-                                
-                                # 过滤掉真正完全完成的视频
-                                videos_to_update = []
-                                for video in active_videos:
-                                    # 如果视频还在处理中，肯定要更新
-                                    if video.status in ["pending", "downloading", "processing"]:
+                                else:
+                                    # 查询用户所有活跃的视频状态（不包含已完成的视频）
+                                    logger.info("查询用户所有活跃视频状态")
+                                    
+                                    active_statuses = ["pending", "downloading", "processing"]
+                                    stmt = select(Video).where(
+                                        Video.project_id.in_(
+                                            select(Project.id).where(Project.user_id == user_id)
+                                        ),
+                                        Video.status.in_(active_statuses)
+                                    )
+                                    
+                                    result = await db_session.execute(stmt)
+                                    active_videos = result.scalars().all()
+                                    
+                                    # Debug: 添加日志显示查询结果
+                                    logger.info(f"用户 {user_id} 的活跃视频查询结果: {len(active_videos)} 个视频")
+                                    for video in active_videos:
+                                        logger.info(f"视频 {video.id}: project_id={video.project_id}, status={video.status}")
+                                    
+                                    # 简化过滤逻辑：所有查询到的视频都需要状态更新
+                                    videos_to_update = []
+                                    for video in active_videos:
+                                        # 所有查询到的视频都是活跃状态，直接加入更新列表
                                         videos_to_update.append(video)
-                                    # 如果视频已下载完成，检查是否还有未完成的处理任务
-                                    elif video.status == "completed":
-                                        try:
-                                            stmt = select(ProcessingTask).where(
-                                                ProcessingTask.video_id == video.id,
-                                                ProcessingTask.status.in_(['pending', 'running'])
-                                            )
-                                            result = await db_session.execute(stmt)
-                                            active_tasks = result.scalars().all()
-                                            
-                                            # 如果还有活跃任务，需要更新
-                                            if active_tasks:
-                                                videos_to_update.append(video)
-                                                logger.debug(f"视频 {video.id} 仍有活跃任务，需要状态更新")
-                                            else:
-                                                logger.debug(f"视频 {video.id} 已完全完成，跳过状态更新")
-                                        except Exception as e:
-                                            logger.warning(f"检查视频 {video.id} 的处理任务失败: {str(e)}")
-                                            # 如果检查失败，为了安全起见还是更新
-                                            videos_to_update.append(video)
-                                
-                                logger.info(f"用户 {user_id} 有 {len(videos_to_update)} 个视频需要状态更新")
-                                
-                                for video in videos_to_update:
-                                    # 为每个需要更新的视频发送当前进度状态
-                                    await send_current_progress(websocket, video.id, user_id, db_session)
+                                        logger.debug(f"视频 {video.id} 状态为 {video.status}，需要状态更新")
+                                    
+                                    logger.info(f"用户 {user_id} 有 {len(videos_to_update)} 个活跃视频需要状态更新")
+                                    
+                                    for video in videos_to_update:
+                                        # 为每个需要更新的视频发送当前进度状态
+                                        await send_current_progress(websocket, video.id, user_id, db_session)
                                     
                             except Exception as e:
                                 logger.error(f"状态更新查询失败: {str(e)}")
@@ -319,6 +347,13 @@ async def send_current_progress(websocket: WebSocket, video_id: int, user_id: in
                     "tasks": []
                 }
             else:
+                # 获取处理状态，以获取更准确的下载状态
+                stmt = select(ProcessingStatus).where(
+                    ProcessingStatus.video_id == video_id
+                )
+                result = await db.execute(stmt)
+                processing_status = result.scalar_one_or_none()
+                
                 # 获取处理任务（单独查询确保最新）
                 stmt = select(ProcessingTask).where(
                     ProcessingTask.video_id == video_id
@@ -326,18 +361,55 @@ async def send_current_progress(websocket: WebSocket, video_id: int, user_id: in
                 result = await db.execute(stmt)
                 tasks = result.scalars().all()
                 
+                # 确定实际的下载状态
+                actual_download_progress = video.download_progress or 0
+                actual_status = video.status
+                
+                # 如果processing_status存在，使用更精确的状态信息
+                if processing_status:
+                    # 优先使用processing_status中的下载进度
+                    if processing_status.download_progress > 0:
+                        actual_download_progress = processing_status.download_progress
+                    
+                    # 状态判断逻辑：
+                    # 1. 如果video.status是completed，保持completed
+                    # 2. 如果video.status是processing，保持processing  
+                    # 3. 如果video.status是pending或downloading，但processing_status.download_status是success，则设为downloaded
+                    if actual_status in ['pending', 'downloading'] and processing_status.download_status == 'success':
+                        actual_status = 'downloaded'
+                        actual_download_progress = 100.0
+                    elif actual_status in ['pending', 'downloading'] and processing_status.download_progress > 0:
+                        # 如果有下载进度但还没完成，保持原状态但更新进度
+                        actual_download_progress = processing_status.download_progress
+                
                 # 构建最新进度消息
                 progress_data = {
                     "type": "progress_update",
                     "video_id": video_id,
                     "video_title": video.title,
-                    "video_status": video.status,
-                    "download_progress": video.download_progress or 0,
+                    "video_status": actual_status,
+                    "download_progress": actual_download_progress,
                     "processing_progress": video.processing_progress or 0,
                     "processing_stage": video.processing_stage or "",
                     "processing_message": video.processing_message or "",
                     "tasks": []
                 }
+                
+                # 添加详细的debug信息
+                logger.info(f"🔍 [WebSocket] 发送进度更新 - video_id: {video_id}")
+                logger.info(f"🔍 [WebSocket] 实际状态: {actual_status}")
+                logger.info(f"🔍 [WebSocket] 实际下载进度: {actual_download_progress}")
+                logger.info(f"🔍 [WebSocket] 处理进度: {video.processing_progress or 0}")
+                logger.info(f"🔍 [WebSocket] 原始video状态: {video.status}")
+                logger.info(f"🔍 [WebSocket] 原始video下载进度: {video.download_progress or 0}")
+                if processing_status:
+                    logger.info(f"🔍 [WebSocket] processing_status下载状态: {processing_status.download_status}")
+                    logger.info(f"🔍 [WebSocket] processing_status下载进度: {processing_status.download_progress}")
+                else:
+                    logger.info(f"🔍 [WebSocket] processing_status: 无")
+                logger.info(f"🔍 [WebSocket] 处理任务数量: {len(tasks)}")
+                for i, task in enumerate(tasks):
+                    logger.info(f"🔍 [WebSocket] 任务{i}: id={task.id}, type={task.task_type}, status={task.status}, progress={task.progress}")
                 
                 # Add task information
                 for task in tasks:
@@ -395,17 +467,60 @@ async def send_current_progress(websocket: WebSocket, video_id: int, user_id: in
                 result = await db.execute(stmt)
                 tasks = result.scalars().all()
                 
+                # 获取处理状态，以获取更准确的下载状态
+                stmt = select(ProcessingStatus).where(
+                    ProcessingStatus.video_id == video_id
+                )
+                result = await db.execute(stmt)
+                processing_status = result.scalar_one_or_none()
+                
+                # 确定实际的下载状态
+                actual_download_progress = video.download_progress or 0
+                actual_status = video.status
+                
+                # 如果processing_status存在，使用更精确的状态信息
+                if processing_status:
+                    # 优先使用processing_status中的下载进度
+                    if processing_status.download_progress > 0:
+                        actual_download_progress = processing_status.download_progress
+                    
+                    # 状态判断逻辑：
+                    # 1. 如果video.status是completed，保持completed
+                    # 2. 如果video.status是processing，保持processing  
+                    # 3. 如果video.status是pending或downloading，但processing_status.download_status是success，则设为downloaded
+                    if actual_status in ['pending', 'downloading'] and processing_status.download_status == 'success':
+                        actual_status = 'downloaded'
+                        actual_download_progress = 100.0
+                    elif actual_status in ['pending', 'downloading'] and processing_status.download_progress > 0:
+                        # 如果有下载进度但还没完成，保持原状态但更新进度
+                        actual_download_progress = processing_status.download_progress
+                
                 progress_data = {
                     "type": "progress_update",
                     "video_id": video_id,
                     "video_title": video.title,
-                    "video_status": video.status,
-                    "download_progress": video.download_progress or 0,
+                    "video_status": actual_status,
+                    "download_progress": actual_download_progress,
                     "processing_progress": video.processing_progress or 0,
                     "processing_stage": video.processing_stage or "",
                     "processing_message": video.processing_message or "",
                     "tasks": []
                 }
+                
+                # 添加详细的debug信息（降级模式）
+                logger.info(f"🔍 [WebSocket] 降级模式发送进度更新 - video_id: {video_id}")
+                logger.info(f"🔍 [WebSocket] 降级模式实际状态: {actual_status}")
+                logger.info(f"🔍 [WebSocket] 降级模式实际下载进度: {actual_download_progress}")
+                logger.info(f"🔍 [WebSocket] 降级模式原始video状态: {video.status}")
+                logger.info(f"🔍 [WebSocket] 降级模式原始video下载进度: {video.download_progress or 0}")
+                if processing_status:
+                    logger.info(f"🔍 [WebSocket] 降级模式processing_status下载状态: {processing_status.download_status}")
+                    logger.info(f"🔍 [WebSocket] 降级模式processing_status下载进度: {processing_status.download_progress}")
+                else:
+                    logger.info(f"🔍 [WebSocket] 降级模式processing_status: 无")
+                logger.info(f"🔍 [WebSocket] 降级模式处理任务数量: {len(tasks)}")
+                for i, task in enumerate(tasks):
+                    logger.info(f"🔍 [WebSocket] 降级模式任务{i}: id={task.id}, type={task.task_type}, status={task.status}, progress={task.progress}")
                 
                 for task in tasks:
                     task_data = {

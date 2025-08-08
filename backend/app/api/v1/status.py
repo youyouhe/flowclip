@@ -53,10 +53,27 @@ async def get_video_processing_status(
     state_manager = get_state_manager(db)
     overall_status = await state_manager.get_video_status(video_id)
     
+    # 获取processing_status以检查下载状态
+    stmt = select(ProcessingStatus).where(ProcessingStatus.video_id == video_id)
+    result = await db.execute(stmt)
+    processing_status = result.scalar_one_or_none()
+    
+    # 确定实际的下载状态
+    actual_status = video.status
+    actual_download_progress = video.download_progress or 0
+    
+    # 如果processing_status显示下载已完成，优先使用该状态
+    if processing_status and processing_status.download_status == 'success':
+        actual_download_progress = 100.0
+        # 如果videos.status还是pending或downloading，更新为downloaded
+        if actual_status in ['pending', 'downloading']:
+            actual_status = 'downloaded'
+    
     return {
         "video_id": video.id,
         "title": video.title,
-        "status": video.status,
+        "status": actual_status,
+        "download_progress": actual_download_progress,
         "processing_stage": video.processing_stage,
         "processing_progress": video.processing_progress,
         "processing_message": video.processing_message,

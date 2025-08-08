@@ -175,11 +175,28 @@ const Videos: React.FC = () => {
       }
     }, 15000); // 每15秒请求一次状态更新
     
+    // 延迟请求一次状态更新，确保WebSocket连接建立
+    const initialStatusUpdate = setTimeout(() => {
+      if (wsService.connected) {
+        console.log('🔄 [Videos] Requesting initial status update...');
+        wsService.requestStatusUpdate();
+      } else {
+        console.log('⚠️ [Videos] WebSocket not connected yet, skipping initial status update');
+      }
+    }, 3000); // 3秒后请求一次状态更新
+    
     return () => {
       cleanupWebSocket();
       clearInterval(statusUpdateInterval); // 清理定时器
+      clearTimeout(initialStatusUpdate); // 清理初始状态更新定时器
     };
-  }, [filters]); // 添加filters依赖
+  }, []); // 空依赖数组，只在组件挂载时执行一次
+
+  // 单独处理filters变化
+  useEffect(() => {
+    console.log('🔍 [Videos] Filters changed, refetching videos...');
+    fetchVideos();
+  }, [filters]);
 
   // Update the ref whenever the videos state changes
   useEffect(() => {
@@ -283,6 +300,12 @@ const Videos: React.FC = () => {
       return;
     }
 
+    // 检查是否已经连接，避免重复连接
+    if (wsService.connected) {
+      console.log('🔌 [Videos] WebSocket already connected, skipping setup');
+      return;
+    }
+
     console.log('🔌 [Videos] Connecting to WebSocket service...');
     
     // 连接WebSocket
@@ -324,8 +347,19 @@ const Videos: React.FC = () => {
         // 移除订阅逻辑，现在使用状态查询模式
         // 状态查询会自动获取所有活跃视频的最新状态
         
+        // 如果下载接近完成（>=95%），主动查询特定视频的最终状态
+        if (data.download_progress >= 95 && data.download_progress < 100) {
+          console.log('🔄 [Videos] Video download near completion, requesting final status...');
+          // 延迟1秒后查询特定视频的最终状态
+          setTimeout(() => {
+            if (wsService.connected) {
+              wsService.requestVideoStatusUpdate(data.video_id);
+            }
+          }, 1000);
+        }
+        
         // 如果下载完成，刷新列表以获取完整信息
-        if (data.video_status === 'completed' && data.download_progress === 100) {
+        if ((data.video_status === 'completed' || data.video_status === 'downloaded') && data.download_progress === 100) {
           console.log('📥 [Videos] Video download completed, refreshing list...');
           setTimeout(() => {
             fetchVideos();
@@ -365,6 +399,9 @@ const Videos: React.FC = () => {
     console.log('🧹 [Videos] Cleaning up WebSocket connection...');
     stopHeartbeat();
     wsService.disconnect();
+    
+    // 移除所有事件监听器，防止重复注册
+    // 注意：WebSocket服务本身是单例，所以不需要完全重置
     console.log('🧹 [Videos] WebSocket cleanup completed');
   };
 
@@ -445,6 +482,7 @@ const Videos: React.FC = () => {
         const statusMap = {
           pending: { color: 'orange', text: '等待中' },
           downloading: { color: 'blue', text: '下载中' },
+          downloaded: { color: 'purple', text: '已下载' },
           processing: { color: 'cyan', text: '处理中' },
           completed: { color: 'green', text: '已完成' },
           failed: { color: 'red', text: '失败' },

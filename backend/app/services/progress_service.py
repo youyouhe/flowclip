@@ -216,11 +216,19 @@ class ProgressUpdateService:
                     await db.commit()
                     
                     # 同时更新视频进度
-                    await self.update_progress(
-                        task.video_id,
-                        task.user_id,
-                        progress_data
-                    )
+                    # 通过video_id获取user_id
+                    stmt_user = select(Project.user_id).join(Video).where(Video.id == task.video_id)
+                    result_user = await db.execute(stmt_user)
+                    user_id = result_user.scalar_one_or_none()
+                    
+                    if user_id:
+                        await self.update_progress(
+                            task.video_id,
+                            user_id,
+                            progress_data
+                        )
+                    else:
+                        logger.warning(f"无法找到视频 {task.video_id} 对应的用户ID")
                     
                     logger.debug(f"任务进度已更新 - task_id: {task_id}")
             

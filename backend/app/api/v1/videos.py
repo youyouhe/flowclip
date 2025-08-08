@@ -127,6 +127,22 @@ async def get_active_videos(
     # 构建包含项目名称的视频列表
     videos = []
     for video, project_name in videos_with_project:
+        # 检查processing_status以获取更准确的下载状态
+        stmt_processing = select(ProcessingStatus).where(ProcessingStatus.video_id == video.id)
+        result_processing = await db.execute(stmt_processing)
+        processing_status = result_processing.scalar_one_or_none()
+        
+        # 确定实际的下载状态和进度
+        actual_status = video.status
+        actual_download_progress = video.download_progress or 0
+        
+        # 如果processing_status显示下载已完成，优先使用该状态
+        if processing_status and processing_status.download_status == 'success':
+            actual_download_progress = 100.0
+            # 如果videos.status还是pending或downloading，更新为downloaded
+            if actual_status in ['pending', 'downloading']:
+                actual_status = 'downloaded'
+        
         video_dict = {
             'id': video.id,
             'title': video.title,
@@ -138,8 +154,8 @@ async def get_active_videos(
             'duration': video.duration,
             'file_size': video.file_size,
             'thumbnail_url': video.thumbnail_url,
-            'status': video.status,
-            'download_progress': video.download_progress,
+            'status': actual_status,
+            'download_progress': actual_download_progress,
             'created_at': video.created_at,
             'updated_at': video.updated_at,
             'project_name': project_name

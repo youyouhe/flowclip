@@ -173,6 +173,23 @@ class WebSocketService {
   }
 
   /**
+   * 请求特定视频的最新状态更新
+   * @param video_id 视频ID
+   */
+  requestVideoStatusUpdate(video_id: number): void {
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      const message = JSON.stringify({ 
+        type: 'request_status_update', 
+        video_id: video_id 
+      });
+      console.log('🔄 [WebSocket] Requesting video status update:', message);
+      this.ws.send(message);
+    } else {
+      console.warn('🔄 [WebSocket] Cannot request video status update - WebSocket not connected');
+    }
+  }
+
+  /**
    * 处理重连
    */
   private handleReconnect(): void {

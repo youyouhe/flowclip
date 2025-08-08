@@ -482,7 +482,7 @@ const VideoDetail: React.FC = () => {
       setVideo(response.data);
       
       // 如果视频已完成，获取播放URL
-      if (response.data.status === 'completed' && response.data.file_path) {
+      if ((response.data.status === 'completed' || response.data.status === 'downloaded') && response.data.file_path) {
         await fetchVideoUrl();
       }
       
@@ -1072,7 +1072,7 @@ const VideoDetail: React.FC = () => {
   const renderVideoPlayer = () => {
     if (!video) return null;
 
-    if (video.status !== 'completed') {
+    if (video.status !== 'completed' && video.status !== 'downloaded') {
       return (
         <div className="flex flex-col items-center justify-center h-96 bg-gray-100 rounded-lg">
           {video.status === 'downloading' ? (
@@ -1244,7 +1244,7 @@ const VideoDetail: React.FC = () => {
             <Divider />
 
             <Space direction="vertical" className="w-full">
-              {video.status === 'completed' && (
+              {(video.status === 'completed' || video.status === 'downloaded') && (
                 <>
                   <Button
                     type="primary"
