@@ -3,6 +3,12 @@ from typing import Optional
 import os
 
 class Settings(BaseSettings):
+    # Server Configuration
+    public_ip: Optional[str] = None
+    private_ip: Optional[str] = None
+    frontend_url: Optional[str] = None
+    api_url: Optional[str] = None
+    
     # Database
     database_url: str = "sqlite+aiosqlite:///./youtube_slicer.db"
     

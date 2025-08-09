@@ -402,7 +402,7 @@ If you find this project helpful and would like to support its continued develop
 ### WeChat Payment
 Scan the QR code below to support the author:
 
-![WeChat Payment](images/IMG_1639.JPG)
+![WeChat Payment](images/IMG_1639.JPG){: width="200" }
 
 ### Ways to Support
 - **One-time donation**: Any amount is appreciated
