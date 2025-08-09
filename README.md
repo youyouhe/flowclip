@@ -37,6 +37,18 @@
 - **Object Storage**: MinIO for scalable file storage
 - **Database**: Multi-database support (SQLite/PostgreSQL/MySQL)
 
+## 📸 Project Showcase
+
+### 🏠 Main Interface
+| Dashboard Overview | Video Management |
+|-------------------|------------------|
+| ![Dashboard](images/dashboard.png) | ![Video List](images/videos.png) |
+
+### 🤖 AI-Powered Video Analysis
+| Intelligent Slicing | Content Analysis |
+|-------------------|------------------|
+| ![Video Slices](images/slice.png) | ![AI Analysis Results](images/slice.png) |
+
 ## 🛠️ Technology Stack
 
 ### Backend
