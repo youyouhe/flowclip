@@ -395,6 +395,27 @@ For support and questions:
 - Check the documentation
 - Review the troubleshooting section
 
+## 💝 Support the Project
+
+If you find this project helpful and would like to support its continued development, consider making a donation. Your support helps maintain and improve the project!
+
+### WeChat Payment
+Scan the QR code below to support the author:
+
+![WeChat Payment](images/IMG_1639.JPG)
+
+### Ways to Support
+- **One-time donation**: Any amount is appreciated
+- **Project sponsorship**: For businesses using this project commercially
+- **Feature requests**: Priority development for sponsored features
+- **Bug fixes**: Expedited resolution for supported issues
+
+All contributions go directly towards:
+- 🖥️ Server costs and infrastructure
+- 🔧 Tool licenses and subscriptions  
+- 📚 Documentation improvements
+- 🚀 New feature development
+
 ---
 
 **Built with ❤️ using modern web technologies and AI**
