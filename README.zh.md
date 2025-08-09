@@ -402,7 +402,9 @@ docker-compose stats
 ### 微信支付
 扫描下方二维码支持作者：
 
-![微信支付](images/IMG_1639.JPG){: width="200" }
+<a href="images/IMG_1639.JPG" target="_blank">
+  <img src="images/IMG_1639.JPG" alt="微信支付" width="200">
+</a>
 
 ### 支持方式
 - **一次性捐赠**: 任何金额都是受欢迎的

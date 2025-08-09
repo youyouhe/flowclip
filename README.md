@@ -402,7 +402,9 @@ If you find this project helpful and would like to support its continued develop
 ### WeChat Payment
 Scan the QR code below to support the author:
 
-![WeChat Payment](images/IMG_1639.JPG){: width="200" }
+<a href="images/IMG_1639.JPG" target="_blank">
+  <img src="images/IMG_1639.JPG" alt="WeChat Payment" width="200">
+</a>
 
 ### Ways to Support
 - **One-time donation**: Any amount is appreciated
