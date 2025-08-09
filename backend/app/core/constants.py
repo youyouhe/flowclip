@@ -32,7 +32,6 @@ class ProcessingTaskType(str, Enum):
     """处理任务类型枚举"""
     DOWNLOAD = "download"            # 视频下载
     EXTRACT_AUDIO = "extract_audio"  # 提取音频
-    SPLIT_AUDIO = "split_audio"      # 分割音频
     GENERATE_SRT = "generate_srt"    # 生成字幕
     VIDEO_SLICE = "video_slice"      # 视频切片
     PROCESS_COMPLETE = "process_complete"  # 完整处理流程
@@ -50,7 +49,6 @@ class ProcessingStage(str, Enum):
     """处理阶段枚举"""
     DOWNLOAD = "download"            # 下载阶段
     EXTRACT_AUDIO = "extract_audio"  # 提取音频阶段
-    SPLIT_AUDIO = "split_audio"      # 分割音频阶段
     GENERATE_SRT = "generate_srt"    # 生成字幕阶段
     ANALYZE_CONTENT = "analyze_content"  # 内容分析阶段
     SLICE_VIDEO = "slice_video"      # 视频切片阶段
@@ -70,7 +68,6 @@ CELERY_TO_DB_STATUS_MAP = {
 PROCESSING_STAGE_DESCRIPTIONS = {
     ProcessingStage.DOWNLOAD: "下载视频",
     ProcessingStage.EXTRACT_AUDIO: "提取音频",
-    ProcessingStage.SPLIT_AUDIO: "分割音频", 
     ProcessingStage.GENERATE_SRT: "生成字幕",
     ProcessingStage.ANALYZE_CONTENT: "内容分析",
     ProcessingStage.COMPLETED: "处理完成"

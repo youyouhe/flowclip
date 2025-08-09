@@ -196,10 +196,6 @@ class StateManager:
                 "status": status.extract_audio_status,
                 "progress": status.extract_audio_progress
             },
-            "split_audio": {
-                "status": status.split_audio_status,
-                "progress": status.split_audio_progress
-            },
             "generate_srt": {
                 "status": status.generate_srt_status,
                 "progress": status.generate_srt_progress
@@ -252,9 +248,6 @@ class StateManager:
         elif task_type == ProcessingTaskType.EXTRACT_AUDIO:
             status_record.extract_audio_status = status
             status_record.extract_audio_progress = progress
-        elif task_type == ProcessingTaskType.SPLIT_AUDIO:
-            status_record.split_audio_status = status
-            status_record.split_audio_progress = progress
         elif task_type == ProcessingTaskType.GENERATE_SRT:
             status_record.generate_srt_status = status
             status_record.generate_srt_progress = progress
@@ -267,7 +260,6 @@ class StateManager:
         progresses = [
             status_record.download_progress or 0,
             status_record.extract_audio_progress or 0,
-            status_record.split_audio_progress or 0,
             status_record.generate_srt_progress or 0
         ]
         status_record.overall_progress = sum(progresses) / len(progresses)
@@ -305,8 +297,6 @@ class StateManager:
             status.download_progress = 0.0
             status.extract_audio_status = ProcessingTaskStatus.PENDING
             status.extract_audio_progress = 0.0
-            status.split_audio_status = ProcessingTaskStatus.PENDING
-            status.split_audio_progress = 0.0
             status.generate_srt_status = ProcessingTaskStatus.PENDING
             status.generate_srt_progress = 0.0
             status.error_count = 0
@@ -407,9 +397,6 @@ class StateManager:
         elif task_type == ProcessingTaskType.EXTRACT_AUDIO:
             status_record.extract_audio_status = status
             status_record.extract_audio_progress = progress
-        elif task_type == ProcessingTaskType.SPLIT_AUDIO:
-            status_record.split_audio_status = status
-            status_record.split_audio_progress = progress
         elif task_type == ProcessingTaskType.GENERATE_SRT:
             status_record.generate_srt_status = status
             status_record.generate_srt_progress = progress
@@ -422,7 +409,6 @@ class StateManager:
         progresses = [
             status_record.download_progress or 0,
             status_record.extract_audio_progress or 0,
-            status_record.split_audio_progress or 0,
             status_record.generate_srt_progress or 0
         ]
         status_record.overall_progress = sum(progresses) / len(progresses)

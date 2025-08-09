@@ -26,8 +26,54 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 # Load environment variables
 load_dotenv()
 
+# Import database configuration
+from app.core.config import Settings
 from app.core.database import Base
 from app.models import User, Project, Video, Slice, SubSlice, AudioTrack, Transcript, AnalysisResult, ProcessingTask, ProcessingTaskLog, ProcessingStatus
+
+# Get settings
+settings = Settings()
+
+# Convert async database URL to sync for alembic
+def get_sync_database_url():
+    """Convert async database URL to sync for alembic migrations"""
+    url = settings.database_url
+    
+    # 如果是MySQL URL，需要处理Docker环境下的访问
+    if url.startswith('mysql+aiomysql://'):
+        # 从异步URL转为同步URL
+        sync_url = url.replace('mysql+aiomysql://', 'mysql+pymysql://')
+        
+        # 检查是否需要为alembic（在宿主机运行）调整主机地址
+        # Docker中的MySQL服务可以通过宿主机端口访问
+        import os
+        # 检查是否在Docker环境中运行
+        if not os.path.exists('/.dockerenv'):
+            # 在宿主机上运行，需要调整连接参数
+            # 从 mysql://user:pass@host:port/db 格式解析
+            import re
+            from urllib.parse import urlparse
+            
+            parsed = urlparse(sync_url)
+            hostname = parsed.hostname
+            port = parsed.port
+            
+            # 如果hostname是容器服务名（如'mysql'），则改为localhost并使用映射端口
+            if hostname == 'mysql':
+                # 使用宿主机的localhost和映射端口3307
+                new_hostname = 'localhost'
+                new_port = 3307  # docker-compose.yml中的映射端口
+                
+                # 重建URL
+                netloc = f"{parsed.username}:{parsed.password}@{new_hostname}:{new_port}"
+                sync_url = f"{parsed.scheme}://{netloc}{parsed.path}"
+                if parsed.query:
+                    sync_url += f"?{parsed.query}"
+                
+        return sync_url
+    elif url.startswith('sqlite+aiosqlite://'):
+        return url.replace('sqlite+aiosqlite://', 'sqlite://')
+    return url
 
 target_metadata = Base.metadata
 
@@ -49,7 +95,8 @@ def run_migrations_offline() -> None:
     script output.
 
     """
-    url = config.get_main_option("sqlalchemy.url")
+    # Use the sync database URL for alembic
+    url = get_sync_database_url()
     context.configure(
         url=url,
         target_metadata=target_metadata,
@@ -68,8 +115,12 @@ def run_migrations_online() -> None:
     and associate a connection with the context.
 
     """
+    # Use the sync database URL for alembic instead of alembic.ini
+    configuration = config.get_section(config.config_ini_section, {})
+    configuration["sqlalchemy.url"] = get_sync_database_url()
+    
     connectable = engine_from_config(
-        config.get_section(config.config_ini_section, {}),
+        configuration,
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
     )

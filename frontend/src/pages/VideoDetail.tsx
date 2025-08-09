@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Card, Descriptions, Button, Space, message, Spin, Tag, Progress, Row, Col, Divider, Typography, Modal, Steps, Table, Popover } from 'antd';
-import { PlayCircleOutlined, DownloadOutlined, ArrowLeftOutlined, SoundOutlined, ScissorOutlined, FileTextOutlined, LoadingOutlined, ReloadOutlined, EyeOutlined } from '@ant-design/icons';
+import { PlayCircleOutlined, DownloadOutlined, ArrowLeftOutlined, SoundOutlined, FileTextOutlined, LoadingOutlined, ReloadOutlined, EyeOutlined } from '@ant-design/icons';
 import { useParams, useNavigate } from 'react-router-dom';
 import { videoAPI } from '../services/api';
 import { wsService, startHeartbeat, stopHeartbeat } from '../services/websocket';
@@ -49,10 +49,8 @@ const VideoDetail: React.FC = () => {
   const [processingProgress, setProcessingProgress] = useState(0);
   const [processingStatus, setProcessingStatus] = useState<'idle' | 'processing' | 'completed' | 'failed'>('idle');
   const [audioInfo, setAudioInfo] = useState<AudioInfo | null>(null);
-  const [splitInfo, setSplitInfo] = useState<SplitInfo | null>(null);
   const [srtInfo, setSrtInfo] = useState<SrtInfo | null>(null);
   const [audioStatus, setAudioStatus] = useState<ProcessingStatus | null>(null);
-  const [splitStatus, setSplitStatus] = useState<ProcessingStatus | null>(null);
   const [srtStatus, setSrtStatus] = useState<ProcessingStatus | null>(null);
   const [completionNotified, setCompletionNotified] = useState(false);
   const [processingStatusData, setProcessingStatusData] = useState<any>(null);
@@ -92,11 +90,7 @@ const VideoDetail: React.FC = () => {
         setAudioStatus(null);
       }
       
-      setSplitStatus((status.split_audio_status === 'completed' || status.split_audio_status === 'success') ? {
-        status: 'completed',
-        progress: status.split_audio_progress
-      } : null);
-      
+            
       if (status.generate_srt_status === 'completed' || status.generate_srt_status === 'success') {
         try {
           // 获取SRT内容来获取条数
@@ -128,7 +122,6 @@ const VideoDetail: React.FC = () => {
     const stageMap: Record<string, string> = {
       'download': '视频下载',
       'extract_audio': '音频提取',
-      'split_audio': '音频分割',
       'generate_srt': '字幕生成',
       'completed': '已完成',
       'pending': '等待开始'
@@ -166,14 +159,7 @@ const VideoDetail: React.FC = () => {
             progress: processingStatusData.extract_audio_progress,
             color: processingStatusData.extract_audio_status === 'completed' ? 'green' : 'blue'
           };
-        case 'split_audio':
-          return {
-            label: '音频分割',
-            status: processingStatusData.split_audio_status,
-            progress: processingStatusData.split_audio_progress,
-            color: processingStatusData.split_audio_status === 'completed' ? 'green' : 'blue'
-          };
-        case 'generate_srt':
+                case 'generate_srt':
           return {
             label: '字幕生成',
             status: processingStatusData.generate_srt_status,
@@ -210,7 +196,6 @@ const VideoDetail: React.FC = () => {
     const processingText = {
       'download': '下载中',
       'extract_audio': '提取中',
-      'split_audio': '分割中',
       'generate_srt': '生成中'
     };
     
@@ -252,8 +237,7 @@ const VideoDetail: React.FC = () => {
           <div className="mt-2 text-xs text-gray-500 text-center">
             {current_stage === 'download' && '正在下载视频文件...'}
             {current_stage === 'extract_audio' && '正在从视频中提取音频...'}
-            {current_stage === 'split_audio' && '正在根据静音分割音频...'}
-            {current_stage === 'generate_srt' && '正在使用ASR生成字幕...'}
+                        {current_stage === 'generate_srt' && '正在使用ASR生成字幕...'}
           </div>
         )}
       </div>
@@ -265,15 +249,10 @@ const VideoDetail: React.FC = () => {
     if (processingStatusData) {
       return {
         hasAudio: processingStatusData.extract_audio_status === 'completed' || processingStatusData.extract_audio_status === 'success',
-        hasSplits: processingStatusData.split_audio_status === 'completed' || processingStatusData.split_audio_status === 'success',
         hasSrt: processingStatusData.generate_srt_status === 'completed' || processingStatusData.generate_srt_status === 'success',
         audioInfo: processingStatusData.extract_audio_status === 'completed' || processingStatusData.extract_audio_status === 'success' ? {
           status: processingStatusData.extract_audio_status,
           progress: processingStatusData.extract_audio_progress
-        } : null,
-        splitInfo: processingStatusData.split_audio_status === 'completed' || processingStatusData.split_audio_status === 'success' ? {
-          status: processingStatusData.split_audio_status,
-          progress: processingStatusData.split_audio_progress
         } : null,
         srtInfo: processingStatusData.generate_srt_status === 'completed' || processingStatusData.generate_srt_status === 'success' ? {
           status: processingStatusData.generate_srt_status,
@@ -288,10 +267,8 @@ const VideoDetail: React.FC = () => {
     const metadata = video.processing_metadata;
     return {
       hasAudio: metadata.audio_path || metadata.audio_info,
-      hasSplits: metadata.split_files || metadata.split_info,
       hasSrt: metadata.srt_files || metadata.srt_info,
       audioInfo: metadata.audio_info,
-      splitInfo: metadata.split_info,
       srtInfo: metadata.srt_info
     };
   };
@@ -301,7 +278,6 @@ const VideoDetail: React.FC = () => {
     if (video?.processing_metadata) {
       const status = getProcessingStatusFromVideo();
       setAudioInfo(status.audioInfo || null);
-      setSplitInfo(status.splitInfo || null);
       setSrtInfo(status.srtInfo || null);
     }
   }, [video]);
@@ -311,7 +287,6 @@ const VideoDetail: React.FC = () => {
     if (processingStatusData) {
       const status = getProcessingStatusFromVideo();
       setAudioInfo(status.audioInfo || null);
-      setSplitInfo(status.splitInfo || null);
       setSrtInfo(status.srtInfo || null);
     }
   }, [processingStatusData]);
@@ -421,9 +396,8 @@ const VideoDetail: React.FC = () => {
             // 更新处理步骤
             const stepMap: Record<string, number> = {
               'extract_audio': 0,
-              'split_audio': 1,
-              'generate_srt': 2,
-              'completed': 3
+              'generate_srt': 1,
+              'completed': 2
             };
             const newStep = stepMap[latestTask.stage] || 0;
             console.log('🔄 [VideoDetail] Updating processing step from', processingStep, 'to', newStep);
@@ -618,63 +592,18 @@ const VideoDetail: React.FC = () => {
     }
   };
 
-  const handleSplitAudio = async () => {
-    if (!video) return;
-    
-    try {
-      setProcessingModalVisible(true);
-      setProcessingStatus('processing');
-      setProcessingStep(1);
-      setProcessingProgress(0);
-      setCompletionNotified(false);
-      
-      const response = await videoAPI.splitAudio(video.id);
-      setCurrentTask(response.data);
-      console.log('分割音频响应:', response.data);
-      
-      // 修复：使用正确的task_id字段名
-      const taskId = response.data.task_id;
-      if (!taskId || taskId === 'undefined') {
-        console.error('task_id无效:', taskId);
-        message.error('获取任务ID失败');
-        setProcessingModalVisible(false);
-        return;
-      }
-      
-      console.log('任务已启动，开始轮询状态更新，taskId:', taskId);
-      // 使用轮询获取任务状态
-      pollTaskStatus(taskId);
-      message.success('音频分割任务已启动');
-    } catch (error) {
-      console.error('启动音频分割失败:', error);
-      message.error('启动音频分割失败');
-      setProcessingModalVisible(false);
-    }
-  };
-
+  
   const handleGenerateSrt = async () => {
     if (!video) return;
     
     try {
       setProcessingModalVisible(true);
       setProcessingStatus('processing');
-      setProcessingStep(2);
+      setProcessingStep(1); // 现在是第1步（之前是第2步）
       setProcessingProgress(0);
       setCompletionNotified(false);
       
-      // 首先获取分割文件信息，如果没有则使用空数组
-      let splitFiles = [];
-      try {
-        // 尝试从视频的处理元数据中获取分割文件信息
-        const videoResponse = await videoAPI.getVideo(video.id);
-        if (videoResponse.data.processing_metadata && videoResponse.data.processing_metadata.split_files) {
-          splitFiles = videoResponse.data.processing_metadata.split_files;
-        }
-      } catch (e) {
-        console.log('无法获取分割文件信息，使用空数组');
-      }
-      
-      const response = await videoAPI.generateSrt(video.id, splitFiles);
+      const response = await videoAPI.generateSrt(video.id);
       setCurrentTask(response.data);
       console.log('生成SRT响应:', response.data);
       
@@ -738,10 +667,7 @@ const VideoDetail: React.FC = () => {
             if (taskStatus.result.audio_info) {
               setAudioInfo(taskStatus.result.audio_info);
             }
-            if (taskStatus.result.split_info) {
-              setSplitInfo(taskStatus.result.split_info);
-            }
-            if (taskStatus.result.srt_info) {
+                        if (taskStatus.result.srt_info) {
               setSrtInfo(taskStatus.result.srt_info);
             }
           }
@@ -998,7 +924,6 @@ const VideoDetail: React.FC = () => {
             className="mb-6"
           >
             <Step title="提取音频" description="从视频中提取音频文件" />
-            <Step title="分割音频" description="根据静音智能分割音频" />
             <Step title="生成字幕" description="使用ASR生成SRT字幕" />
             <Step title="完成" description="所有处理步骤完成" />
           </Steps>
@@ -1009,8 +934,7 @@ const VideoDetail: React.FC = () => {
                 <LoadingOutlined className="text-2xl text-blue-500 mb-2" />
                 <div className="text-lg font-semibold">
                   {processingStep === 0 && '正在提取音频...'}
-                  {processingStep === 1 && '正在分割音频...'}
-                  {processingStep === 2 && '正在生成字幕...'}
+                  {processingStep === 1 && '正在生成字幕...'}
                 </div>
               </>
             )}
@@ -1044,17 +968,12 @@ const VideoDetail: React.FC = () => {
             </div>
           )}
           
-          {(audioInfo || splitInfo || srtInfo) && (
+          {(audioInfo || srtInfo) && (
             <div className="mt-4 p-3 bg-gray-50 rounded">
               <h4 className="font-semibold mb-2">处理结果:</h4>
               {audioInfo && (
                 <div className="text-sm mb-1">
                   ✓ 音频提取完成: {audioInfo.audioFilename} ({Math.round(audioInfo.duration)}秒)
-                </div>
-              )}
-              {splitInfo && (
-                <div className="text-sm mb-1">
-                  ✓ 音频分割完成: {splitInfo.totalSegments} 个片段
                 </div>
               )}
               {srtInfo && (
@@ -1275,26 +1194,17 @@ const VideoDetail: React.FC = () => {
                     提取音频 {audioInfo && "✓"}
                   </Button>
                   <Button
-                    type={splitInfo ? "default" : (audioInfo ? "primary" : "default")}
-                    icon={<ScissorOutlined />}
-                    onClick={handleSplitAudio}
-                    block
-                    disabled={!audioInfo || splitInfo ? true : false}
-                  >
-                    分割音频 {splitInfo && "✓"}
-                  </Button>
-                  <Button
-                    type={srtInfo ? "default" : (splitInfo ? "primary" : "default")}
+                    type={srtInfo ? "default" : (audioInfo ? "primary" : "default")}
                     icon={<FileTextOutlined />}
                     onClick={handleGenerateSrt}
                     block
-                    disabled={!splitInfo || srtInfo ? true : false}
+                    disabled={!audioInfo || srtInfo ? true : false}
                   >
                     生成字幕 {srtInfo && "✓"}
                   </Button>
                   
                     
-                  {(audioInfo || splitInfo || srtInfo) && (
+                  {(audioInfo || srtInfo) && (
                     <>
                       <Divider orientation="left">下载处理结果</Divider>
                       {audioInfo && (

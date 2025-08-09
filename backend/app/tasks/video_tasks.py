@@ -461,214 +461,10 @@ def extract_audio(self, video_id: str, project_id: int, user_id: int, video_mini
         
         raise Exception(f"{error_type}: {error_msg}")
 
-@shared_task(bind=True)
-def split_audio(self, video_id: str, project_id: int, user_id: int, audio_minio_path: str, create_processing_task: bool = True) -> Dict[str, Any]:
-    """Split audio into segments based on silence detection"""
-    
-    def _ensure_processing_task_exists(celery_task_id: str, video_id: int) -> bool:
-        """确保处理任务记录存在"""
-        try:
-            with get_sync_db() as db:
-                state_manager = get_state_manager(db)
-                
-                # 检查任务是否已存在
-                task = db.query(ProcessingTask).filter(
-                    ProcessingTask.celery_task_id == celery_task_id
-                ).first()
-                
-                if not task:
-                    # 创建新的处理任务记录
-                    task = ProcessingTask(
-                        video_id=int(video_id),
-                        task_type=ProcessingTaskType.SPLIT_AUDIO,
-                        task_name="音频分割",
-                        celery_task_id=celery_task_id,
-                        input_data={"audio_minio_path": audio_minio_path},
-                        status=ProcessingTaskStatus.RUNNING,
-                        started_at=datetime.utcnow(),
-                        progress=0.0,
-                        stage=ProcessingStage.SPLIT_AUDIO
-                    )
-                    db.add(task)
-                    db.commit()
-                    print(f"Created new processing task for celery_task_id: {celery_task_id}")
-                    return True
-                return True
-        except Exception as e:
-            print(f"Error ensuring processing task exists: {e}")
-            return False
-    
-    def _update_task_status(celery_task_id: str, status: str, progress: float, message: str = None, error: str = None):
-        """更新任务状态 - 同步版本"""
-        # 如果这个任务是作为子任务运行的，不创建处理任务记录
-        if not create_processing_task:
-            print(f"Skipping status update for sub-task {celery_task_id} (create_processing_task=False)")
-            return
-            
-        try:
-            # 确保任务存在
-            _ensure_processing_task_exists(celery_task_id, video_id)
-            
-            with get_sync_db() as db:
-                state_manager = get_state_manager(db)
-                state_manager.update_celery_task_status_sync(
-                    celery_task_id=celery_task_id,
-                    celery_status=status,
-                    meta={
-                        'progress': progress,
-                        'message': message,
-                        'error': error,
-                        'stage': ProcessingStage.SPLIT_AUDIO
-                    }
-                )
-        except ValueError as e:
-            # 记录详细错误信息
-            print(f"Warning: Processing task update failed - {type(e).__name__}: {e}")
-        except Exception as e:
-            print(f"Error updating task status: {type(e).__name__}: {e}")
-    
-    def run_async(coro):
-        """运行异步代码的辅助函数"""
-        try:
-            loop = asyncio.get_event_loop()
-        except RuntimeError:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-        return loop.run_until_complete(coro)
-    
-    try:
-        celery_task_id = self.request.id
-        if not celery_task_id:
-            celery_task_id = "unknown"
-            
-        _update_task_status(celery_task_id, ProcessingTaskStatus.RUNNING, 10, "开始分割音频")
-        self.update_state(state='PROGRESS', meta={'progress': 10, 'stage': ProcessingStage.SPLIT_AUDIO, 'message': '开始分割音频'})
-        
-        with tempfile.TemporaryDirectory() as temp_dir:
-            temp_path = Path(temp_dir)
-            audio_filename = f"{video_id}.wav"
-            audio_path = temp_path / audio_filename
-            
-            from app.core.config import settings
-            bucket_prefix = f"{settings.minio_bucket_name}/"
-            if audio_minio_path.startswith(bucket_prefix):
-                object_name = audio_minio_path[len(bucket_prefix):]
-            else:
-                # Handle both full URLs and object names
-                if "http" in audio_minio_path:
-                    # It's a full URL, extract the object name
-                    from urllib.parse import urlparse
-                    parsed = urlparse(audio_minio_path)
-                    path_parts = parsed.path.strip('/').split('/', 1)
-                    if len(path_parts) > 1:
-                        object_name = path_parts[1]  # Skip bucket name
-                    else:
-                        object_name = audio_minio_path
-                else:
-                    object_name = audio_minio_path
-            
-            _update_task_status(celery_task_id, ProcessingTaskStatus.RUNNING, 30, "正在下载音频文件")
-            self.update_state(state='PROGRESS', meta={'progress': 30, 'stage': ProcessingStage.SPLIT_AUDIO, 'message': '正在下载音频文件'})
-            
-            audio_url = run_async(minio_service.get_file_url(object_name, expiry=3600))
-            if not audio_url:
-                raise Exception("无法获取音频文件URL")
-            
-            import requests
-            response = requests.get(audio_url, stream=True)
-            response.raise_for_status()
-            
-            with open(audio_path, 'wb') as f:
-                for chunk in response.iter_content(chunk_size=8192):
-                    f.write(chunk)
-            
-            _update_task_status(celery_task_id, ProcessingTaskStatus.RUNNING, 70, "正在分割音频")
-            self.update_state(state='PROGRESS', meta={'progress': 70, 'stage': ProcessingStage.SPLIT_AUDIO, 'message': '正在分割音频'})
-            
-            result = run_async(
-                audio_processor.split_audio_file(
-                    audio_path=str(audio_path),
-                    video_id=video_id,
-                    project_id=project_id,
-                    user_id=user_id
-                )
-            )
-            
-            if not result:
-                raise Exception("音频分割任务返回空结果")
-            
-            if result.get('success'):
-                # 保存分割结果到数据库 - 使用同步版本
-                try:
-                    with get_sync_db() as db:
-                        state_manager = get_state_manager(db)
-                        
-                        # 通过celery_task_id找到task_id
-                        task = db.query(ProcessingTask).filter(
-                            ProcessingTask.celery_task_id == celery_task_id
-                        ).first()
-                        
-                        if task:
-                            print(f"找到任务记录: task.id={task.id}, task.celery_task_id={task.celery_task_id}")
-                            print(f"开始更新任务状态...")
-                            
-                            state_manager.update_task_status_sync(
-                                task_id=task.id,
-                                status=ProcessingTaskStatus.SUCCESS,
-                                progress=100,
-                                message="音频分割完成",
-                                output_data={
-                                    'total_segments': result['total_segments'],
-                                    'split_files': result['split_files'],
-                                    'segmentation_params': result['segmentation_params']
-                                },
-                                stage=ProcessingStage.SPLIT_AUDIO
-                            )
-                            print(f"任务状态更新完成")
-                        else:
-                            print(f"未找到任务记录: celery_task_id={celery_task_id}")
-                    
-                    _update_task_status(celery_task_id, ProcessingTaskStatus.SUCCESS, 100, "音频分割完成")
-                except Exception as e:
-                    print(f"状态更新失败: {e}")
-                    import traceback
-                    print(f"详细错误信息: {traceback.format_exc()}")
-                
-                self.update_state(state='SUCCESS', meta={'progress': 100, 'stage': ProcessingStage.SPLIT_AUDIO, 'message': '音频分割完成'})
-                return {
-                    'status': 'completed',
-                    'video_id': video_id,
-                    'total_segments': result['total_segments'],
-                    'split_files': result['split_files'],
-                    'segmentation_params': result['segmentation_params']
-                }
-            else:
-                raise Exception(result.get('error', 'Unknown error'))
-                
-    except Exception as e:
-        import traceback
-        error_msg = str(e)
-        error_type = type(e).__name__
-        error_details = traceback.format_exc()
-        
-        print(f"Audio split failed - {error_type}: {error_msg}")
-        print(f"Full traceback: {error_details}")
-        
-        try:
-            _update_task_status(
-                self.request.id, 
-                ProcessingTaskStatus.FAILURE, 
-                0, 
-                f"{error_type}: {error_msg}"
-            )
-        except Exception as status_error:
-            print(f"Failed to update task status: {type(status_error).__name__}: {status_error}")
-        
-        raise Exception(f"{error_type}: {error_msg}")
 
 @shared_task(bind=True)
-def generate_srt(self, video_id: str, project_id: int, user_id: int, split_files: list, create_processing_task: bool = True) -> Dict[str, Any]:
-    """Generate SRT subtitles from audio segments using ASR"""
+def generate_srt(self, video_id: str, project_id: int, user_id: int, split_files: list = None, create_processing_task: bool = True) -> Dict[str, Any]:
+    """Generate SRT subtitles from audio using ASR"""
     
     def _ensure_processing_task_exists(celery_task_id: str, video_id: int) -> bool:
         """确保处理任务记录存在"""
@@ -688,7 +484,7 @@ def generate_srt(self, video_id: str, project_id: int, user_id: int, split_files
                         task_type=ProcessingTaskType.GENERATE_SRT,
                         task_name="字幕生成",
                         celery_task_id=celery_task_id,
-                        input_data={"split_files": split_files},
+                        input_data={"direct_audio": True},
                         status=ProcessingTaskStatus.RUNNING,
                         started_at=datetime.utcnow(),
                         progress=0.0,
@@ -703,25 +499,39 @@ def generate_srt(self, video_id: str, project_id: int, user_id: int, split_files
             print(f"Error ensuring processing task exists: {e}")
             return False
     
-    def _get_split_files_from_db(video_id_str: str) -> list:
-        """从数据库获取分割文件信息 - 同步版本"""
+    def _get_audio_file_from_db(video_id_str: str) -> dict:
+        """从数据库获取音频文件信息 - 同步版本"""
         with get_sync_db() as db:
             from sqlalchemy import select
             from app.models.processing_task import ProcessingTask
+            from app.models.video import Video
             
-            # 查找最新的成功完成的split_audio任务
-            stmt = select(ProcessingTask).where(
-                ProcessingTask.video_id == int(video_id_str),
-                ProcessingTask.task_type == ProcessingTaskType.SPLIT_AUDIO,
-                ProcessingTask.status == ProcessingTaskStatus.SUCCESS
-            ).order_by(ProcessingTask.completed_at.desc())
+            # 首先查找视频记录
+            video = db.query(Video).filter(Video.id == int(video_id_str)).first()
+            if not video:
+                return None
+                
+            # 尝试从视频的processing_metadata中获取音频路径
+            audio_path = None
+            if video.processing_metadata and video.processing_metadata.get('audio_path'):
+                audio_path = video.processing_metadata.get('audio_path')
+            else:
+                # 查找最新的成功完成的extract_audio任务
+                stmt = select(ProcessingTask).where(
+                    ProcessingTask.video_id == int(video_id_str),
+                    ProcessingTask.task_type == ProcessingTaskType.EXTRACT_AUDIO,
+                    ProcessingTask.status == ProcessingTaskStatus.SUCCESS
+                ).order_by(ProcessingTask.completed_at.desc())
+                
+                result = db.execute(stmt)
+                task = result.first()
+                
+                if task and task[0].output_data:
+                    audio_path = task[0].output_data.get('minio_path')
             
-            result = db.execute(stmt)
-            task = result.first()
-            
-            if task and task[0].output_data:
-                return task[0].output_data.get('split_files', [])
-            return []
+            if audio_path:
+                return {"audio_path": audio_path, "video_id": video_id_str}
+            return None
     
     def _update_task_status(celery_task_id: str, status: str, progress: float, message: str = None, error: str = None):
         """更新任务状态 - 同步版本"""
@@ -769,66 +579,59 @@ def generate_srt(self, video_id: str, project_id: int, user_id: int, split_files
         _update_task_status(celery_task_id, ProcessingTaskStatus.RUNNING, 10, "开始生成字幕")
         self.update_state(state='PROGRESS', meta={'progress': 10, 'stage': ProcessingStage.GENERATE_SRT, 'message': '开始生成字幕'})
         
-        # 如果传入的split_files为空，尝试从数据库获取
-        if not split_files:
-            print(f"传入的split_files为空，尝试从数据库获取...")
-            split_files = _get_split_files_from_db(video_id)
-            print(f"从数据库获取到 {len(split_files)} 个分割文件")
-        
-        if not split_files:
-            error_msg = "没有找到可用的分割音频文件"
+        # 获取音频文件信息
+        audio_info = _get_audio_file_from_db(video_id)
+        if not audio_info:
+            error_msg = "没有找到可用的音频文件，请先提取音频"
             _update_task_status(celery_task_id, ProcessingTaskStatus.FAILURE, 0, error_msg)
             raise Exception(error_msg)
         
         with tempfile.TemporaryDirectory() as temp_dir:
                 temp_path = Path(temp_dir)
-                audio_dir = temp_path / "audio_segments"
-                audio_dir.mkdir(exist_ok=True)
+                audio_filename = f"{video_id}.wav"
+                audio_path = temp_path / audio_filename
                 
-                for i, split_file in enumerate(split_files):
-                    _update_task_status(celery_task_id, ProcessingTaskStatus.RUNNING, 20 + (i * 10 // len(split_files)), f"正在下载音频段 {i+1}")
-                    self.update_state(state='PROGRESS', meta={'progress': 20 + (i * 10 // len(split_files)), 'stage': ProcessingStage.GENERATE_SRT, 'message': f'正在下载音频段 {i+1}'})
-                    
+                _update_task_status(celery_task_id, ProcessingTaskStatus.RUNNING, 30, "正在下载音频文件")
+                self.update_state(state='PROGRESS', meta={'progress': 30, 'stage': ProcessingStage.GENERATE_SRT, 'message': '正在下载音频文件'})
+                
+                # Handle both full URLs and object names
+                audio_minio_path = audio_info['audio_path']
+                from app.core.config import settings
+                bucket_prefix = f"{settings.minio_bucket_name}/"
+                if audio_minio_path.startswith(bucket_prefix):
+                    object_name = audio_minio_path[len(bucket_prefix):]
+                else:
                     # Handle both full URLs and object names
-                    object_name = split_file.get('object_name', '')
-                    if not object_name and 'minio_path' in split_file:
-                        # Extract object name from minio_path
+                    if "http" in audio_minio_path:
+                        # It's a full URL, extract the object name
                         from urllib.parse import urlparse
-                        minio_path = split_file['minio_path']
-                        if "http" in minio_path:
-                            parsed = urlparse(minio_path)
-                            path_parts = parsed.path.strip('/').split('/', 1)
-                            if len(path_parts) > 1:
-                                object_name = path_parts[1]
-                            else:
-                                object_name = minio_path
+                        parsed = urlparse(audio_minio_path)
+                        path_parts = parsed.path.strip('/').split('/', 1)
+                        if len(path_parts) > 1:
+                            object_name = path_parts[1]  # Skip bucket name
                         else:
-                            from app.core.config import settings
-                            bucket_prefix = f"{settings.minio_bucket_name}/"
-                            if minio_path.startswith(bucket_prefix):
-                                object_name = minio_path[len(bucket_prefix):]
-                            else:
-                                object_name = minio_path
-                    
-                    audio_url = run_async(minio_service.get_file_url(object_name, expiry=3600))
-                    if not audio_url:
-                        raise Exception(f"无法获取音频文件URL: {object_name}")
-                    
-                    import requests
-                    response = requests.get(audio_url, stream=True)
-                    response.raise_for_status()
-                    
-                    segment_path = audio_dir / f"segment_{split_file['segment_index']:03d}.wav"
-                    with open(segment_path, 'wb') as f:
-                        for chunk in response.iter_content(chunk_size=8192):
-                            f.write(chunk)
+                            object_name = audio_minio_path
+                    else:
+                        object_name = audio_minio_path
+                
+                audio_url = run_async(minio_service.get_file_url(object_name, expiry=3600))
+                if not audio_url:
+                    raise Exception(f"无法获取音频文件URL: {object_name}")
+                
+                import requests
+                response = requests.get(audio_url, stream=True)
+                response.raise_for_status()
+                
+                with open(audio_path, 'wb') as f:
+                    for chunk in response.iter_content(chunk_size=8192):
+                        f.write(chunk)
                 
                 _update_task_status(celery_task_id, ProcessingTaskStatus.RUNNING, 70, "正在生成字幕")
                 self.update_state(state='PROGRESS', meta={'progress': 70, 'stage': ProcessingStage.GENERATE_SRT, 'message': '正在生成字幕'})
             
                 result = run_async(
                     audio_processor.generate_srt_from_audio(
-                        audio_dir=str(audio_dir),
+                        audio_path=str(audio_path),
                         video_id=video_id,
                         project_id=project_id,
                         user_id=user_id

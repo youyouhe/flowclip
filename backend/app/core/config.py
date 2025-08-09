@@ -41,6 +41,9 @@ class Settings(BaseSettings):
     youtube_api_key: Optional[str] = None
     youtube_cookies_file: Optional[str] = "/home/cat/github/slice-youtube/youtube_cookies.txt"
     
+    # ASR Service Configuration
+    asr_service_url: str = "http://192.168.8.107:5001/asr"
+    
     # LLM Configuration
     openrouter_api_key: Optional[str] = None
     llm_system_prompt: str = '''你作为一名优秀的视频切片剪辑师，附件是视频附带的SRT内容， \

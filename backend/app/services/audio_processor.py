@@ -145,6 +145,8 @@ class AudioProcessor:
             logger.error(f"获取音频信息失败: {str(e)}")
             return {}
     
+    # DEPRECATED: 此方法已弃用，系统不再支持音频分割功能
+    # 保留在这里仅为了向后兼容，建议使用generate_srt_from_audio直接处理完整音频文件
     async def split_audio_file(
         self,
         audio_path: str,
@@ -386,17 +388,23 @@ class AudioProcessor:
     
     async def generate_srt_from_audio(
         self,
-        audio_dir: str,
+        audio_path: str,
         video_id: str,
         project_id: int,
         user_id: int,
-        api_url: str = "http://localhost:5000/asr",
+        api_url: str = None,
         lang: str = "zh",
         max_workers: int = 5
     ) -> Dict[str, Any]:
-        """从音频文件生成SRT字幕文件"""
+        """从音频文件生成SRT字幕文件 - 更新为直接处理音频文件"""
         
-        logger.info(f"开始生成SRT字幕: {audio_dir}")
+        logger.info(f"开始生成SRT字幕: {audio_path}")
+        
+        # 如果没有提供API URL，则使用配置中的默认值
+        if api_url is None:
+            from app.core.config import settings
+            api_url = settings.asr_service_url
+            logger.info(f"使用默认ASR服务URL: {api_url}")
         
         try:
             # 导入SRT生成模块和工具
@@ -415,13 +423,67 @@ class AudioProcessor:
             with tempfile.TemporaryDirectory() as temp_dir:
                 temp_path = Path(temp_dir)
                 
+                # 如果传入的是音频文件，创建临时目录并复制文件
+                if os.path.isfile(audio_path):
+                    import shutil
+                    temp_audio_dir = temp_path / "audio"
+                    temp_audio_dir.mkdir()
+                    dest_audio_path = temp_audio_dir / Path(audio_path).name
+                    shutil.copy2(audio_path, dest_audio_path)
+                    process_dir = str(temp_audio_dir)
+                else:
+                    # 如果传入的是目录，直接使用
+                    process_dir = audio_path
+                
                 # 处理音频文件生成SRT
-                results = process_directory(
-                    directory=audio_dir,
-                    api_url=api_url,
-                    lang=lang,
-                    max_workers=max_workers
-                )
+                import sys
+                import os
+                sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
+                from wav_to_srt_direct_updated import process_audio_file
+                
+                # 检查process_dir是文件还是目录
+                if os.path.isfile(audio_path):
+                    # 处理单个音频文件
+                    logger.info(f"处理单个音频文件: {audio_path}")
+                    result = process_audio_file(
+                        file_path=audio_path,
+                        api_url=api_url,
+                        index=1,  # 为单个文件指定索引
+                        lang=lang
+                    )
+                    results = [result] if result else []
+                else:
+                    # 处理目录中的音频文件 - 这种情况现在很少见
+                    logger.info(f"处理音频文件目录: {process_dir}")
+                    
+                    # 对于目录处理，需要确保文件名格式正确
+                    wav_files = [f for f in os.listdir(process_dir) if f.endswith('.wav')]
+                    if wav_files:
+                        # 检查是否是分割文件格式 (xxx_yyy.wav)
+                        sample_file = wav_files[0]
+                        if '_' in sample_file and sample_file.split('_')[1].split('.')[0].isdigit():
+                            # 使用原有的目录处理方法
+                            results = process_directory(
+                                directory=process_dir,
+                                api_url=api_url,
+                                lang=lang,
+                                max_workers=max_workers
+                            )
+                        else:
+                            # 不是分割文件格式，逐个处理每个文件
+                            results = []
+                            for idx, wav_file in enumerate(wav_files, 1):
+                                file_path = os.path.join(process_dir, wav_file)
+                                result = process_audio_file(
+                                    file_path=file_path,
+                                    api_url=api_url,
+                                    index=idx,
+                                    lang=lang
+                                )
+                                if result:
+                                    results.append(result)
+                    else:
+                        results = []
                 
                 # 添加WAV时长信息到结果中
                 for result in results:

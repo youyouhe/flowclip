@@ -328,6 +328,7 @@ const Dashboard: React.FC = () => {
                 columns={projectColumns}
                 pagination={false}
                 size="small"
+                rowKey="id"
               />
             ) : (
               <div className="text-gray-500 text-center py-8">暂无项目</div>
@@ -342,6 +343,7 @@ const Dashboard: React.FC = () => {
                 columns={activityColumns}
                 pagination={false}
                 size="small"
+                rowKey="id"
               />
             ) : (
               <div className="text-gray-500 text-center py-8">暂无活动</div>

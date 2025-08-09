@@ -245,7 +245,7 @@ def setup_logging(log_file=None):
 def main():
     parser = argparse.ArgumentParser(description='处理WAV文件并生成SRT字幕')
     parser.add_argument('directory', help='包含WAV文件的目录')
-    parser.add_argument('--api-url', default='http://192.168.8.107:5000/asr', help='ASR API URL')
+    parser.add_argument('--api-url', default='http://192.168.8.107:5001/asr', help='ASR API URL')
     parser.add_argument('--lang', default='zh', help='语言代码，默认为中文(zh)')
     parser.add_argument('--workers', type=int, default=5, help='并行处理的线程数')
     parser.add_argument('--output', help='输出SRT文件路径')

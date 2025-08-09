@@ -102,9 +102,6 @@ class ProcessingStatus(Base):
     extract_audio_status = Column(String(50), default=ProcessingTaskStatus.PENDING)
     extract_audio_progress = Column(Float, default=0.0)
     
-    split_audio_status = Column(String(50), default=ProcessingTaskStatus.PENDING)
-    split_audio_progress = Column(Float, default=0.0)
-    
     generate_srt_status = Column(String(50), default=ProcessingTaskStatus.PENDING)
     generate_srt_progress = Column(Float, default=0.0)
     

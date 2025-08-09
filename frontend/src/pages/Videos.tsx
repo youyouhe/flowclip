@@ -456,7 +456,8 @@ const Videos: React.FC = () => {
         // 状态查询会自动获取所有活跃视频的最新状态
         
         // 如果下载接近完成（>=95%），主动查询特定视频的最终状态
-        if (data.download_progress >= 95 && data.download_progress < 100) {
+        const downloadProgress = data.download_progress || 0;
+        if (downloadProgress >= 95 && downloadProgress < 100) {
           console.log('🔄 [Videos] Video download near completion, requesting final status...');
           // 延迟1秒后查询特定视频的最终状态
           setTimeout(() => {

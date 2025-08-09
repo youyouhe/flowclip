@@ -84,10 +84,8 @@ export const videoAPI = {
   
     extractAudio: (videoId: number) =>
     api.post(`/videos/${videoId}/extract-audio`),
-  splitAudio: (videoId: number) =>
-    api.post(`/videos/${videoId}/split-audio`),
-  generateSrt: (videoId: number, splitFiles?: any[]) =>
-    api.post(`/videos/${videoId}/generate-srt`, { split_files: splitFiles }),
+    generateSrt: (videoId: number) =>
+    api.post(`/videos/${videoId}/generate-srt`),
   getTaskStatus: (videoId: number, taskId: string) =>
     api.get(`/videos/${videoId}/task-status/${taskId}`),
   getAudioDownloadUrl: (videoId: number, expiry: number = 3600) =>

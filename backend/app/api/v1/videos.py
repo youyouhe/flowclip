@@ -19,7 +19,7 @@ from app.services.youtube_downloader_minio import downloader_minio
 from app.services.minio_client import minio_service
 from app.services.state_manager import get_state_manager
 from app.core.constants import ProcessingTaskType
-from app.tasks.video_tasks import extract_audio, split_audio, generate_srt
+from app.tasks.video_tasks import extract_audio, generate_srt
 
 # 简单的内存缓存，用于减少数据库查询
 progress_cache = {}
@@ -801,72 +801,17 @@ async def extract_audio_endpoint(
     logger.info(f"返回响应数据: {response_data}")
     return response_data
 
-@router.post("/{video_id}/split-audio")
-async def split_audio_endpoint(
-    video_id: int,
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
-):
-    """分割音频文件"""
-    
-    # 验证视频属于当前用户
-    stmt = select(Video).join(Project).where(
-        Video.id == video_id,
-        Project.user_id == current_user.id
-    )
-    result = await db.execute(stmt)
-    video = result.scalar_one_or_none()
-    if not video:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Video not found"
-        )
-    
-    # 检查音频文件是否存在
-    # 首先从数据库获取音频文件路径
-    stmt = select(Video).where(Video.id == video_id)
-    result = await db.execute(stmt)
-    video_record = result.scalar_one()
-    
-    # 构建音频文件路径
-    if video_record.processing_metadata and video_record.processing_metadata.get('audio_path'):
-        audio_minio_path = video_record.processing_metadata['audio_path']
-    else:
-        # 使用标准路径格式
-        audio_minio_path = f"users/{current_user.id}/projects/{video.project_id}/audio/{video.id}.wav"
-    
-    # 启动音频分割任务
-    task = celery_app.send_task('app.tasks.video_tasks.split_audio', 
-        args=[str(video.id), video.project_id, current_user.id, audio_minio_path]
-    )
-    
-    # 创建处理任务记录，使用实际的Celery任务ID
-    state_manager = get_state_manager(db)
-    processing_task = await state_manager.create_processing_task(
-        video_id=video.id,
-        task_type=ProcessingTaskType.SPLIT_AUDIO,
-        task_name="音频分割",
-        celery_task_id=task.id,
-        input_data={"audio_minio_path": audio_minio_path}
-    )
-    await db.commit()
-    
-    return {
-        "task_id": task.id,
-        "processing_task_id": processing_task.id,
-        "message": "Audio splitting started",
-        "status": "processing"
-    }
 
 @router.post("/{video_id}/generate-srt")
 async def generate_srt_endpoint(
     video_id: int,
-    request_data: dict = Body({}),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
     """生成SRT字幕文件"""
     
+    logger.info(f"开始生成字幕 - video_id: {video_id}, user_id: {current_user.id}")
+    
     # 验证视频属于当前用户
     stmt = select(Video).join(Project).where(
         Video.id == video_id,
@@ -874,40 +819,19 @@ async def generate_srt_endpoint(
     )
     result = await db.execute(stmt)
     video = result.scalar_one_or_none()
+    
     if not video:
+        logger.error(f"视频未找到 - video_id: {video_id}, user_id: {current_user.id}")
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Video not found"
         )
     
-    # 从请求数据中获取分割文件列表
-    split_files = request_data.get('split_files', [])
+    logger.info(f"找到视频 - video_id: {video_id}, title: {video.title}")
     
-    # 如果没有提供分割文件列表，尝试从数据库查询分割文件信息
-    if not split_files:
-        # 从视频的处理元数据中获取分割文件信息
-        if video.processing_metadata and video.processing_metadata.get('split_files'):
-            split_files = video.processing_metadata.get('split_files', [])
-        else:
-            # 如果没有分割文件信息，尝试从数据库查询最近的分割任务
-            from app.models.processing_task import ProcessingTask
-            stmt = select(ProcessingTask).where(
-                ProcessingTask.video_id == video_id,
-                ProcessingTask.task_type == ProcessingTaskType.SPLIT_AUDIO,
-                ProcessingTask.status == "success"
-            ).order_by(ProcessingTask.created_at.desc()).limit(1)
-            
-            result = await db.execute(stmt)
-            split_task = result.scalar_one_or_none()
-            
-            if split_task and split_task.output_data:
-                split_files = split_task.output_data.get('split_files', [])
-            else:
-                split_files = []
-    
-    # 启动SRT生成任务
+    # 启动SRT生成任务（不再需要split_files参数）
     task = celery_app.send_task('app.tasks.video_tasks.generate_srt', 
-        args=[str(video.id), video.project_id, current_user.id, split_files]
+        args=[str(video.id), video.project_id, current_user.id]  # 移除split_files参数
     )
     
     # 创建处理任务记录，使用实际的Celery任务ID
@@ -917,9 +841,12 @@ async def generate_srt_endpoint(
         task_type=ProcessingTaskType.GENERATE_SRT,
         task_name="字幕生成",
         celery_task_id=task.id,
-        input_data={"split_files": split_files}
+        input_data={"direct_audio": True}  # 标记为直接使用音频文件
     )
+    
     await db.commit()
+    
+    logger.info(f"Celery任务已启动 - task_id: {task.id}, processing_task_id: {processing_task.id}")
     
     return {
         "task_id": task.id,
@@ -1506,8 +1433,6 @@ async def get_video_processing_status(
             return {
                 "extract_audio_status": "pending",
                 "extract_audio_progress": 0.0,
-                "split_audio_status": "pending",
-                "split_audio_progress": 0.0,
                 "generate_srt_status": "pending",
                 "generate_srt_progress": 0.0,
                 "overall_status": "pending",
@@ -1518,8 +1443,6 @@ async def get_video_processing_status(
         return {
             "extract_audio_status": processing_status.extract_audio_status,
             "extract_audio_progress": processing_status.extract_audio_progress,
-            "split_audio_status": processing_status.split_audio_status,
-            "split_audio_progress": processing_status.split_audio_progress,
             "generate_srt_status": processing_status.generate_srt_status,
             "generate_srt_progress": processing_status.generate_srt_progress,
             "overall_status": processing_status.overall_status,
