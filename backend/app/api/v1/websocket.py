@@ -5,7 +5,8 @@ from typing import Dict, Any, Optional
 import json
 import asyncio
 from app.core.database import get_db, AsyncSessionLocal # Import AsyncSessionLocal
-from app.core.security import get_current_user_from_token
+from fastapi import Depends
+from app.core.security import get_current_user, oauth2_scheme
 from app.models.user import User
 from app.models.video import Video
 from app.models.project import Project
@@ -162,14 +163,21 @@ async def websocket_test_endpoint(websocket: WebSocket):
         await websocket.close(code=1011, reason=f"Server error: {str(e)}")
 
 
-@router.websocket("/ws/progress/{token}")
-async def websocket_progress_endpoint(websocket: WebSocket, token: str): # Removed db dependency
+@router.websocket("/progress/{token}")
+async def websocket_progress_endpoint(websocket: WebSocket, token: str):
     """WebSocket端点用于实时进度更新"""
-    user_id: Optional[int] = None # Initialize user_id outside try block for finally
+    user_id: Optional[int] = None
     try:
-        async with AsyncSessionLocal() as db_session: # Manually manage session
+        async with AsyncSessionLocal() as db_session:
             # 验证token
-            user = await get_current_user_from_token(token=token, db=db_session) # Pass db_session
+            user = await get_current_user_from_token(token=token, db=db_session)
+            
+            if not user:
+                await websocket.close(code=4001, reason="Invalid token")
+                return
+            
+            user_id = user.id
+            await manager.connect(websocket, user_id)
             
             if not user:
                 await websocket.close(code=4001, reason="Invalid token")
@@ -365,6 +373,11 @@ async def send_current_progress(websocket: WebSocket, video_id: int, user_id: in
                 actual_download_progress = video.download_progress or 0
                 actual_status = video.status
                 
+                # 检查所有任务是否都已完成，如果都完成了，将视频状态设置为completed
+                all_tasks_completed = len(tasks) > 0 and all(task.status == 'success' for task in tasks)
+                if all_tasks_completed and len(tasks) >= 2:  # 至少要有下载和音频提取任务
+                    actual_status = 'completed'
+                
                 # 如果processing_status存在，使用更精确的状态信息
                 if processing_status:
                     # 优先使用processing_status中的下载进度
@@ -373,9 +386,15 @@ async def send_current_progress(websocket: WebSocket, video_id: int, user_id: in
                     
                     # 状态判断逻辑：
                     # 1. 如果video.status是completed，保持completed
-                    # 2. 如果video.status是processing，保持processing  
-                    # 3. 如果video.status是pending或downloading，但processing_status.download_status是success，则设为downloaded
-                    if actual_status in ['pending', 'downloading'] and processing_status.download_status == 'success':
+                    # 2. 如果所有任务都已完成，设置为completed
+                    # 3. 如果video.status是processing，保持processing  
+                    # 4. 如果video.status是pending或downloading，但processing_status.download_status是success，则设为downloaded
+                    if actual_status == 'completed':
+                        # 保持completed状态
+                        pass
+                    elif all_tasks_completed and len(tasks) >= 2:
+                        actual_status = 'completed'
+                    elif actual_status in ['pending', 'downloading'] and processing_status.download_status == 'success':
                         actual_status = 'downloaded'
                         actual_download_progress = 100.0
                     elif actual_status in ['pending', 'downloading'] and processing_status.download_progress > 0:
@@ -478,6 +497,11 @@ async def send_current_progress(websocket: WebSocket, video_id: int, user_id: in
                 actual_download_progress = video.download_progress or 0
                 actual_status = video.status
                 
+                # 检查所有任务是否都已完成，如果都完成了，将视频状态设置为completed
+                all_tasks_completed = len(tasks) > 0 and all(task.status == 'success' for task in tasks)
+                if all_tasks_completed and len(tasks) >= 2:  # 至少要有下载和音频提取任务
+                    actual_status = 'completed'
+                
                 # 如果processing_status存在，使用更精确的状态信息
                 if processing_status:
                     # 优先使用processing_status中的下载进度
@@ -486,9 +510,15 @@ async def send_current_progress(websocket: WebSocket, video_id: int, user_id: in
                     
                     # 状态判断逻辑：
                     # 1. 如果video.status是completed，保持completed
-                    # 2. 如果video.status是processing，保持processing  
-                    # 3. 如果video.status是pending或downloading，但processing_status.download_status是success，则设为downloaded
-                    if actual_status in ['pending', 'downloading'] and processing_status.download_status == 'success':
+                    # 2. 如果所有任务都已完成，设置为completed
+                    # 3. 如果video.status是processing，保持processing  
+                    # 4. 如果video.status是pending或downloading，但processing_status.download_status是success，则设为downloaded
+                    if actual_status == 'completed':
+                        # 保持completed状态
+                        pass
+                    elif all_tasks_completed and len(tasks) >= 2:
+                        actual_status = 'completed'
+                    elif actual_status in ['pending', 'downloading'] and processing_status.download_status == 'success':
                         actual_status = 'downloaded'
                         actual_download_progress = 100.0
                     elif actual_status in ['pending', 'downloading'] and processing_status.download_progress > 0:

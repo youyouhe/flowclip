@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.database import create_tables
 from app.models import LLMAnalysis, VideoSlice, VideoSubSlice
-from app.api.v1 import projects, videos, auth, processing, upload, llm, video_slice, status, websocket
+from app.api.v1 import api_router
 import uvicorn
 import logging
 import asyncio
@@ -78,15 +78,7 @@ app.add_middleware(
 )
 
 # Include routers
-app.include_router(auth.router, prefix="/api/v1/auth", tags=["authentication"])
-app.include_router(projects.router, prefix="/api/v1/projects", tags=["projects"])
-app.include_router(videos.router, prefix="/api/v1/videos", tags=["videos"])
-app.include_router(processing.router, prefix="/api/v1/processing", tags=["processing"])
-app.include_router(upload.router, prefix="/api/v1/upload", tags=["upload"])
-app.include_router(llm.router, prefix="/api/v1/llm", tags=["llm"])
-app.include_router(video_slice.router, prefix="/api/v1/video-slice", tags=["video-slice"])
-app.include_router(status.router, prefix="/api/v1/status", tags=["status"])
-app.include_router(websocket.router, prefix="/api/v1", tags=["websocket"])
+app.include_router(api_router, prefix="/api/v1")
 
 async def wait_for_database(max_retries=30, retry_interval=2):
     """等待数据库连接就绪"""

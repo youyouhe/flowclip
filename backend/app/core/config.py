@@ -94,8 +94,12 @@ class Settings(BaseSettings):
     # Temporary directory
     temp_dir: Optional[str] = "/tmp"
     
+    # CapCut Configuration
+    capcut_draft_folder: Optional[str] = None
+    
     class Config:
         env_file = ".env"
         case_sensitive = False
+        extra = "allow"
 
 settings = Settings()

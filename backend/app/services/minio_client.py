@@ -19,7 +19,14 @@ class MinioService:
         endpoint = settings.minio_endpoint
         if settings.minio_public_endpoint:
             # 对于URL生成，使用公共端点以确保签名正确
-            endpoint = settings.minio_public_endpoint
+            # 但初始化客户端时需要去除协议部分
+            public_endpoint = settings.minio_public_endpoint
+            if public_endpoint.startswith('http://'):
+                endpoint = public_endpoint[7:]  # Remove 'http://'
+            elif public_endpoint.startswith('https://'):
+                endpoint = public_endpoint[8:]  # Remove 'https://'
+            else:
+                endpoint = public_endpoint
         
         self.client = Minio(
             endpoint,

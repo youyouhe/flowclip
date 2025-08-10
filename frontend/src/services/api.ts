@@ -203,6 +203,49 @@ export const logAPI = {
     api.delete(`/processing/logs/video/${videoId}`),
 };
 
+// CapCut相关API
+export const capcutAPI = {
+  exportSlice: (sliceId: number, draftFolder: string) =>
+    api.post(`/capcut/export-slice/${sliceId}`, { draft_folder: draftFolder }),
+  getStatus: () =>
+    api.get('/capcut/status'),
+};
+
+// 资源管理相关API
+export const resourceAPI = {
+  // 资源管理
+  getResources: (params: any) =>
+    api.get('/resources', { params }),
+  getResource: (id: number) =>
+    api.get(`/resources/${id}`),
+  createResource: (data: any) =>
+    api.post('/resources', data),
+  updateResource: (id: number, data: any) =>
+    api.put(`/resources/${id}`, data),
+  deleteResource: (id: number) =>
+    api.delete(`/resources/${id}`),
+  uploadResource: (formData: FormData) =>
+    api.post('/resources/upload', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    }),
+  getResourceDownloadUrl: (id: number) =>
+    api.get(`/resources/${id}/download-url`),
+  getResourceViewUrl: (id: number) =>
+    api.get(`/resources/${id}/view-url`),
+  
+  // 标签管理
+  getResourceTags: (params?: any) =>
+    api.get('/resources/tags', { params }),
+  createResourceTag: (name: string, tagType: string, description?: string) =>
+    api.post('/resources/tags', null, {
+      params: { name, tag_type: tagType, description }
+    }),
+  deleteResourceTag: (id: number) =>
+    api.delete(`/resources/tags/${id}`),
+};
+
 // Dashboard相关API
 export const dashboardAPI = {
   getDashboardStats: () =>

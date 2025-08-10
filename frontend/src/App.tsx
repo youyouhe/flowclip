@@ -12,6 +12,8 @@ import Videos from './pages/Videos';
 import VideoDetail from './pages/VideoDetail';
 import LLMChat from './pages/LLMChat';
 import SliceManagement from './pages/SliceManagement';
+import CapCut from './pages/CapCut';
+import ResourceManagement from './pages/ResourceManagement';
 import Logs from './pages/Logs';
 import Login from './pages/Login';
 import Register from './pages/Register';
@@ -39,6 +41,8 @@ function App() {
               <Route path="videos/:id" element={<VideoDetail />} />
               <Route path="llm-chat" element={<LLMChat />} />
               <Route path="slice-management" element={<SliceManagement />} />
+              <Route path="capcut" element={<CapCut />} />
+              <Route path="resource-management" element={<ResourceManagement />} />
               <Route path="logs" element={<Logs />} />
             </Route>
           </Routes>
