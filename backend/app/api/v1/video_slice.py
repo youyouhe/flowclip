@@ -334,6 +334,12 @@ async def get_video_slices(
         result = await db.execute(stmt)
         slices = result.scalars().all()
         
+        # 确保返回的数据包含所有字段
+        # 由于SQLAlchemy已经设置了from_attributes=True，所有字段都应该被包含
+        logger.info(f"找到 {len(slices)} 个切片记录")
+        for slice_obj in slices:
+            logger.info(f"切片 {slice_obj.id}: capcut_status={getattr(slice_obj, 'capcut_status', 'NOT_FOUND')}")
+        
         return slices
         
     except Exception as e:
