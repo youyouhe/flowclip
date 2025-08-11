@@ -6,7 +6,7 @@ from datetime import datetime
 Base = declarative_base()
 
 # 多对多关系表：资源-标签
-resource_tags = Table(
+resource_tags_mapping = Table(
     'resource_tags_mapping',
     Base.metadata,
     Column('resource_id', Integer, ForeignKey('resources.id', ondelete='CASCADE'), primary_key=True),
@@ -51,7 +51,7 @@ class Resource(Base):
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now(), nullable=False)
     
     # 关系
-    tags = relationship("ResourceTag", secondary=resource_tags, back_populates="resources")
+    tags = relationship("ResourceTag", secondary=resource_tags_mapping, back_populates="resources")
     
     def __repr__(self):
         return f"<Resource(id={self.id}, filename='{self.filename}', type='{self.file_type}')>"
@@ -70,4 +70,4 @@ class ResourceTagRelation(Base):
     )
 
 # 为ResourceTag添加反向关系
-ResourceTag.resources = relationship("Resource", secondary=resource_tags, back_populates="tags")
+ResourceTag.resources = relationship("Resource", secondary=resource_tags_mapping, back_populates="tags")

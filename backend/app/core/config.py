@@ -95,6 +95,7 @@ class Settings(BaseSettings):
     temp_dir: Optional[str] = "/tmp"
     
     # CapCut Configuration
+    capcut_api_url: str = "http://192.168.8.107:9002"
     capcut_draft_folder: Optional[str] = None
     
     class Config:

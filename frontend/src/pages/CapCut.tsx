@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Card, 
   Select, 
@@ -109,6 +109,52 @@ const [capcutProgress, setCapcutProgress] = useState({
     }
   }, [selectedVideo]);
 
+  // 监听切片状态变化，当有切片完成时显示提示
+  const prevCompleted = useRef<number[]>([]);
+  
+  useEffect(() => {
+    const completedSlices = slices.filter(s => s.capcut_status === 'completed');
+    const processingSlices = slices.filter(s => s.capcut_status === 'processing');
+    
+    // 检查是否有新的完成的切片（避免重复提示）
+    if (completedSlices.length > prevCompleted.current.length) {
+      const newCompleted = completedSlices.filter(s => !prevCompleted.current.includes(s.id));
+      if (newCompleted.length > 0) {
+        const latestCompleted = newCompleted[0];
+        message.success(`CapCut导出完成：${latestCompleted.cover_title}`);
+        
+        // 如果有草稿URL，也显示一个提示
+        if (latestCompleted.capcut_draft_url) {
+          setTimeout(() => {
+            message.info(`📄 草稿文件已生成，可以点击"下载草稿"按钮下载`);
+          }, 1000);
+        }
+      }
+    }
+    
+    prevCompleted.current = completedSlices.map(s => s.id);
+  }, [slices]);
+
+  // 定时检查CapCut任务状态
+  useEffect(() => {
+    const checkCapCutTaskStatus = async () => {
+      if (!selectedVideo) return;
+
+      const processingSlices = slices.filter(s => s.capcut_status === 'processing');
+      if (processingSlices.length > 0) {
+        // 有正在处理的任务，刷新切片列表获取最新状态
+        try {
+          await loadSlices();
+        } catch (error) {
+          console.error('刷新切片状态失败:', error);
+        }
+      }
+    };
+
+    const intervalId = setInterval(checkCapCutTaskStatus, 3000); // 每3秒检查一次
+    return () => clearInterval(intervalId);
+  }, [slices, capcutProgress.isProcessing, selectedVideo]);
+
   const loadVideos = async () => {
     try {
       setVideosLoading(true);
@@ -207,18 +253,18 @@ const [capcutProgress, setCapcutProgress] = useState({
         // 更新切片状态
         setSlices(prev => prev.map(s => 
           s.id === selectedSlice.id 
-            ? {...s, capcut_status: 'completed', capcut_draft_url: response.data.draft_url} 
+            ? {...s, capcut_status: 'processing', capcut_task_id: response.data.task_id} 
             : s
         ));
         
         setCapcutProgress({
           isProcessing: false,
           progress: 100,
-          message: 'CapCut导出完成',
-          taskId: null
+          message: 'CapCut导出任务已启动',
+          taskId: response.data.task_id
         });
         
-        message.success('CapCut导出完成');
+        message.success('CapCut导出任务已启动');
       } else {
         throw new Error(response.data.message || '导出失败');
       }
@@ -243,9 +289,8 @@ const [capcutProgress, setCapcutProgress] = useState({
     }
     
     try {
-      // 这里应该调用后端API获取下载链接
       message.success('正在准备下载...');
-      // 模拟下载
+      // 直接在浏览器中打开下载链接
       window.open(slice.capcut_draft_url, '_blank');
     } catch (error) {
       message.error('下载失败');
@@ -312,6 +357,16 @@ const [capcutProgress, setCapcutProgress] = useState({
         };
         
         const config = statusConfig[record.capcut_status] || statusConfig.pending;
+        
+        if (record.capcut_status === 'completed' && record.capcut_draft_url) {
+          return (
+            <Space>
+              <Tag color={config.color}>{config.text}</Tag>
+              <Tag color="default">📄 草稿已生成</Tag>
+            </Space>
+          );
+        }
+        
         return <Tag color={config.color}>{config.text}</Tag>;
       },
     },
@@ -324,17 +379,24 @@ const [capcutProgress, setCapcutProgress] = useState({
             type="primary"
             icon={<VideoCameraAddOutlined />}
             onClick={() => handleCapCutExport(record)}
-            disabled={capcutStatus !== 'online'}
-            title={capcutStatus !== 'online' ? 'CapCut服务不可用' : ''}
+            disabled={capcutStatus !== 'online' || record.capcut_status === 'processing'}
+            title={
+              capcutStatus !== 'online' 
+                ? 'CapCut服务不可用' 
+                : record.capcut_status === 'processing' 
+                ? '正在处理中' 
+                : ''
+            }
           >
             CapCut导出
           </Button>
-          {record.capcut_status === 'completed' && (
+          {record.capcut_status === 'completed' && record.capcut_draft_url && (
             <Button
+              type="primary"
               icon={<DownloadOutlined />}
               onClick={() => handleDownloadDraft(record)}
             >
-              下载
+              下载草稿
             </Button>
           )}
           <Button
@@ -347,6 +409,9 @@ const [capcutProgress, setCapcutProgress] = useState({
                     <p><strong>描述:</strong> {record.description}</p>
                     <p><strong>标签:</strong> {record.tags?.join(', ')}</p>
                     <p><strong>文件路径:</strong> {record.sliced_file_path}</p>
+                    {record.capcut_draft_url && (
+                      <p><strong>CapCut草稿:</strong> 已生成</p>
+                    )}
                   </div>
                 ),
                 width: 600,

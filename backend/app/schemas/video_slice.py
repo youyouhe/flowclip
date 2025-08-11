@@ -64,6 +64,12 @@ class VideoSlice(VideoSliceBase):
     updated_at: Optional[datetime] = None
     processed_at: Optional[datetime] = None
     
+    # CapCut导出相关字段
+    capcut_status: Optional[str] = None
+    capcut_task_id: Optional[str] = None
+    capcut_draft_url: Optional[str] = None
+    capcut_error_message: Optional[str] = None
+    
     class Config:
         from_attributes = True
 

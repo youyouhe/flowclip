@@ -19,9 +19,19 @@ api.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
-// 响应拦截器处理错误
+// 响应拦截器处理错误和编码
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    // 确保响应数据被正确解码为UTF-8
+    if (response.data && typeof response.data === 'string') {
+      try {
+        response.data = JSON.parse(response.data);
+      } catch (e) {
+        console.warn('Failed to parse response data as JSON:', e);
+      }
+    }
+    return response;
+  },
   (error) => {
     if (error.response?.status === 401) {
       localStorage.removeItem('token');
@@ -225,11 +235,9 @@ export const resourceAPI = {
   deleteResource: (id: number) =>
     api.delete(`/resources/${id}`),
   uploadResource: (formData: FormData) =>
-    api.post('/resources/upload', formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
-    }),
+    api.post('/resources/upload', formData),
+  toggleResourceActiveStatus: (id: number, isActive: boolean) =>
+    api.put(`/resources/${id}/activate`, { is_active: isActive }),
   getResourceDownloadUrl: (id: number) =>
     api.get(`/resources/${id}/download-url`),
   getResourceViewUrl: (id: number) =>

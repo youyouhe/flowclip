@@ -6,7 +6,7 @@ import json
 import asyncio
 from app.core.database import get_db, AsyncSessionLocal # Import AsyncSessionLocal
 from fastapi import Depends
-from app.core.security import get_current_user, oauth2_scheme
+from app.core.security import get_current_user, get_current_user_from_token, oauth2_scheme
 from app.models.user import User
 from app.models.video import Video
 from app.models.project import Project
@@ -171,13 +171,6 @@ async def websocket_progress_endpoint(websocket: WebSocket, token: str):
         async with AsyncSessionLocal() as db_session:
             # 验证token
             user = await get_current_user_from_token(token=token, db=db_session)
-            
-            if not user:
-                await websocket.close(code=4001, reason="Invalid token")
-                return
-            
-            user_id = user.id
-            await manager.connect(websocket, user_id)
             
             if not user:
                 await websocket.close(code=4001, reason="Invalid token")

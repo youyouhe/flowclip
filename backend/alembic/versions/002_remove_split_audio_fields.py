@@ -10,8 +10,8 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = '002_remove_split_audio_fields'
-down_revision = '001_add_processing_status_tables'
+revision = '002'
+down_revision = '001'
 branch_labels = None
 depends_on = None
 

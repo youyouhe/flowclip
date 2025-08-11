@@ -58,6 +58,12 @@ class VideoSlice(Base):
     progress = Column(Float, default=0.0)  # 处理进度
     error_message = Column(Text)  # 错误信息
     
+    # CapCut 导出状态
+    capcut_status = Column(String(50), default="pending")  # pending, processing, completed, failed
+    capcut_task_id = Column(String(255), nullable=True)  # Celery任务ID
+    capcut_draft_url = Column(Text, nullable=True)  # CapCut草稿文件URL
+    capcut_error_message = Column(Text, nullable=True)  # CapCut导出错误信息
+    
     # 元数据
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())

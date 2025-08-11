@@ -60,6 +60,8 @@ class Resource(ResourceBase):
     download_count: int = 0
     view_count: int = 0
     created_by: int
+    is_active: bool = True
+    original_filename: str
     created_at: datetime
     updated_at: datetime
     tags: List[ResourceTag] = []
