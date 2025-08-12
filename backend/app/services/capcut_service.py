@@ -283,9 +283,9 @@ class CapCutService:
                 else:
                     raise Exception(f"添加文本失败: {str(e)}")
     
-    async def add_subtitle(self, draft_id: str, srt_path: str, font: str = "文轩体", 
-                          font_size: float = 8.0, font_color: str = "#ffde00",
-                          transform_x: float = 0, transform_y: float = -0.75,
+    async def add_subtitle(self, draft_id: str, srt_path: str, time_offset: float = 0.0,
+                          font: str = "挥墨体", font_size: float = 8.0, font_color: str = "#ffde00",
+                          transform_x: float = 0.0, transform_y: float = -0.8,
                           border_alpha: float = 1.0, border_color: str = "#000000",
                           border_width: float = 15.0, width: int = 1080, height: int = 1920,
                           max_retries: int = 3) -> Dict[str, Any]:
@@ -298,6 +298,7 @@ class CapCutService:
                     json={
                         "draft_id": draft_id,
                         "srt": srt_path,
+                        "time_offset": time_offset,
                         "font": font,
                         "font_size": font_size,
                         "font_color": font_color,
@@ -387,3 +388,6 @@ class CapCutService:
                     time.sleep(2 ** attempt)
                 else:
                     raise Exception(f"保存草稿失败: {str(e)}")
+
+# 全局实例
+capcut_service = CapCutService()

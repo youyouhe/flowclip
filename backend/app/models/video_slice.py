@@ -58,6 +58,20 @@ class VideoSlice(Base):
     progress = Column(Float, default=0.0)  # 处理进度
     error_message = Column(Text)  # 错误信息
     
+    # 音频处理状态
+    audio_processing_status = Column(String(50), default="pending")  # pending, processing, completed, failed
+    audio_progress = Column(Float, default=0.0)  # 音频处理进度
+    audio_task_id = Column(String(255), nullable=True)  # 音频处理的Celery任务ID
+    audio_error_message = Column(Text, nullable=True)  # 音频处理错误信息
+    audio_url = Column(Text, nullable=True)  # 音频文件的MinIO存储URL
+    
+    # SRT处理状态
+    srt_processing_status = Column(String(50), default="pending")  # pending, processing, completed, failed
+    srt_progress = Column(Float, default=0.0)  # SRT处理进度
+    srt_task_id = Column(String(255), nullable=True)  # SRT处理的Celery任务ID
+    srt_error_message = Column(Text, nullable=True)  # SRT处理错误信息
+    srt_url = Column(Text, nullable=True)  # SRT文件的MinIO存储URL
+    
     # CapCut 导出状态
     capcut_status = Column(String(50), default="pending")  # pending, processing, completed, failed
     capcut_task_id = Column(String(255), nullable=True)  # Celery任务ID
@@ -98,6 +112,20 @@ class VideoSubSlice(Base):
     status = Column(String(50), default="pending")  # pending, processing, completed, failed
     progress = Column(Float, default=0.0)  # 处理进度
     error_message = Column(Text)  # 错误信息
+    
+    # 音频处理状态
+    audio_processing_status = Column(String(50), default="pending")  # pending, processing, completed, failed
+    audio_progress = Column(Float, default=0.0)  # 音频处理进度
+    audio_task_id = Column(String(255), nullable=True)  # 音频处理的Celery任务ID
+    audio_error_message = Column(Text, nullable=True)  # 音频处理错误信息
+    audio_url = Column(Text, nullable=True)  # 音频文件的MinIO存储URL
+    
+    # SRT处理状态
+    srt_processing_status = Column(String(50), default="pending")  # pending, processing, completed, failed
+    srt_progress = Column(Float, default=0.0)  # SRT处理进度
+    srt_task_id = Column(String(255), nullable=True)  # SRT处理的Celery任务ID
+    srt_error_message = Column(Text, nullable=True)  # SRT处理错误信息
+    srt_url = Column(Text, nullable=True)  # SRT文件的MinIO存储URL
     
     # 元数据
     created_at = Column(DateTime(timezone=True), server_default=func.now())

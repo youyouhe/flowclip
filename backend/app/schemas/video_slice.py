@@ -64,6 +64,20 @@ class VideoSlice(VideoSliceBase):
     updated_at: Optional[datetime] = None
     processed_at: Optional[datetime] = None
     
+    # 音频处理相关字段
+    audio_processing_status: Optional[str] = None
+    audio_progress: Optional[float] = None
+    audio_task_id: Optional[str] = None
+    audio_error_message: Optional[str] = None
+    audio_url: Optional[str] = None
+    
+    # SRT处理相关字段
+    srt_processing_status: Optional[str] = None
+    srt_progress: Optional[float] = None
+    srt_task_id: Optional[str] = None
+    srt_error_message: Optional[str] = None
+    srt_url: Optional[str] = None
+    
     # CapCut导出相关字段
     capcut_status: Optional[str] = None
     capcut_task_id: Optional[str] = None
@@ -103,6 +117,20 @@ class VideoSubSlice(VideoSubSliceBase):
     updated_at: Optional[datetime] = None
     processed_at: Optional[datetime] = None
     
+    # 音频处理相关字段
+    audio_processing_status: Optional[str] = None
+    audio_progress: Optional[float] = None
+    audio_task_id: Optional[str] = None
+    audio_error_message: Optional[str] = None
+    audio_url: Optional[str] = None
+    
+    # SRT处理相关字段
+    srt_processing_status: Optional[str] = None
+    srt_progress: Optional[float] = None
+    srt_task_id: Optional[str] = None
+    srt_error_message: Optional[str] = None
+    srt_url: Optional[str] = None
+    
     class Config:
         from_attributes = True
 
@@ -123,6 +151,7 @@ class SliceProcessRequest(BaseModel):
     """切片处理请求"""
     analysis_id: int
     slice_items: List[Dict[str, Any]]  # 需要处理的切片项
+    process_srt: bool = False  # 是否在切片完成后处理SRT
 
 class SliceProcessResponse(BaseModel):
     """切片处理响应"""
