@@ -37,5 +37,6 @@ class Video(Base):
     audio_tracks = relationship("AudioTrack", back_populates="video", cascade="all, delete-orphan")
     transcripts = relationship("Transcript", back_populates="video", cascade="all, delete-orphan")
     processing_tasks = relationship("ProcessingTask", back_populates="video", cascade="all, delete-orphan")
+    processing_status = relationship("ProcessingStatus", back_populates="video", uselist=False, cascade="all, delete-orphan")
     llm_analyses = relationship("LLMAnalysis", back_populates="video", cascade="all, delete-orphan")
     video_slices = relationship("VideoSlice", back_populates="video", cascade="all, delete-orphan")
