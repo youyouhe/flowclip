@@ -587,24 +587,43 @@ const Videos: React.FC = () => {
       dataIndex: 'status',
       key: 'status',
       render: (status: string, record: Video) => {
-        const statusMap = {
-          pending: { color: 'orange', text: '等待中' },
-          downloading: { color: 'blue', text: '下载中' },
-          downloaded: { color: 'purple', text: '已下载' },
-          processing: { color: 'cyan', text: '处理中' },
-          completed: { color: 'green', text: '已完成' },
-          failed: { color: 'red', text: '失败' },
-        };
+        // 根据下载进度决定显示状态
+        const downloadProgress = record.download_progress || 0;
         
-        const statusConfig = statusMap[status as keyof typeof statusMap] || { color: 'default', text: status };
+        let displayStatus = status;
+        let statusConfig;
+        
+        // 优先根据下载进度判断
+        if (downloadProgress >= 100) {
+          // 下载完成，显示为已完成
+          statusConfig = { color: 'green', text: '已完成' };
+        } else if (downloadProgress > 0) {
+          // 正在下载
+          statusConfig = { color: 'blue', text: '下载中' };
+        } else if (status === 'pending') {
+          // 等待中
+          statusConfig = { color: 'orange', text: '等待中' };
+        } else if (status === 'processing') {
+          // 处理中
+          statusConfig = { color: 'cyan', text: '处理中' };
+        } else if (status === 'downloaded') {
+          // 已下载
+          statusConfig = { color: 'purple', text: '已下载' };
+        } else if (status === 'failed') {
+          // 失败
+          statusConfig = { color: 'red', text: '失败' };
+        } else {
+          // 其他状态
+          statusConfig = { color: 'default', text: status };
+        }
         
         return (
           <div>
             <Tag color={statusConfig.color}>{statusConfig.text}</Tag>
-            {status === 'downloading' && (
+            {(status === 'downloading' || (downloadProgress > 0 && downloadProgress < 100)) && (
               <div className="mt-1">
                 <Progress
-                  percent={Math.round(record.download_progress)}
+                  percent={Math.round(downloadProgress)}
                   size="small"
                   strokeColor={statusConfig.color}
                 />
@@ -637,9 +656,14 @@ const Videos: React.FC = () => {
             onConfirm={() => handleDeleteVideo(record.id)}
             okText="确定"
             cancelText="取消"
-            disabled={record.status === 'downloading'}
+            disabled={(record.download_progress || 0) > 0 && (record.download_progress || 0) < 100}
           >
-            <Button type="link" danger icon={<DeleteOutlined />} disabled={record.status === 'downloading'}>
+            <Button 
+              type="link" 
+              danger 
+              icon={<DeleteOutlined />} 
+              disabled={(record.download_progress || 0) > 0 && (record.download_progress || 0) < 100}
+            >
               删除
             </Button>
           </Popconfirm>
