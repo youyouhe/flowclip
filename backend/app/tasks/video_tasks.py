@@ -404,7 +404,7 @@ def extract_audio(self, video_id: str, project_id: int, user_id: int, video_mini
                 except Exception as e:
                     print(f"状态更新失败: {e}")
                 self.update_state(state='SUCCESS', meta={'progress': 100, 'stage': ProcessingStage.EXTRACT_AUDIO, 'message': '音频提取完成'})
-                # 更新视频的音频路径
+                # 更新视频的音频路径和时长信息
                 try:
                     async def _update_audio_path():
                         async with AsyncSessionLocal() as db:
@@ -415,10 +415,16 @@ def extract_audio(self, video_id: str, project_id: int, user_id: int, video_mini
                             video_result = await db.execute(stmt)
                             video = video_result.scalar_one()
                             
-                            # 更新音频路径到processing_metadata
+                            # 更新音频路径和时长信息到processing_metadata
                             if not video.processing_metadata:
                                 video.processing_metadata = {}
                             video.processing_metadata['audio_path'] = result['minio_path']
+                            video.processing_metadata['audio_info'] = {
+                                'duration': result.get('duration', 0),
+                                'audio_filename': result.get('audio_filename'),
+                                'file_size': result.get('file_size'),
+                                'audio_format': result.get('audio_format')
+                            }
                             await db.commit()
                     
                     run_async(_update_audio_path())

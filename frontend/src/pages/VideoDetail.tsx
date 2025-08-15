@@ -252,11 +252,13 @@ const VideoDetail: React.FC = () => {
         hasSrt: processingStatusData.generate_srt_status === 'completed' || processingStatusData.generate_srt_status === 'success',
         audioInfo: processingStatusData.extract_audio_status === 'completed' || processingStatusData.extract_audio_status === 'success' ? {
           status: processingStatusData.extract_audio_status,
-          progress: processingStatusData.extract_audio_progress
+          progress: processingStatusData.extract_audio_progress,
+          duration: processingStatusData.extract_audio_duration || 0
         } : null,
         srtInfo: processingStatusData.generate_srt_status === 'completed' || processingStatusData.generate_srt_status === 'success' ? {
           status: processingStatusData.generate_srt_status,
-          progress: processingStatusData.generate_srt_progress
+          progress: processingStatusData.generate_srt_progress,
+          totalSegments: processingStatusData.generate_srt_segments || 0
         } : null
       };
     }
@@ -991,7 +993,10 @@ const VideoDetail: React.FC = () => {
   const renderVideoPlayer = () => {
     if (!video) return null;
 
-    if (video.status !== 'completed' && video.status !== 'downloaded') {
+    // Show video player if video file exists (has file_path), regardless of status
+    const shouldShowVideoPlayer = (video.status === 'completed' || video.status === 'downloaded' || video.file_path);
+
+    if (!shouldShowVideoPlayer) {
       return (
         <div className="flex flex-col items-center justify-center h-96 bg-gray-100 rounded-lg">
           {video.status === 'downloading' ? (
@@ -1020,6 +1025,18 @@ const VideoDetail: React.FC = () => {
       );
     }
 
+    // If we should show the video player but don't have the URL yet, fetch it
+    if (!videoUrl && video.file_path) {
+      fetchVideoUrl();
+      return (
+        <div className="flex items-center justify-center h-96 bg-gray-100 rounded-lg">
+          <Spin size="large" />
+          <Text className="ml-4">加载视频中...</Text>
+        </div>
+      );
+    }
+
+    // Show loading state while fetching URL
     if (!videoUrl) {
       return (
         <div className="flex items-center justify-center h-96 bg-gray-100 rounded-lg">
@@ -1163,7 +1180,7 @@ const VideoDetail: React.FC = () => {
             <Divider />
 
             <Space direction="vertical" className="w-full">
-              {(video.status === 'completed' || video.status === 'downloaded') && (
+              {(video.status === 'completed' || video.status === 'downloaded' || video.file_path) && (
                 <>
                   <Button
                     type="primary"

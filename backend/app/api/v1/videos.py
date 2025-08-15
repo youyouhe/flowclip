@@ -1429,27 +1429,66 @@ async def get_video_processing_status(
         result = await db.execute(stmt)
         processing_status = result.scalar_one_or_none()
         
-        if not processing_status:
-            return {
-                "extract_audio_status": "pending",
-                "extract_audio_progress": 0.0,
-                "generate_srt_status": "pending",
-                "generate_srt_progress": 0.0,
-                "overall_status": "pending",
-                "overall_progress": 0.0,
-                "current_stage": None
-            }
-        
-        return {
-            "extract_audio_status": processing_status.extract_audio_status,
-            "extract_audio_progress": processing_status.extract_audio_progress,
-            "generate_srt_status": processing_status.generate_srt_status,
-            "generate_srt_progress": processing_status.generate_srt_progress,
-            "overall_status": processing_status.overall_status,
-            "overall_progress": processing_status.overall_progress,
-            "current_stage": processing_status.current_stage,
-            "updated_at": processing_status.updated_at.isoformat() if processing_status.updated_at else None
+        # 初始化返回数据
+        response_data = {
+            "extract_audio_status": "pending",
+            "extract_audio_progress": 0.0,
+            "generate_srt_status": "pending",
+            "generate_srt_progress": 0.0,
+            "overall_status": "pending",
+            "overall_progress": 0.0,
+            "current_stage": None
         }
+        
+        if processing_status:
+            response_data.update({
+                "extract_audio_status": processing_status.extract_audio_status,
+                "extract_audio_progress": processing_status.extract_audio_progress,
+                "generate_srt_status": processing_status.generate_srt_status,
+                "generate_srt_progress": processing_status.generate_srt_progress,
+                "overall_status": processing_status.overall_status,
+                "overall_progress": processing_status.overall_progress,
+                "current_stage": processing_status.current_stage,
+                "updated_at": processing_status.updated_at.isoformat() if processing_status.updated_at else None
+            })
+        
+        # 获取音频时长和SRT字幕条数
+        # 从最新的处理任务中获取详细信息
+        task_stmt = select(ProcessingTask).where(
+            ProcessingTask.video_id == video_id
+        ).order_by(ProcessingTask.created_at.desc())
+        task_result = await db.execute(task_stmt)
+        processing_tasks = task_result.scalars().all()
+        
+        # 查找音频提取任务和SRT生成任务的输出数据
+        for task in processing_tasks:
+            if task.task_type == ProcessingTaskType.EXTRACT_AUDIO and task.is_completed:
+                # 优先从output_data获取，如果没有则从duration_seconds字段获取
+                if task.output_data and isinstance(task.output_data, dict) and task.output_data.get('duration'):
+                    response_data["extract_audio_duration"] = task.output_data.get('duration', 0)
+                elif task.duration_seconds:
+                    response_data["extract_audio_duration"] = task.duration_seconds
+                break
+        
+        for task in processing_tasks:
+            if task.task_type == ProcessingTaskType.GENERATE_SRT and task.is_completed:
+                # 优先从output_data获取total_segments
+                if task.output_data and isinstance(task.output_data, dict) and task.output_data.get('total_segments'):
+                    response_data["generate_srt_segments"] = task.output_data.get('total_segments', 0)
+                break
+        
+        # 如果没有从任务输出数据中获取到，尝试从视频的processing_metadata中获取
+        if "extract_audio_duration" not in response_data and video.processing_metadata:
+            audio_info = video.processing_metadata.get('audio_info', {})
+            if isinstance(audio_info, dict) and audio_info.get('duration'):
+                response_data["extract_audio_duration"] = audio_info.get('duration', 0)
+        
+        if "generate_srt_segments" not in response_data and video.processing_metadata:
+            srt_info = video.processing_metadata.get('srt_info', {})
+            if isinstance(srt_info, dict) and srt_info.get('total_segments'):
+                response_data["generate_srt_segments"] = srt_info.get('total_segments', 0)
+        
+        return response_data
         
     except HTTPException:
         raise
