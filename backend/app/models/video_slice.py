@@ -27,6 +27,7 @@ class LLMAnalysis(Base):
     
     # 关联
     video = relationship("Video", back_populates="llm_analyses")
+    video_slices = relationship("VideoSlice", back_populates="llm_analysis", cascade="all, delete-orphan")
 
 class VideoSlice(Base):
     """视频切片模型（基于LLM分析结果）"""
@@ -85,7 +86,7 @@ class VideoSlice(Base):
     
     # 关联
     video = relationship("Video", back_populates="video_slices")
-    llm_analysis = relationship("LLMAnalysis")
+    llm_analysis = relationship("LLMAnalysis", back_populates="video_slices")
     sub_slices = relationship("VideoSubSlice", back_populates="parent_slice", cascade="all, delete-orphan")
 
 class VideoSubSlice(Base):

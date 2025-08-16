@@ -489,11 +489,37 @@ async def delete_analysis(
                 detail="分析数据不存在或无权限访问"
             )
         
-        # 删除分析数据
+        # 获取所有相关的视频切片以删除文件
+        slice_stmt = select(VideoSlice).where(VideoSlice.llm_analysis_id == analysis_id)
+        slice_result = await db.execute(slice_stmt)
+        slices = slice_result.scalars().all()
+        
+        # 删除每个切片及其相关文件和子切片的文件
+        for video_slice in slices:
+            # 删除MinIO中的切片文件
+            if video_slice.sliced_file_path:
+                try:
+                    await minio_service.delete_file(video_slice.sliced_file_path)
+                except Exception as e:
+                    logger.warning(f"删除切片文件失败 {video_slice.sliced_file_path}: {str(e)}")
+            
+            # 获取并删除子切片的MinIO文件
+            sub_slices_stmt = select(VideoSubSlice).where(VideoSubSlice.slice_id == video_slice.id)
+            sub_slices_result = await db.execute(sub_slices_stmt)
+            sub_slices = sub_slices_result.scalars().all()
+            
+            for sub_slice in sub_slices:
+                if sub_slice.sliced_file_path:
+                    try:
+                        await minio_service.delete_file(sub_slice.sliced_file_path)
+                    except Exception as e:
+                        logger.warning(f"删除子切片文件失败 {sub_slice.sliced_file_path}: {str(e)}")
+        
+        # 删除分析数据（会自动级联删除相关的视频切片）
         await db.delete(analysis)
         await db.commit()
         
-        return {"message": "分析数据删除成功"}
+        return {"message": "分析数据及其相关切片删除成功"}
         
     except Exception as e:
         logger.error(f"删除分析数据失败: {str(e)}")
