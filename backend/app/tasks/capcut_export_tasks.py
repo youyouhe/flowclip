@@ -266,7 +266,7 @@ def export_slice_to_capcut(self, slice_id: int, draft_folder: str, user_id: int 
                             print(f"提取的SRT文件路径: {srt_path}")
                             
                             # 直接使用数据库中的路径获取文件内容
-                            response = minio_service.client.get_object(settings.minio_bucket_name, srt_path)
+                            response = minio_service.internal_client.get_object(settings.minio_bucket_name, srt_path)
                             content_bytes = response.read()
                             response.close()
                             response.release_conn()

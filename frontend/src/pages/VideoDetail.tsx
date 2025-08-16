@@ -1231,7 +1231,7 @@ const VideoDetail: React.FC = () => {
                           onClick={handleDownloadAudio}
                           block
                         >
-                          下载音频文件 ({Math.round(audioInfo.duration)}秒)
+                          下载音频文件 
                         </Button>
                       )}
                       {srtInfo && (

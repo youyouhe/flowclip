@@ -14,27 +14,47 @@ class MinioService:
     """MinIO文件存储服务"""
     
     def __init__(self):
-        # 决定使用哪个端点来初始化MinIO客户端
-        # 如果配置了公共端点，使用公共端点，否则使用内部端点
-        endpoint = settings.minio_endpoint
-        if settings.minio_public_endpoint:
-            # 对于URL生成，使用公共端点以确保签名正确
-            # 但初始化客户端时需要去除协议部分
-            public_endpoint = settings.minio_public_endpoint
-            if public_endpoint.startswith('http://'):
-                endpoint = public_endpoint[7:]  # Remove 'http://'
-            elif public_endpoint.startswith('https://'):
-                endpoint = public_endpoint[8:]  # Remove 'https://'
-            else:
-                endpoint = public_endpoint
+        # 初始化两个客户端：
+        # 1. 内部客户端 - 用于文件操作
+        # 2. 公共客户端 - 用于生成预签名URL
         
-        self.client = Minio(
-            endpoint,
+        # 内部客户端使用内部端点
+        internal_endpoint = settings.minio_endpoint
+        if internal_endpoint.startswith('http://'):
+            internal_endpoint = internal_endpoint[7:]  # Remove 'http://'
+        elif internal_endpoint.startswith('https://'):
+            internal_endpoint = internal_endpoint[8:]  # Remove 'https://'
+        
+        self.internal_client = Minio(
+            internal_endpoint,
             access_key=settings.minio_access_key,
             secret_key=settings.minio_secret_key,
             secure=settings.minio_secure,
             region="us-east-1"  # 添加区域配置，避免签名问题
         )
+        
+        # 公共客户端用于生成预签名URL
+        # 如果配置了公共端点，使用公共端点，否则使用内部端点
+        if settings.minio_public_endpoint:
+            public_endpoint = settings.minio_public_endpoint
+            # 移除协议前缀，但保留主机名和端口
+            if public_endpoint.startswith('http://'):
+                public_endpoint = public_endpoint[7:]  # Remove 'http://'
+            elif public_endpoint.startswith('https://'):
+                public_endpoint = public_endpoint[8:]  # Remove 'https://'
+            # 移除末尾的斜杠
+            public_endpoint = public_endpoint.rstrip('/')
+        else:
+            public_endpoint = internal_endpoint
+            
+        self.public_client = Minio(
+            public_endpoint,
+            access_key=settings.minio_access_key,
+            secret_key=settings.minio_secret_key,
+            secure=settings.minio_secure,
+            region="us-east-1"
+        )
+        
         self.bucket_name = settings.minio_bucket_name
         self.executor = ThreadPoolExecutor(max_workers=4)
         
@@ -42,8 +62,8 @@ class MinioService:
         """确保桶存在并设置正确的权限"""
         def _ensure_bucket():
             try:
-                if not self.client.bucket_exists(self.bucket_name):
-                    self.client.make_bucket(self.bucket_name)
+                if not self.internal_client.bucket_exists(self.bucket_name):
+                    self.internal_client.make_bucket(self.bucket_name)
                     print(f"✓ MinIO桶 '{self.bucket_name}' 创建成功")
                 
                 # 设置桶策略，允许预签名URL访问
@@ -62,7 +82,7 @@ class MinioService:
                 import json
                 try:
                     policy_json = json.dumps(bucket_policy)
-                    self.client.set_bucket_policy(self.bucket_name, policy_json)
+                    self.internal_client.set_bucket_policy(self.bucket_name, policy_json)
                     print(f"✓ MinIO桶 '{self.bucket_name}' 策略设置成功")
                 except Exception as policy_error:
                     print(f"⚠ 设置桶策略失败: {policy_error}")
@@ -88,7 +108,7 @@ class MinioService:
         """上传文件到MinIO"""
         def _upload():
             try:
-                self.client.fput_object(
+                self.internal_client.fput_object(
                     self.bucket_name,
                     object_name,
                     file_path,
@@ -111,7 +131,7 @@ class MinioService:
     ) -> Optional[str]:
         """同步上传文件到MinIO"""
         try:
-            self.client.fput_object(
+            self.internal_client.fput_object(
                 self.bucket_name,
                 object_name,
                 file_path,
@@ -134,7 +154,7 @@ class MinioService:
                 file_data = io.BytesIO(content)
                 file_size = len(content)
                 
-                self.client.put_object(
+                self.internal_client.put_object(
                     self.bucket_name,
                     object_name,
                     file_data,
@@ -154,40 +174,16 @@ class MinioService:
         """获取文件的预签名URL"""
         def _get_url():
             try:
-                # 尝试使用预签名URL
-                url = self.client.presigned_get_object(
+                # 使用公共客户端生成预签名URL
+                url = self.public_client.presigned_get_object(
                     self.bucket_name, 
                     object_name, 
                     expires=timedelta(seconds=expiry)
                 )
                 
-                # 验证预签名URL是否可以访问
-                import requests
-                try:
-                    response = requests.head(url, timeout=5)
-                    if response.status_code == 200:
-                        return url
-                    else:
-                        print(f"⚠ 预签名URL验证失败，状态码: {response.status_code}")
-                except requests.RequestException as e:
-                    print(f"⚠ 预签名URL验证异常: {e}")
-                
-                # 如果预签名URL不可用，回退到直接URL
-                if settings.minio_public_endpoint:
-                    # 如果公共端点没有协议前缀，添加http://
-                    public_endpoint = settings.minio_public_endpoint
-                    if not public_endpoint.startswith(('http://', 'https://')):
-                        public_endpoint = 'http://' + public_endpoint
-                    
-                    # 确保公共端点不以/结尾
-                    public_endpoint = public_endpoint.rstrip('/')
-                    
-                    # 构建直接URL
-                    direct_url = f"{public_endpoint}/{self.bucket_name}/{object_name}"
-                    print(f"✓ 使用直接URL: {direct_url}")
-                    return direct_url
-                else:
-                    return url
+                # 直接返回预签名URL，不进行验证
+                # 因为验证可能因为请求头等问题失败，但URL本身是有效的
+                return url
                     
             except S3Error as e:
                 print(f"✗ 获取URL失败: {e}")
@@ -201,7 +197,7 @@ class MinioService:
         """删除文件"""
         def _delete():
             try:
-                self.client.remove_object(self.bucket_name, object_name)
+                self.internal_client.remove_object(self.bucket_name, object_name)
                 return True
             except S3Error as e:
                 print(f"✗ 文件删除失败: {e}")
@@ -215,7 +211,7 @@ class MinioService:
         """检查文件是否存在"""
         def _exists():
             try:
-                self.client.stat_object(self.bucket_name, object_name)
+                self.internal_client.stat_object(self.bucket_name, object_name)
                 return True
             except S3Error:
                 return False
@@ -259,14 +255,14 @@ class MinioService:
         def _test():
             try:
                 # 测试连接
-                buckets = self.client.list_buckets()
+                buckets = self.internal_client.list_buckets()
                 
                 # 测试桶是否存在
-                bucket_exists = self.client.bucket_exists(self.bucket_name)
+                bucket_exists = self.internal_client.bucket_exists(self.bucket_name)
                 
                 # 测试策略设置
                 try:
-                    policy = self.client.get_bucket_policy(self.bucket_name)
+                    policy = self.internal_client.get_bucket_policy(self.bucket_name)
                     has_policy = bool(policy)
                 except:
                     has_policy = False

@@ -168,6 +168,7 @@ async def get_active_videos(
 async def get_videos(
     project_id: Optional[int] = Query(None, description="项目ID筛选"),
     status: Optional[str] = Query(None, description="视频状态筛选"),
+    srt_processed: Optional[bool] = Query(None, description="SRT处理是否完成"),
     search: Optional[str] = Query(None, description="搜索视频标题"),
     start_date: Optional[str] = Query(None, description="开始日期 (YYYY-MM-DD)"),
     end_date: Optional[str] = Query(None, description="结束日期 (YYYY-MM-DD)"),
@@ -190,6 +191,24 @@ async def get_videos(
     
     if status:
         stmt = stmt.where(Video.status == status)
+    
+    # 添加SRT处理状态筛选
+    if srt_processed is not None:
+        # 需要检查ProcessingTask表中是否有成功的SRT生成任务
+        if srt_processed:
+            # 只显示SRT处理成功的视频
+            srt_subquery = select(ProcessingTask.video_id).where(
+                ProcessingTask.task_type == ProcessingTaskType.GENERATE_SRT,
+                ProcessingTask.status == "success"
+            ).distinct()
+            stmt = stmt.where(Video.id.in_(srt_subquery))
+        else:
+            # 只显示SRT处理未成功的视频（即没有成功任务的视频）
+            srt_subquery = select(ProcessingTask.video_id).where(
+                ProcessingTask.task_type == ProcessingTaskType.GENERATE_SRT,
+                ProcessingTask.status == "success"
+            ).distinct()
+            stmt = stmt.where(~Video.id.in_(srt_subquery))
     
     if search:
         stmt = stmt.where(
@@ -225,6 +244,24 @@ async def get_videos(
         count_stmt = count_stmt.where(Video.project_id == project_id)
     if status:
         count_stmt = count_stmt.where(Video.status == status)
+    
+    # 添加SRT处理状态筛选到计数查询
+    if srt_processed is not None:
+        if srt_processed:
+            # 只显示SRT处理成功的视频
+            srt_subquery = select(ProcessingTask.video_id).where(
+                ProcessingTask.task_type == ProcessingTaskType.GENERATE_SRT,
+                ProcessingTask.status == "success"
+            ).distinct()
+            count_stmt = count_stmt.where(Video.id.in_(srt_subquery))
+        else:
+            # 只显示SRT处理未成功的视频
+            srt_subquery = select(ProcessingTask.video_id).where(
+                ProcessingTask.task_type == ProcessingTaskType.GENERATE_SRT,
+                ProcessingTask.status == "success"
+            ).distinct()
+            count_stmt = count_stmt.where(~Video.id.in_(srt_subquery))
+    
     if search:
         count_stmt = count_stmt.where(
             or_(
@@ -696,7 +733,7 @@ async def stream_video(
     try:
         def _get_file_stream():
             try:
-                response = minio_service.client.get_object(
+                response = minio_service.internal_client.get_object(
                     settings.minio_bucket_name, 
                     object_name
                 )
@@ -706,7 +743,7 @@ async def stream_video(
                 raise
         
         # 获取文件信息
-        stat = minio_service.client.stat_object(settings.minio_bucket_name, object_name)
+        stat = minio_service.internal_client.stat_object(settings.minio_bucket_name, object_name)
         
         # 创建文件流响应
         from fastapi.responses import StreamingResponse
@@ -1017,7 +1054,7 @@ async def download_audio_direct(
     
     # 获取文件内容
     try:
-        response = minio_service.client.get_object(
+        response = minio_service.internal_client.get_object(
             settings.minio_bucket_name, 
             audio_object_name
         )
@@ -1145,7 +1182,7 @@ async def download_srt_direct(
         
         # 获取文件内容
         try:
-            response = minio_service.client.get_object(
+            response = minio_service.internal_client.get_object(
                 settings.minio_bucket_name, 
                 srt_object_name
             )
@@ -1272,7 +1309,7 @@ async def get_srt_content(
     
     # 获取文件内容
     try:
-        response = minio_service.client.get_object(
+        response = minio_service.internal_client.get_object(
             settings.minio_bucket_name, 
             srt_object_name
         )

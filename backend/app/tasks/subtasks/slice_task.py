@@ -91,7 +91,7 @@ def process_video_slices(self, analysis_id: int, video_id: int, project_id: int,
                 
                 with tempfile.NamedTemporaryFile(suffix='.mp4', delete=False) as temp_file:
                     # 从MinIO下载视频
-                    video_data = minio_service.client.get_object(
+                    video_data = minio_service.internal_client.get_object(
                         settings.minio_bucket_name,
                         video.file_path
                     )

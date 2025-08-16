@@ -165,14 +165,12 @@ const SliceManagement: React.FC = () => {
   const loadVideos = async () => {
     try {
       setVideosLoading(true);
-      const response = await videoAPI.getVideos({ status: 'completed' });
+      // 只获取SRT处理成功的视频
+      const response = await videoAPI.getVideos({ srt_processed: true });
       // 处理分页响应格式
       const videosData = response.data.videos || response.data;
-      // 只加载已完成且可能有SRT文件的视频
-      const completedVideos = videosData.filter((video: Video) => 
-        video.status === 'completed'
-      );
-      setVideos(completedVideos);
+      
+      setVideos(videosData);
     } catch (error) {
       message.error('加载视频列表失败');
     } finally {

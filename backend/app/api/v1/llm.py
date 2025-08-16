@@ -93,7 +93,7 @@ async def chat_with_llm(
                     logger.info("开始下载SRT文件...")
                     with tempfile.NamedTemporaryFile(mode='w', suffix='.srt', delete=False, encoding='utf-8') as temp_file:
                         # 获取文件内容
-                        response = minio_service.client.get_object(
+                        response = minio_service.internal_client.get_object(
                             settings.minio_bucket_name,
                             srt_object_name
                         )
