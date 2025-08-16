@@ -1,5 +1,4 @@
 from celery import shared_task
-from app.core.celery import celery_app  # 确保Celery应用被初始化
 import asyncio
 import tempfile
 import os
@@ -20,7 +19,7 @@ from app.models import VideoSlice, VideoSubSlice, Transcript, ProcessingTask, Re
 # 创建logger
 logger = logging.getLogger(__name__)
 
-@shared_task(bind=True)
+@shared_task(bind=True, name='app.tasks.video_tasks.export_slice_to_capcut')
 def export_slice_to_capcut(self, slice_id: int, draft_folder: str, user_id: int = None) -> Dict[str, Any]:
     """导出切片到CapCut的Celery任务"""
     

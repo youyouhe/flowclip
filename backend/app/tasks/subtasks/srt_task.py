@@ -1,5 +1,4 @@
 from celery import shared_task
-from app.core.celery import celery_app  # 确保Celery应用被初始化
 import asyncio
 import tempfile
 import os
@@ -22,7 +21,7 @@ from sqlalchemy import select
 # 创建logger
 logger = logging.getLogger(__name__)
 
-@shared_task(bind=True)
+@shared_task(bind=True, name='app.tasks.video_tasks.generate_srt')
 def generate_srt(self, video_id: str, project_id: int, user_id: int, split_files: list = None, create_processing_task: bool = True) -> Dict[str, Any]:
     """Generate SRT subtitles from audio using ASR"""
     

@@ -1,5 +1,4 @@
 from celery import shared_task
-from app.core.celery import celery_app  # 确保Celery应用被初始化
 import asyncio
 import tempfile
 import os
@@ -21,7 +20,7 @@ from app.models import Video, VideoSlice, VideoSubSlice, LLMAnalysis, Processing
 # 创建logger
 logger = logging.getLogger(__name__)
 
-@shared_task(bind=True)
+@shared_task(bind=True, name='app.tasks.video_tasks.process_video_slices')
 def process_video_slices(self, analysis_id: int, video_id: int, project_id: int, user_id: int, slice_items: list) -> Dict[str, Any]:
     """处理视频切片任务"""
     

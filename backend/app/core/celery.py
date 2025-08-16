@@ -20,7 +20,15 @@ celery_app = Celery(
     "youtube_slicer",
     broker=redis_url,
     backend=redis_url,
-    include=["app.tasks.video_tasks"]
+    include=[
+        "app.tasks.video_tasks",
+        "app.tasks.subtasks.simple_task",
+        "app.tasks.subtasks.download_task",
+        "app.tasks.subtasks.audio_task",
+        "app.tasks.subtasks.srt_task",
+        "app.tasks.subtasks.slice_task",
+        "app.tasks.subtasks.capcut_task"
+    ]
 )
 
 # 基本配置

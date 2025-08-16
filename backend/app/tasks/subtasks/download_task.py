@@ -1,5 +1,4 @@
 from celery import shared_task
-from app.core.celery import celery_app  # 确保Celery应用被初始化
 import asyncio
 import tempfile
 import os
@@ -21,7 +20,7 @@ from app.models import Video, ProcessingTask
 # 创建logger
 logger = logging.getLogger(__name__)
 
-@shared_task(bind=True)
+@shared_task(bind=True, name='app.tasks.video_tasks.download_video')
 def download_video(self, video_url: str, project_id: int, user_id: int, quality: str = 'best', cookies_path: str = None, video_id: int = None) -> Dict[str, Any]:
     """Download video from YouTube using yt-dlp"""
     
