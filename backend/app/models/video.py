@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, Text, ForeignKey, Boolean, Float, JSON
+from sqlalchemy import Column, Integer, String, DateTime, Text, ForeignKey, Boolean, Float, JSON, BigInteger
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 from app.core.database import Base
@@ -14,7 +14,8 @@ class Video(Base):
     filename = Column(String(500))
     file_path = Column(String(1000))  # Path in MinIO
     duration = Column(Float)  # Duration in seconds
-    file_size = Column(Integer)  # File size in bytes
+    file_size = Column(BigInteger)  # File size in bytes
+    memo = Column(Text, default="")  # Memo field for additional notes
     thumbnail_url = Column(String(1000))
     status = Column(String(50), default="pending")  # pending, downloading, downloaded, processing, completed, failed
     download_progress = Column(Float, default=0.0)  # 0-100
