@@ -12,6 +12,7 @@ from app.core.constants import (
 )
 from app.models.processing_task import ProcessingTask, ProcessingTaskLog, ProcessingStatus
 from app.models.video import Video
+from app.models.project import Project
 
 logger = logging.getLogger(__name__)
 
@@ -350,6 +351,36 @@ class StateManager:
         
         # 更新视频状态
         self._update_video_status_sync(task.video_id, task.task_type, status, progress, stage)
+        
+        # 发送WebSocket通知
+        try:
+            from app.services.progress_service import progress_service
+            # 获取用户ID
+            stmt_user = self.db.query(Project.user_id).join(Video).filter(Video.id == task.video_id)
+            result_user = stmt_user.first()
+            user_id = result_user[0] if result_user else None
+            
+            if user_id:
+                # 构建进度数据
+                progress_data = {
+                    "video_id": task.video_id,
+                    "task_id": task.celery_task_id,
+                    "status": status,
+                    "progress": progress or task.progress,
+                    "stage": stage or task.stage,
+                    "message": message or task.message,
+                    "error": error_message
+                }
+                
+                # 发送WebSocket通知
+                progress_service.queue_update(
+                    video_id=task.video_id,
+                    user_id=user_id,
+                    data=progress_data
+                )
+        except Exception as e:
+            logger = logging.getLogger(__name__)
+            logger.warning(f"发送WebSocket通知失败: {e}")
         
         return task
 

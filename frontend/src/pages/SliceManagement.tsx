@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Card, Input, Button, Select, Space, message, Spin, Typography, Row, Col, Table, Tag, Modal, Form, Tabs, Divider, Alert, Progress } from 'antd';
 import { PlayCircleOutlined, ScissorOutlined, UploadOutlined, EyeOutlined, EditOutlined, DeleteOutlined, PlusOutlined } from '@ant-design/icons';
 import { llmAPI } from '../services/api';
@@ -85,6 +85,9 @@ const SliceManagement: React.FC = () => {
     message: '',
     taskId: null
   });
+  
+  // 轮询定时器引用
+  const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     loadVideos();
@@ -92,6 +95,10 @@ const SliceManagement: React.FC = () => {
     return () => {
       stopHeartbeat();
       wsService.disconnect();
+      // 清理轮询定时器
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+      }
     };
   }, []);
 
@@ -127,6 +134,12 @@ const SliceManagement: React.FC = () => {
         
         // 如果切片任务完成，刷新数据
         if (data.status === 'completed' && sliceProgress.isProcessing) {
+          // 清理轮询定时器
+          if (pollIntervalRef.current) {
+            clearInterval(pollIntervalRef.current);
+            pollIntervalRef.current = null;
+          }
+          
           setSliceProgress(prev => ({
             ...prev,
             isProcessing: false,
@@ -143,6 +156,12 @@ const SliceManagement: React.FC = () => {
         
         // 如果切片任务失败
         if (data.status === 'failed' && sliceProgress.isProcessing) {
+          // 清理轮询定时器
+          if (pollIntervalRef.current) {
+            clearInterval(pollIntervalRef.current);
+            pollIntervalRef.current = null;
+          }
+          
           setSliceProgress(prev => ({
             ...prev,
             isProcessing: false,
@@ -159,6 +178,63 @@ const SliceManagement: React.FC = () => {
           wsService.subscribeVideoProgress(selectedVideo);
         }
       });
+    }
+  };
+  
+  // 轮询获取任务状态
+  const pollTaskStatus = async (taskId: string) => {
+    if (!selectedVideo) return;
+    
+    try {
+      const response = await videoAPI.getTaskStatus(selectedVideo, taskId);
+      const taskStatus = response.data;
+      
+      // 更新进度
+      setSliceProgress(prev => ({
+        ...prev,
+        progress: taskStatus.progress || 0,
+        message: taskStatus.message || '处理中...'
+      }));
+      
+      // 检查任务是否完成
+      if (taskStatus.status === 'completed' || taskStatus.status === 'success') {
+        // 停止轮询
+        if (pollIntervalRef.current) {
+          clearInterval(pollIntervalRef.current);
+          pollIntervalRef.current = null;
+        }
+        
+        setSliceProgress(prev => ({
+          ...prev,
+          isProcessing: false,
+          progress: 100,
+          message: '切片处理完成'
+        }));
+        
+        // 刷新数据
+        setTimeout(() => {
+          loadAnalyses();
+          loadSlices();
+        }, 1000);
+        
+        message.success('切片处理完成');
+      } else if (taskStatus.status === 'failed') {
+        // 停止轮询
+        if (pollIntervalRef.current) {
+          clearInterval(pollIntervalRef.current);
+          pollIntervalRef.current = null;
+        }
+        
+        setSliceProgress(prev => ({
+          ...prev,
+          isProcessing: false,
+          message: `处理失败: ${taskStatus.error || '未知错误'}`
+        }));
+        
+        message.error(`切片处理失败: ${taskStatus.error || '未知错误'}`);
+      }
+    } catch (error) {
+      console.error('获取任务状态失败:', error);
     }
   };
 
@@ -289,6 +365,17 @@ const SliceManagement: React.FC = () => {
 
       message.success('切片处理任务已启动，请查看进度');
       setProcessModalVisible(false);
+      
+      // 启动轮询机制作为WebSocket的备用方案
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+      }
+      pollIntervalRef.current = setInterval(() => {
+        if (response.data.task_id) {
+          pollTaskStatus(response.data.task_id);
+        }
+      }, 3000); // 每3秒轮询一次
+      
     } catch (error: any) {
       console.error('启动处理失败:', error);
       message.error('启动处理失败: ' + (error.response?.data?.detail || error.message));

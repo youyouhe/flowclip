@@ -100,8 +100,8 @@ class VideoSlicingService:
                 # 构建ffmpeg命令
                 cmd = [
                     self.ffmpeg_path,
-                    '-i', video_path,  # 输入文件
                     '-ss', str(start_time),  # 开始时间
+                    '-i', video_path,  # 输入文件
                     '-t', str(duration),  # 持续时间
                     '-c', 'copy',  # 使用流拷贝，保持原质量
                     '-avoid_negative_ts', 'make_zero',  # 避免负时间戳
@@ -194,8 +194,8 @@ class VideoSlicingService:
                 # 构建ffmpeg命令
                 cmd = [
                     self.ffmpeg_path,
-                    '-i', video_path,  # 输入文件
                     '-ss', str(start_time),  # 开始时间
+                    '-i', video_path,  # 输入文件
                     '-t', str(duration),  # 持续时间
                     '-c', 'copy',  # 使用流拷贝，保持原质量
                     '-avoid_negative_ts', 'make_zero',  # 避免负时间戳
