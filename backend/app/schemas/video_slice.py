@@ -37,6 +37,7 @@ class VideoSliceBase(BaseModel):
     end_time: float
     duration: Optional[float] = None
     status: str = "pending"
+    type: str = "fragment"
     progress: float = 0.0
 
 class VideoSliceCreate(VideoSliceBase):
