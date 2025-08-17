@@ -73,13 +73,15 @@ def process_video_slices(self, analysis_id: int, video_id: int, project_id: int,
                 previous_end = parent_start
                 
                 for sub_slice in sorted_sub_slices:
-                    # 允许小的间隙（例如100毫秒以内）
-                    if sub_slice['start_time'] - previous_end > 0.1:
+                    # 检查当前子切片的开始时间是否与前一个子切片的结束时间连续
+                    # 正常情况下应该是相等的（连续），允许100毫秒以内的正向间隙，但不允许重叠（负值）
+                    time_diff = sub_slice['start_time'] - previous_end
+                    if time_diff < -0.1 or time_diff > 0.1:
                         is_continuous = False
                         break
                     previous_end = sub_slice['end_time']
                 
-                # 检查结尾是否匹配
+                # 检查结尾是否匹配父切片的结束时间（允许100毫秒以内的误差）
                 if abs(parent_end - previous_end) > 0.1:
                     is_continuous = False
                 
