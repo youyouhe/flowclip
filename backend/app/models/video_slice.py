@@ -56,6 +56,7 @@ class VideoSlice(Base):
     
     # 状态
     status = Column(String(50), default="pending")  # pending, processing, completed, failed
+    type = Column(String(50), default="fragment")  # full, fragment
     progress = Column(Float, default=0.0)  # 处理进度
     error_message = Column(Text)  # 错误信息
     

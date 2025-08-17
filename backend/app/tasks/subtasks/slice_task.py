@@ -57,6 +57,33 @@ def process_video_slices(self, analysis_id: int, video_id: int, project_id: int,
     def _process_slices():
         """同步处理切片"""
         try:
+            
+            def _determine_slice_type(sub_slices_data, parent_start, parent_end):
+                """
+                判断切片类型：如果子切片在时间轴上连续则为full，否则为fragment
+                """
+                if not sub_slices_data:
+                    return "fragment"  # 没有子切片则认为是fragment
+                
+                # 按开始时间排序
+                sorted_sub_slices = sorted(sub_slices_data, key=lambda x: x['start_time'])
+                
+                # 检查是否连续
+                is_continuous = True
+                previous_end = parent_start
+                
+                for sub_slice in sorted_sub_slices:
+                    # 允许小的间隙（例如100毫秒以内）
+                    if sub_slice['start_time'] - previous_end > 0.1:
+                        is_continuous = False
+                        break
+                    previous_end = sub_slice['end_time']
+                
+                # 检查结尾是否匹配
+                if abs(parent_end - previous_end) > 0.1:
+                    is_continuous = False
+                
+                return "full" if is_continuous else "fragment"
             # 获取分析数据和视频信息
             with get_sync_db() as db:
                 from sqlalchemy import select
@@ -147,7 +174,7 @@ def process_video_slices(self, analysis_id: int, video_id: int, project_id: int,
                                 llm_analysis_id=analysis_id,
                                 cover_title=slice_item.get('cover_title', 'slice'),
                                 title=slice_item.get('title', 'slice'),
-                                description=slice_item.get('description', ''),
+                                description=slice_item.get('desc', ''),
                                 tags=slice_item.get('tags', []),
                                 start_time=start_time,
                                 end_time=end_time,
@@ -164,7 +191,8 @@ def process_video_slices(self, analysis_id: int, video_id: int, project_id: int,
                             db.refresh(video_slice)
                             
                             # 处理子切片
-                            for j, sub_slice in enumerate(slice_item.get('subtitles', [])):
+                            sub_slices_data = []
+                            for j, sub_slice in enumerate(slice_item.get('chapters', [])):
                                 try:
                                     sub_start = video_slicing_service._parse_time_str_sync(sub_slice.get('start', '00:00:00,000'))
                                     sub_end = video_slicing_service._parse_time_str_sync(sub_slice.get('end', '00:00:00,000'))
@@ -206,11 +234,21 @@ def process_video_slices(self, analysis_id: int, video_id: int, project_id: int,
                                     )
                                     
                                     db.add(video_sub_slice)
+                                    sub_slices_data.append({
+                                        'start_time': sub_start,
+                                        'end_time': sub_end
+                                    })
                                     
                                 except Exception as e:
                                     print(f"处理子切片失败: {str(e)}")
                             
                             db.commit()
+                            
+                            # 判断切片类型（full 或 fragment）
+                            slice_type = _determine_slice_type(sub_slices_data, start_time, end_time)
+                            video_slice.type = slice_type
+                            db.commit()
+                            
                             processed_slices += 1
                             
                         except Exception as e:

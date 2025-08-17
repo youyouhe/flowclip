@@ -21,7 +21,7 @@ interface Video {
 interface LLMAnalysis {
   id: number;
   video_id: number;
-  analysis_data: any[];
+  analysis_data: SliceData[];
   cover_title: string;
   status: string;
   is_validated: boolean;
@@ -55,6 +55,7 @@ interface VideoSlice {
   sliced_file_path: string;
   file_size: number;
   status: string;
+  type: string;
   created_at: string;
   sub_slices?: VideoSubSlice[];
 }
@@ -88,6 +89,23 @@ const SliceManagement: React.FC = () => {
   
   // 轮询定时器引用
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  
+  // 定义新的切片数据接口，以匹配新的JSON格式
+  interface SliceChapter {
+    cover_title: string;
+    start: string; // 格式: "00:08:20,100"
+    end: string;   // 格式: "00:10:55,300"
+  }
+  
+  interface SliceData {
+    cover_title: string;
+    title: string;
+    desc: string;
+    tags: string[];
+    start: string; // 格式: "00:08:15,250"
+    end: string;   // 格式: "00:15:45,800"
+    chapters: SliceChapter[];
+  }
 
   useEffect(() => {
     loadVideos();
@@ -604,6 +622,16 @@ const SliceManagement: React.FC = () => {
       ),
     },
     {
+      title: '类型',
+      dataIndex: 'type',
+      key: 'type',
+      render: (type: string) => {
+        const color = type === 'full' ? 'green' : 'orange';
+        const displayText = type === 'full' ? '完整' : '片段';
+        return <Tag color={color}>{displayText}</Tag>;
+      },
+    },
+    {
       title: '状态',
       dataIndex: 'status',
       key: 'status',
@@ -644,7 +672,7 @@ const SliceManagement: React.FC = () => {
                 title: '切片详情',
                 content: (
                   <div>
-                    <p><strong>描述:</strong> {record.description}</p>
+                    <p><strong>描述:</strong> {record.desc || record.description}</p>
                     <p><strong>标签:</strong> {record.tags?.join(', ')}</p>
                     <p><strong>文件路径:</strong> {record.sliced_file_path}</p>
                   </div>
@@ -883,7 +911,7 @@ const SliceManagement: React.FC = () => {
         <Space direction="vertical" style={{ width: '100%' }} size="middle">
           <Alert
             message="请输入LLM生成的JSON数据"
-            description="数据格式应为数组，包含切片信息。每个切片至少需要包含cover_title、title、start、end字段。"
+            description="数据格式应为数组，包含切片信息。每个切片至少需要包含cover_title、title、desc、start、end和chapters字段。"
             type="info"
             showIcon
           />
@@ -950,13 +978,17 @@ const SliceManagement: React.FC = () => {
             <div>
               <Text strong>切片预览：</Text>
               <div style={{ maxHeight: '200px', overflow: 'auto', marginTop: '8px' }}>
-                {selectedAnalysis.analysis_data.slice(0, 3).map((slice: any, index: number) => (
+                {selectedAnalysis.analysis_data.slice(0, 3).map((slice: SliceData, index: number) => (
                   <div key={index} style={{ marginBottom: '8px', padding: '8px', border: '1px solid #d9d9d9', borderRadius: '4px' }}>
                     <Text strong>{slice.cover_title}</Text>
                     <br />
                     <Text type="secondary">{slice.title}</Text>
                     <br />
                     <Text type="secondary">{slice.start} - {slice.end}</Text>
+                    <br />
+                    {slice.chapters && slice.chapters.length > 0 && (
+                      <Text type="secondary">章节: {slice.chapters.length} 个</Text>
+                    )}
                   </div>
                 ))}
                 {selectedAnalysis.analysis_data.length > 3 && (
