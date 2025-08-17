@@ -58,6 +58,77 @@ def process_video_slices(self, analysis_id: int, video_id: int, project_id: int,
         """同步处理切片"""
         try:
             
+            def _submit_processing_tasks(video_slice: VideoSlice, user_id: int, project_id: int):
+                """提交切片的音频提取和SRT任务"""
+                try:
+                    from app.tasks.subtasks.audio_task import extract_audio
+                    from app.tasks.subtasks.srt_task import generate_srt
+                    
+                    if video_slice.type == "full":
+                        # Full类型切片：直接提交音频和SRT任务
+                        print(f"提交Full类型切片处理任务: slice_id={video_slice.id}")
+                        
+                        # 提交音频提取任务
+                        audio_task = extract_audio.delay(
+                            video_id=str(video_slice.video_id),
+                            project_id=project_id,
+                            user_id=user_id,
+                            video_minio_path=video_slice.sliced_file_path,
+                            create_processing_task=False,
+                            # 添加回调信息
+                            slice_id=video_slice.id,
+                            trigger_srt_after_audio=True
+                        )
+                        video_slice.audio_processing_status = "processing"
+                        video_slice.audio_task_id = audio_task.id
+                        print(f"音频提取任务已提交: task_id={audio_task.id}")
+                        print(f"Full类型切片将等待音频提取完成后自动触发SRT生成")
+                        
+                    elif video_slice.type == "fragment":
+                        # Fragment类型切片：为所有子切片提交音频和SRT任务
+                        print(f"提交Fragment类型切片处理任务: slice_id={video_slice.id}, sub_slices_count={len(video_slice.sub_slices)}")
+                        
+                        for i, sub_slice in enumerate(video_slice.sub_slices):
+                            try:
+                                print(f"处理子切片 {i+1}/{len(video_slice.sub_slices)}: sub_slice_id={sub_slice.id}")
+                                
+                                # 提交子切片音频提取任务
+                                sub_audio_task = extract_audio.delay(
+                                    video_id=str(video_slice.video_id),
+                                    project_id=project_id,
+                                    user_id=user_id,
+                                    video_minio_path=sub_slice.sliced_file_path,
+                                    create_processing_task=False
+                                )
+                                sub_slice.audio_processing_status = "processing"
+                                sub_slice.audio_task_id = sub_audio_task.id
+                                print(f"子切片音频提取任务已提交: sub_slice_id={sub_slice.id}, task_id={sub_audio_task.id}")
+                                
+                                # 提交子切片SRT生成任务
+                                sub_srt_task = generate_srt.delay(
+                                    video_id=str(video_slice.video_id),
+                                    project_id=project_id,
+                                    user_id=user_id,
+                                    split_files=[],
+                                    sub_slice_id=sub_slice.id,
+                                    create_processing_task=False
+                                )
+                                sub_slice.srt_processing_status = "processing"
+                                sub_slice.srt_task_id = sub_srt_task.id
+                                print(f"子切片SRT生成任务已提交: sub_slice_id={sub_slice.id}, task_id={sub_srt_task.id}")
+                                
+                            except Exception as e:
+                                print(f"提交子切片 {sub_slice.id} 处理任务失败: {str(e)}")
+                                continue
+                    
+                    print(f"切片 {video_slice.id} 的处理任务提交完成")
+                    
+                except Exception as e:
+                    print(f"提交切片处理任务时发生错误: {str(e)}")
+                    import traceback
+                    print(f"详细错误: {traceback.format_exc()}")
+                    raise Exception(f"提交处理任务失败: {str(e)}")
+
             def _determine_slice_type(sub_slices_data, parent_start, parent_end):
                 """
                 判断切片类型：如果子切片在时间轴上连续则为full，否则为fragment
@@ -76,13 +147,13 @@ def process_video_slices(self, analysis_id: int, video_id: int, project_id: int,
                     # 检查当前子切片的开始时间是否与前一个子切片的结束时间连续
                     # 正常情况下应该是相等的（连续），允许100毫秒以内的正向间隙，但不允许重叠（负值）
                     time_diff = sub_slice['start_time'] - previous_end
-                    if time_diff < -0.1 or time_diff > 0.1:
+                    if time_diff < -0.1 or time_diff > 3:
                         is_continuous = False
                         break
                     previous_end = sub_slice['end_time']
                 
                 # 检查结尾是否匹配父切片的结束时间（允许100毫秒以内的误差）
-                if abs(parent_end - previous_end) > 0.1:
+                if abs(parent_end - previous_end) > 3:
                     is_continuous = False
                 
                 return "full" if is_continuous else "fragment"
@@ -249,8 +320,15 @@ def process_video_slices(self, analysis_id: int, video_id: int, project_id: int,
                             # 判断切片类型（full 或 fragment）
                             slice_type = _determine_slice_type(sub_slices_data, start_time, end_time)
                             video_slice.type = slice_type
-                            db.commit()
                             
+                            # 提交音频提取和SRT任务
+                            try:
+                                _submit_processing_tasks(video_slice, user_id, project_id)
+                            except Exception as e:
+                                print(f"提交处理任务失败: {str(e)}")
+                                # 不影响切片创建，只记录错误
+                            
+                            db.commit()
                             processed_slices += 1
                             
                         except Exception as e:

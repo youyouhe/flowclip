@@ -22,7 +22,7 @@ from sqlalchemy import select
 logger = logging.getLogger(__name__)
 
 @shared_task(bind=True, ignore_result=False, name='app.tasks.video_tasks.extract_audio')
-def extract_audio(self, video_id: str, project_id: int, user_id: int, video_minio_path: str, create_processing_task: bool = True) -> Dict[str, Any]:
+def extract_audio(self, video_id: str, project_id: int, user_id: int, video_minio_path: str, create_processing_task: bool = True, slice_id: int = None, trigger_srt_after_audio: bool = False) -> Dict[str, Any]:
     """Extract audio from video using ffmpeg"""
     
     def _ensure_processing_task_exists(celery_task_id: str, video_id: int) -> bool:
@@ -97,7 +97,6 @@ def extract_audio(self, video_id: str, project_id: int, user_id: int, video_mini
                             video.processing_progress = progress
                             video.processing_stage = ProcessingStage.EXTRACT_AUDIO.value
                             video.processing_message = message or ""
-                            video.status = "processing"
                             db.commit()
                             print(f"数据库状态已更新 - video_id: {task.video_id}, progress: {progress}")
                             
@@ -239,6 +238,23 @@ def extract_audio(self, video_id: str, project_id: int, user_id: int, video_mini
                     run_async(_update_audio_path())
                 except Exception as e:
                     print(f"更新音频路径失败: {e}")
+                
+                # 如果需要，触发SRT生成任务
+                if trigger_srt_after_audio and slice_id:
+                    try:
+                        from app.tasks.subtasks.srt_task import generate_srt
+                        print(f"音频提取成功，触发SRT生成任务: slice_id={slice_id}")
+                        srt_task = generate_srt.delay(
+                            video_id=str(video_id),
+                            project_id=project_id,
+                            user_id=user_id,
+                            split_files=[],
+                            slice_id=slice_id,
+                            create_processing_task=False
+                        )
+                        print(f"SRT生成任务已提交: task_id={srt_task.id}")
+                    except Exception as srt_error:
+                        print(f"触发SRT生成任务失败: {srt_error}")
                 
                 return {
                     'status': 'completed',

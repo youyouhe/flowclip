@@ -394,7 +394,8 @@ class AudioProcessor:
         user_id: int,
         api_url: str = None,
         lang: str = "zh",
-        max_workers: int = 5
+        max_workers: int = 5,
+        custom_filename: str = None
     ) -> Dict[str, Any]:
         """从音频文件生成SRT字幕文件 - 更新为直接处理音频文件"""
         
@@ -505,7 +506,10 @@ class AudioProcessor:
                 adjusted_segments = validate_segments(adjusted_segments)
                 
                 # 生成SRT文件
-                srt_filename = f"{video_id}.srt"
+                if custom_filename:
+                    srt_filename = custom_filename
+                else:
+                    srt_filename = f"{video_id}.srt"
                 srt_path = temp_path / srt_filename
                 
                 # 使用增强版SRT内容生成，带UTF-8 BOM
@@ -514,9 +518,14 @@ class AudioProcessor:
                     f.write(srt_content)
                 
                 # 上传SRT文件到MinIO
-                srt_object_name = minio_service.generate_srt_object_name(
-                    user_id, project_id, video_id
-                )
+                if custom_filename:
+                    # 使用自定义文件名生成对象名称
+                    srt_object_name = f"users/{user_id}/projects/{project_id}/subtitles/{custom_filename}"
+                else:
+                    # 使用原来的逻辑
+                    srt_object_name = minio_service.generate_srt_object_name(
+                        user_id, project_id, video_id
+                    )
                 
                 srt_url = await minio_service.upload_file(
                     str(srt_path),

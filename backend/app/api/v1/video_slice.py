@@ -429,6 +429,154 @@ async def get_slice_download_url(
             detail=f"获取失败: {str(e)}"
         )
 
+@router.get("/slice-srt-content/{slice_id}")
+async def get_slice_srt_content(
+    slice_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """获取切片的SRT字幕内容"""
+    
+    try:
+        # 验证切片权限
+        stmt = select(VideoSlice).join(Video).join(Project).where(
+            VideoSlice.id == slice_id,
+            Project.user_id == current_user.id
+        )
+        result = await db.execute(stmt)
+        slice_data = result.scalar_one_or_none()
+        
+        if not slice_data:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="切片不存在或无权限访问"
+            )
+        
+        if not slice_data.srt_url:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="切片SRT文件不存在或未完成生成"
+            )
+        
+        # 从URL中提取对象名称
+        from urllib.parse import urlparse
+        parsed_url = urlparse(slice_data.srt_url)
+        object_name = parsed_url.path.lstrip('/')
+        
+        # 从MinIO读取SRT文件内容
+        try:
+            response = minio_service.internal_client.get_object(
+                settings.minio_bucket_name, 
+                object_name
+            )
+            content_bytes = response.read()
+            response.close()
+            response.release_conn()
+            
+            # 尝试多种编码解码字节内容
+            try:
+                content = content_bytes.decode('utf-8')
+            except UnicodeDecodeError:
+                try:
+                    content = content_bytes.decode('utf-8-sig')
+                except UnicodeDecodeError:
+                    try:
+                        content = content_bytes.decode('gbk')
+                    except UnicodeDecodeError:
+                        content = content_bytes.decode('latin-1')
+            
+            return {"content": content}
+            
+        except Exception as e:
+            logger.error(f"读取SRT文件失败: {str(e)}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="读取SRT文件失败"
+            )
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取切片SRT内容失败: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"获取失败: {str(e)}"
+        )
+
+@router.get("/sub-slice-srt-content/{sub_slice_id}")
+async def get_sub_slice_srt_content(
+    sub_slice_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """获取子切片的SRT字幕内容"""
+    
+    try:
+        # 验证子切片权限
+        stmt = select(VideoSubSlice).join(VideoSlice).join(Video).join(Project).where(
+            VideoSubSlice.id == sub_slice_id,
+            Project.user_id == current_user.id
+        )
+        result = await db.execute(stmt)
+        sub_slice_data = result.scalar_one_or_none()
+        
+        if not sub_slice_data:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="子切片不存在或无权限访问"
+            )
+        
+        if not sub_slice_data.srt_url:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="子切片SRT文件不存在或未完成生成"
+            )
+        
+        # 从URL中提取对象名称
+        from urllib.parse import urlparse
+        parsed_url = urlparse(sub_slice_data.srt_url)
+        object_name = parsed_url.path.lstrip('/')
+        
+        # 从MinIO读取SRT文件内容
+        try:
+            response = minio_service.internal_client.get_object(
+                settings.minio_bucket_name, 
+                object_name
+            )
+            content_bytes = response.read()
+            response.close()
+            response.release_conn()
+            
+            # 尝试多种编码解码字节内容
+            try:
+                content = content_bytes.decode('utf-8')
+            except UnicodeDecodeError:
+                try:
+                    content = content_bytes.decode('utf-8-sig')
+                except UnicodeDecodeError:
+                    try:
+                        content = content_bytes.decode('gbk')
+                    except UnicodeDecodeError:
+                        content = content_bytes.decode('latin-1')
+            
+            return {"content": content}
+            
+        except Exception as e:
+            logger.error(f"读取SRT文件失败: {str(e)}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="读取SRT文件失败"
+            )
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取子切片SRT内容失败: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"获取失败: {str(e)}"
+        )
+
 @router.get("/slice-sub-slices/{slice_id}", response_model=List[VideoSubSliceSchema])
 async def get_slice_sub_slices(
     slice_id: int,

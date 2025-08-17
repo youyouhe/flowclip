@@ -1199,7 +1199,12 @@ const VideoDetail: React.FC = () => {
                   >
                     下载视频
                   </Button>
-                  
+                </>
+              )}
+              
+              {/* 音频处理按钮组 - 当视频下载完成时就显示 */}
+              {video.status === 'completed' && (
+                <>
                   <Divider orientation="left">音频处理</Divider>
                   <Button
                     type={audioInfo ? "default" : "primary"}
@@ -1219,59 +1224,62 @@ const VideoDetail: React.FC = () => {
                   >
                     生成字幕 {srtInfo && "✓"}
                   </Button>
-                  
-                    
-                  {(audioInfo || srtInfo) && (
+                </>
+              )}
+              
+              {/* 下载处理结果 - 只有在有处理结果时才显示 */}
+              {(audioInfo || srtInfo) && (
+                <>
+                  <Divider orientation="left">下载处理结果</Divider>
+                  {audioInfo && (
+                    <Button
+                      type="link"
+                      icon={<SoundOutlined />}
+                      onClick={handleDownloadAudio}
+                      block
+                    >
+                      下载音频文件 
+                    </Button>
+                  )}
+                  {srtInfo && (
                     <>
-                      <Divider orientation="left">下载处理结果</Divider>
-                      {audioInfo && (
-                        <Button
-                          type="link"
-                          icon={<SoundOutlined />}
-                          onClick={handleDownloadAudio}
-                          block
-                        >
-                          下载音频文件 
-                        </Button>
-                      )}
-                      {srtInfo && (
-                        <>
-                          <Button
-                            type="primary"
-                            icon={<EyeOutlined />}
-                            onClick={handleViewSrt}
-                            block
-                            className="mb-2"
-                          >
-                            查看SRT字幕 ({srtInfo.totalSegments}条)
-                          </Button>
-                          <Button
-                            type="link"
-                            icon={<DownloadOutlined />}
-                            onClick={handleDownloadSrt}
-                            block
-                          >
-                            下载SRT字幕
-                          </Button>
-                        </>
-                      )}
+                      <Button
+                        type="primary"
+                        icon={<EyeOutlined />}
+                        onClick={handleViewSrt}
+                        block
+                        className="mb-2"
+                      >
+                        查看SRT字幕 ({srtInfo.totalSegments}条)
+                      </Button>
+                      <Button
+                        type="link"
+                        icon={<DownloadOutlined />}
+                        onClick={handleDownloadSrt}
+                        block
+                      >
+                        下载SRT字幕
+                      </Button>
                     </>
                   )}
-                  
-                  <Button
-                    type="dashed"
-                    onClick={() => {
-                      if (videoUrl) {
-                        console.log('测试访问视频URL:', videoUrl);
-                        // 在新标签页打开测试
-                        window.open(videoUrl, '_blank');
-                      }
-                    }}
-                    block
-                  >
-                    测试视频链接
-                  </Button>
                 </>
+              )}
+              
+              {/* 测试视频链接 - 只在视频下载完成时显示 */}
+              {video.status === 'completed' && (
+                <Button
+                  type="dashed"
+                  onClick={() => {
+                    if (videoUrl) {
+                      console.log('测试访问视频URL:', videoUrl);
+                      // 在新标签页打开测试
+                      window.open(videoUrl, '_blank');
+                    }
+                  }}
+                  block
+                >
+                  测试视频链接
+                </Button>
               )}
             </Space>
           </Card>

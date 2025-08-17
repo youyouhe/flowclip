@@ -145,6 +145,10 @@ export const videoSliceAPI = {
     api.get(`/video-slice/sub-slice-download-url/${subSliceId}?expiry=${expiry}`),
   getSliceSubSlices: (sliceId: number) =>
     api.get(`/video-slice/slice-sub-slices/${sliceId}`),
+  getSliceSrtContent: (sliceId: number) =>
+    api.get(`/video-slice/slice-srt-content/${sliceId}`),
+  getSubSliceSrtContent: (subSliceId: number) =>
+    api.get(`/video-slice/sub-slice-srt-content/${subSliceId}`),
   deleteAnalysis: (analysisId: number) =>
     api.delete(`/video-slice/analysis/${analysisId}`),
   deleteSlice: (sliceId: number) =>

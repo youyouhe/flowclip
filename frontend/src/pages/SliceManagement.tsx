@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Card, Input, Button, Select, Space, message, Spin, Typography, Row, Col, Table, Tag, Modal, Form, Tabs, Divider, Alert, Progress } from 'antd';
-import { PlayCircleOutlined, ScissorOutlined, UploadOutlined, EyeOutlined, EditOutlined, DeleteOutlined, PlusOutlined } from '@ant-design/icons';
+import { PlayCircleOutlined, ScissorOutlined, UploadOutlined, EyeOutlined, EditOutlined, DeleteOutlined, PlusOutlined, FileTextOutlined } from '@ant-design/icons';
 import { llmAPI } from '../services/api';
 import { videoAPI } from '../services/api';
 import { videoSliceAPI } from '../services/api';
@@ -10,6 +10,77 @@ const { Title, Text, Paragraph } = Typography;
 const { TextArea } = Input;
 const { Option } = Select;
 const { TabPane } = Tabs;
+
+// SRT内容查看弹窗组件
+const SrtContentModal: React.FC<{
+  visible: boolean;
+  onClose: () => void;
+  title: string;
+  content?: string;
+  loading?: boolean;
+}> = ({ visible, onClose, title, content, loading = false }) => {
+  return (
+    <Modal
+      title={title}
+      open={visible}
+      onCancel={onClose}
+      width={1000}
+      footer={[
+        <Button key="close" onClick={onClose}>
+          关闭
+        </Button>,
+        <Button 
+          key="download" 
+          type="primary"
+          onClick={() => {
+            if (content) {
+              const blob = new Blob([content], { type: 'text/srt;charset=utf-8' });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement('a');
+              a.href = url;
+              a.download = `${title}.srt`;
+              document.body.appendChild(a);
+              a.click();
+              document.body.removeChild(a);
+              URL.revokeObjectURL(url);
+            }
+          }}
+          disabled={!content}
+        >
+          下载SRT文件
+        </Button>
+      ]}
+    >
+      {loading ? (
+        <div style={{ textAlign: 'center', padding: '50px' }}>
+          <Spin size="large" />
+          <div style={{ marginTop: 16 }}>加载SRT内容中...</div>
+        </div>
+      ) : content ? (
+        <div style={{ 
+          maxHeight: '600px', 
+          overflow: 'auto', 
+          fontFamily: 'monospace', 
+          fontSize: '14px',
+          lineHeight: '1.6',
+          whiteSpace: 'pre-wrap',
+          backgroundColor: '#f5f5f5',
+          padding: '16px',
+          borderRadius: '4px'
+        }}>
+          {content}
+        </div>
+      ) : (
+        <Alert
+          message="无SRT内容"
+          description="该切片或子切片没有生成SRT字幕内容。"
+          type="info"
+          showIcon
+        />
+      )}
+    </Modal>
+  );
+};
 
 interface Video {
   id: number;
@@ -39,6 +110,7 @@ interface VideoSubSlice {
   sliced_file_path: string;
   file_size: number;
   status: string;
+  srt_processing_status?: string;
   created_at: string;
 }
 
@@ -57,6 +129,7 @@ interface VideoSlice {
   status: string;
   type: string;
   created_at: string;
+  srt_processing_status?: string;
   sub_slices?: VideoSubSlice[];
 }
 
@@ -73,6 +146,12 @@ const SliceManagement: React.FC = () => {
   const [jsonInput, setJsonInput] = useState('');
   const [coverTitle, setCoverTitle] = useState('');
   const [form] = Form.useForm();
+  
+  // SRT查看弹窗状态
+  const [srtModalVisible, setSrtModalVisible] = useState(false);
+  const [srtModalLoading, setSrtModalLoading] = useState(false);
+  const [srtModalContent, setSrtModalContent] = useState('');
+  const [srtModalTitle, setSrtModalTitle] = useState('');
   
   // 切片处理进度状态
   const [sliceProgress, setSliceProgress] = useState<{
@@ -483,6 +562,30 @@ const SliceManagement: React.FC = () => {
     });
   };
 
+  // 获取SRT内容并显示弹窗
+  const handleViewSrt = async (sliceId: number, title: string, isSubSlice: boolean = false, subSliceId?: number) => {
+    setSrtModalVisible(true);
+    setSrtModalLoading(true);
+    setSrtModalTitle(`${title} - SRT字幕`);
+    
+    try {
+      let response;
+      if (isSubSlice && subSliceId) {
+        response = await videoSliceAPI.getSubSliceSrtContent(subSliceId);
+      } else {
+        response = await videoSliceAPI.getSliceSrtContent(sliceId);
+      }
+      
+      setSrtModalContent(response.data.content || '');
+    } catch (error: any) {
+      console.error('获取SRT内容失败:', error);
+      message.error(`获取SRT内容失败: ${error.response?.data?.detail || error.message}`);
+      setSrtModalContent('');
+    } finally {
+      setSrtModalLoading(false);
+    }
+  };
+
   const analysisColumns = [
     {
       title: '封面标题',
@@ -684,6 +787,13 @@ const SliceManagement: React.FC = () => {
             详情
           </Button>
           <Button
+            icon={<FileTextOutlined />}
+            onClick={() => handleViewSrt(record.id, record.cover_title || record.title)}
+            disabled={!record.srt_processing_status || record.srt_processing_status !== 'completed'}
+          >
+            查看SRT
+          </Button>
+          <Button
             danger
             icon={<DeleteOutlined />}
             onClick={() => handleDeleteSlice(record.id)}
@@ -867,6 +977,15 @@ const SliceManagement: React.FC = () => {
                                           播放
                                         </Button>
                                         <Button
+                                          size="small"
+                                          icon={<FileTextOutlined />}
+                                          onClick={() => handleViewSrt(record.id, subSlice.cover_title, true, subSlice.id)}
+                                          disabled={!subSlice.srt_processing_status || subSlice.srt_processing_status !== 'completed'}
+                                          title={subSlice.srt_processing_status === 'completed' ? '查看SRT字幕' : 'SRT未完成生成'}
+                                        >
+                                          SRT
+                                        </Button>
+                                        <Button
                                           danger
                                           size="small"
                                           icon={<DeleteOutlined />}
@@ -999,6 +1118,19 @@ const SliceManagement: React.FC = () => {
           </Space>
         )}
       </Modal>
+
+      {/* SRT内容查看弹窗 */}
+      <SrtContentModal
+        visible={srtModalVisible}
+        onClose={() => {
+          setSrtModalVisible(false);
+          setSrtModalContent('');
+          setSrtModalTitle('');
+        }}
+        title={srtModalTitle}
+        content={srtModalContent}
+        loading={srtModalLoading}
+      />
     </div>
   );
 };
