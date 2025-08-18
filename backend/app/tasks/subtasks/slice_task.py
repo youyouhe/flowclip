@@ -74,7 +74,7 @@ def process_video_slices(self, analysis_id: int, video_id: int, project_id: int,
                             project_id=project_id,
                             user_id=user_id,
                             video_minio_path=video_slice.sliced_file_path,
-                            create_processing_task=False,
+                            create_processing_task=True,
                             # 添加回调信息
                             slice_id=video_slice.id,
                             trigger_srt_after_audio=True
@@ -98,7 +98,7 @@ def process_video_slices(self, analysis_id: int, video_id: int, project_id: int,
                                     project_id=project_id,
                                     user_id=user_id,
                                     video_minio_path=sub_slice.sliced_file_path,
-                                    create_processing_task=False
+                                    create_processing_task=True
                                 )
                                 sub_slice.audio_processing_status = "processing"
                                 sub_slice.audio_task_id = sub_audio_task.id
@@ -111,7 +111,7 @@ def process_video_slices(self, analysis_id: int, video_id: int, project_id: int,
                                     user_id=user_id,
                                     split_files=[],
                                     sub_slice_id=sub_slice.id,
-                                    create_processing_task=False
+                                    create_processing_task=True
                                 )
                                 sub_slice.srt_processing_status = "processing"
                                 sub_slice.srt_task_id = sub_srt_task.id
