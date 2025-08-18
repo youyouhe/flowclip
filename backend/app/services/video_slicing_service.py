@@ -131,6 +131,30 @@ class VideoSlicingService:
                 if not os.path.exists(temp_file_path):
                     raise Exception("切割后的文件不存在")
                 
+                # 获取实际的视频时长
+                actual_duration = duration
+                try:
+                    cmd = [
+                        self.ffprobe_path,
+                        '-v', 'quiet',
+                        '-print_format', 'json',
+                        '-show_format',
+                        temp_file_path
+                    ]
+                    
+                    result = subprocess.run(
+                        cmd,
+                        capture_output=True,
+                        text=True,
+                        timeout=30
+                    )
+                    
+                    if result.returncode == 0:
+                        info = json.loads(result.stdout)
+                        actual_duration = float(info.get('format', {}).get('duration', duration))
+                except Exception as e:
+                    logger.warning(f"获取实际视频时长失败，使用计算值: {str(e)}")
+                
                 # 获取文件信息
                 file_size = os.path.getsize(temp_file_path)
                 
@@ -142,14 +166,14 @@ class VideoSlicingService:
                     content_type="video/mp4"
                 )
                 
-                logger.info(f"视频切割成功: {output_filename}, 大小: {file_size} bytes")
+                logger.info(f"视频切割成功: {output_filename}, 大小: {file_size} bytes, 理论时长: {duration}秒, 实际时长: {actual_duration}秒")
                 
                 return {
                     "success": True,
                     "filename": output_filename,
                     "file_path": minio_path,
                     "file_size": file_size,
-                    "duration": duration
+                    "duration": actual_duration
                 }
                 
         except subprocess.TimeoutExpired:
@@ -221,6 +245,30 @@ class VideoSlicingService:
                 if not os.path.exists(temp_file_path):
                     raise Exception("切割后的文件不存在")
                 
+                # 获取实际的视频时长
+                actual_duration = duration
+                try:
+                    cmd = [
+                        self.ffprobe_path,
+                        '-v', 'quiet',
+                        '-print_format', 'json',
+                        '-show_format',
+                        temp_file_path
+                    ]
+                    
+                    result = subprocess.run(
+                        cmd,
+                        capture_output=True,
+                        text=True,
+                        timeout=30
+                    )
+                    
+                    if result.returncode == 0:
+                        info = json.loads(result.stdout)
+                        actual_duration = float(info.get('format', {}).get('duration', duration))
+                except Exception as e:
+                    logger.warning(f"获取实际视频时长失败，使用计算值: {str(e)}")
+                
                 # 获取文件信息
                 file_size = os.path.getsize(temp_file_path)
                 
@@ -232,14 +280,14 @@ class VideoSlicingService:
                     content_type="video/mp4"
                 )
                 
-                logger.info(f"视频切割成功 (同步): {output_filename}, 大小: {file_size} bytes")
+                logger.info(f"视频切割成功 (同步): {output_filename}, 大小: {file_size} bytes, 理论时长: {duration}秒, 实际时长: {actual_duration}秒")
                 
                 return {
                     "success": True,
                     "filename": output_filename,
                     "file_path": minio_path,
                     "file_size": file_size,
-                    "duration": duration
+                    "duration": actual_duration
                 }
                 
         except subprocess.TimeoutExpired:
