@@ -31,13 +31,8 @@ def generate_srt(self, video_id: str, project_id: int, user_id: int, split_files
             with get_sync_db() as db:
                 state_manager = get_state_manager(db)
                 
-                # 检查任务是否已存在
-                task = db.query(ProcessingTask).filter(
-                    ProcessingTask.celery_task_id == celery_task_id
-                ).first()
-                
-                if not task:
-                    # 创建新的处理任务记录
+                # 尝试创建任务记录，如果已存在则忽略
+                try:
                     task = ProcessingTask(
                         video_id=int(video_id),
                         task_type=ProcessingTaskType.GENERATE_SRT,
@@ -52,20 +47,76 @@ def generate_srt(self, video_id: str, project_id: int, user_id: int, split_files
                     db.add(task)
                     db.commit()
                     print(f"Created new processing task for celery_task_id: {celery_task_id}")
-                    return True
+                except Exception as create_error:
+                    # 如果创建失败（可能是因为重复键），则回滚并忽略错误
+                    db.rollback()
+                    # 检查任务是否已存在
+                    existing_task = db.query(ProcessingTask).filter(
+                        ProcessingTask.celery_task_id == celery_task_id
+                    ).first()
+                    if not existing_task:
+                        # 如果任务确实不存在，但创建失败了，重新抛出错误
+                        raise create_error
+                    # 如果任务已存在，正常返回
+                    print(f"Processing task already exists for celery_task_id: {celery_task_id}")
                 return True
         except Exception as e:
             print(f"Error ensuring processing task exists: {e}")
             return False
     
-    def _get_audio_file_from_db(video_id_str: str) -> dict:
+    def _get_audio_file_from_db(video_id_str: str, sub_slice_id: int = None) -> dict:
         """从数据库获取音频文件信息 - 同步版本"""
         with get_sync_db() as db:
             from sqlalchemy import select
             from app.models.processing_task import ProcessingTask
             from app.models.video import Video
+            from app.models.video_slice import VideoSubSlice
             
-            # 首先查找视频记录
+            # 如果是子切片，直接从子切片记录中获取音频路径和时间信息
+            if sub_slice_id:
+                print(f"DEBUG: 查询子切片信息: sub_slice_id={sub_slice_id}")
+                sub_slice = db.query(VideoSubSlice).filter(VideoSubSlice.id == sub_slice_id).first()
+                if sub_slice:
+                    print(f"DEBUG: 找到子切片: sub_slice_id={sub_slice_id}, audio_url={getattr(sub_slice, 'audio_url', 'None')}, start_time={getattr(sub_slice, 'start_time', 'None')}, end_time={getattr(sub_slice, 'end_time', 'None')}")
+                    if sub_slice.audio_url:
+                        result = {
+                            "audio_path": sub_slice.audio_url, 
+                            "video_id": video_id_str,
+                            "start_time": sub_slice.start_time,
+                            "end_time": sub_slice.end_time
+                        }
+                        print(f"DEBUG: 返回子切片音频信息: {result}")
+                        return result
+                    else:
+                        print(f"警告: 子切片 {sub_slice_id} 没有音频文件路径")
+                        # 添加更多调试信息
+                        print(f"DEBUG: 子切片完整信息: id={sub_slice.id}, slice_id={sub_slice.slice_id}, cover_title={sub_slice.cover_title}")
+                        print(f"DEBUG: 子切片状态信息: audio_processing_status={getattr(sub_slice, 'audio_processing_status', 'None')}, audio_task_id={getattr(sub_slice, 'audio_task_id', 'None')}")
+                        # 检查父视频的音频信息
+                        try:
+                            parent_video = db.query(Video).filter(Video.id == int(video_id_str)).first()
+                            if parent_video and parent_video.processing_metadata and parent_video.processing_metadata.get('audio_path'):
+                                parent_audio_path = parent_video.processing_metadata['audio_path']
+                                print(f"DEBUG: 父视频有音频路径，可以使用: {parent_audio_path}")
+                                # 即使子切片没有设置audio_url，也可以使用父视频的音频路径
+                                result = {
+                                    "audio_path": parent_audio_path, 
+                                    "video_id": video_id_str,
+                                    "start_time": sub_slice.start_time,
+                                    "end_time": sub_slice.end_time
+                                }
+                                print(f"DEBUG: 使用父视频音频信息: {result}")
+                                return result
+                            else:
+                                print(f"DEBUG: 父视频也没有音频路径")
+                        except Exception as parent_error:
+                            print(f"DEBUG: 查询父视频音频信息失败: {parent_error}")
+                        return None
+                else:
+                    print(f"警告: 未找到子切片记录: sub_slice_id={sub_slice_id}")
+                    return None
+            
+            # 首先查找视频记录（非子切片情况）
             video = db.query(Video).filter(Video.id == int(video_id_str)).first()
             if not video:
                 return None
@@ -139,9 +190,12 @@ def generate_srt(self, video_id: str, project_id: int, user_id: int, split_files
         self.update_state(state='PROGRESS', meta={'progress': 10, 'stage': ProcessingStage.GENERATE_SRT, 'message': '开始生成字幕'})
         
         # 获取音频文件信息
-        audio_info = _get_audio_file_from_db(video_id)
+        audio_info = _get_audio_file_from_db(video_id, sub_slice_id)
         if not audio_info:
-            error_msg = "没有找到可用的音频文件，请先提取音频"
+            if sub_slice_id:
+                error_msg = f"没有找到可用的音频文件，请先提取音频 (sub_slice_id={sub_slice_id})"
+            else:
+                error_msg = "没有找到可用的音频文件，请先提取音频"
             _update_task_status(celery_task_id, ProcessingTaskStatus.FAILURE, 0, error_msg)
             raise Exception(error_msg)
         
@@ -196,13 +250,23 @@ def generate_srt(self, video_id: str, project_id: int, user_id: int, split_files
                 else:
                     custom_filename = None
                 
+                # 准备时间参数（如果是子切片）
+                start_time = None
+                end_time = None
+                if sub_slice_id and audio_info and 'start_time' in audio_info and 'end_time' in audio_info:
+                    start_time = audio_info['start_time']
+                    end_time = audio_info['end_time']
+                    print(f"为子切片 {sub_slice_id} 生成SRT，时间范围: {start_time}s - {end_time}s")
+                
                 result = run_async(
                     audio_processor.generate_srt_from_audio(
                         audio_path=str(audio_path),
                         video_id=video_id,
                         project_id=project_id,
                         user_id=user_id,
-                        custom_filename=custom_filename
+                        custom_filename=custom_filename,
+                        start_time=start_time,
+                        end_time=end_time
                     )
                 )
                 
@@ -227,13 +291,17 @@ def generate_srt(self, video_id: str, project_id: int, user_id: int, split_files
                                         print(f"未找到切片记录: slice_id={slice_id}")
                                 elif sub_slice_id:
                                     # 更新子切片的srt_url
+                                    print(f"DEBUG: 开始更新子切片SRT URL: sub_slice_id={sub_slice_id}, srt_url={srt_url}")
                                     from app.models import VideoSubSlice
                                     sub_slice_record = db.query(VideoSubSlice).filter(VideoSubSlice.id == sub_slice_id).first()
                                     if sub_slice_record:
+                                        print(f"DEBUG: 找到子切片记录: sub_slice_id={sub_slice_id}")
                                         sub_slice_record.srt_url = srt_url
                                         sub_slice_record.srt_processing_status = "completed"
+                                        print(f"DEBUG: 设置子切片SRT URL: sub_slice_id={sub_slice_id}, srt_url={srt_url}")
                                         print(f"已更新子切片: sub_slice_id={sub_slice_id}, srt_url={srt_url}")
                                     else:
+                                        print(f"DEBUG: 未找到子切片记录: sub_slice_id={sub_slice_id}")
                                         print(f"未找到子切片记录: sub_slice_id={sub_slice_id}")
                                 else:
                                     print("警告: 既没有slice_id也没有sub_slice_id，无法保存srt_url")

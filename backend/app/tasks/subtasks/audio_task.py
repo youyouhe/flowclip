@@ -31,13 +31,8 @@ def extract_audio(self, video_id: str, project_id: int, user_id: int, video_mini
             with get_sync_db() as db:
                 state_manager = get_state_manager(db)
                 
-                # 检查任务是否已存在
-                task = db.query(ProcessingTask).filter(
-                    ProcessingTask.celery_task_id == celery_task_id
-                ).first()
-                
-                if not task:
-                    # 创建新的处理任务记录
+                # 尝试创建任务记录，如果已存在则忽略
+                try:
                     from app.core.constants import ProcessingTaskType
                     task = ProcessingTask(
                         video_id=int(video_id),
@@ -53,7 +48,18 @@ def extract_audio(self, video_id: str, project_id: int, user_id: int, video_mini
                     db.add(task)
                     db.commit()
                     print(f"Created new processing task for celery_task_id: {celery_task_id}")
-                    return True
+                except Exception as create_error:
+                    # 如果创建失败（可能是因为重复键），则回滚并忽略错误
+                    db.rollback()
+                    # 检查任务是否已存在
+                    existing_task = db.query(ProcessingTask).filter(
+                        ProcessingTask.celery_task_id == celery_task_id
+                    ).first()
+                    if not existing_task:
+                        # 如果任务确实不存在，但创建失败了，重新抛出错误
+                        raise create_error
+                    # 如果任务已存在，正常返回
+                    print(f"Processing task already exists for celery_task_id: {celery_task_id}")
                 return True
         except Exception as e:
             print(f"Error ensuring processing task exists: {e}")
@@ -116,7 +122,12 @@ def extract_audio(self, video_id: str, project_id: int, user_id: int, video_mini
         except RuntimeError:
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
-        return loop.run_until_complete(coro)
+        # 如果循环已经在运行，使用ensure_future
+        if loop.is_running():
+            future = asyncio.ensure_future(coro, loop=loop)
+            return future
+        else:
+            return loop.run_until_complete(coro)
     
     try:
         celery_task_id = self.request.id
@@ -235,7 +246,11 @@ def extract_audio(self, video_id: str, project_id: int, user_id: int, video_mini
                             }
                             await db.commit()
                     
-                    run_async(_update_audio_path())
+                    # 使用同步方式运行异步函数，避免事件循环问题
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    loop.run_until_complete(_update_audio_path())
+                    loop.close()
                 except Exception as e:
                     print(f"更新音频路径失败: {e}")
                 
