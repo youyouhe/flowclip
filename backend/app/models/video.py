@@ -16,7 +16,8 @@ class Video(Base):
     duration = Column(Float)  # Duration in seconds
     file_size = Column(BigInteger)  # File size in bytes
     memo = Column(Text, default="")  # Memo field for additional notes
-    thumbnail_url = Column(String(1000))
+    thumbnail_url = Column(String(1000))  # 保留用于向后兼容
+    thumbnail_path = Column(String(1000))  # 新增：存储MinIO中的对象路径
     status = Column(String(50), default="pending")  # pending, downloading, downloaded, processing, completed, failed
     download_progress = Column(Float, default=0.0)  # 0-100
     

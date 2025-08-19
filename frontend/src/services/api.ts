@@ -106,6 +106,10 @@ export const videoAPI = {
     api.get(`/videos/${videoId}/srt-content`),
   getThumbnailDownloadUrl: (videoId: number, expiry: number = 3600) =>
     api.get(`/videos/${videoId}/thumbnail-download-url?expiry=${expiry}`),
+  
+  // 新增：根据路径获取缩略图URL
+  getThumbnailUrlByPath: (path: string) =>
+    api.get(`/resources/thumbnail-url?path=${encodeURIComponent(path)}`),
   getProcessingStatus: (videoId: number) =>
     api.get(`/videos/${videoId}/processing-status`),
 };
@@ -250,10 +254,19 @@ export const resourceAPI = {
   // 标签管理
   getResourceTags: (params?: any) =>
     api.get('/resources/tags', { params }),
-  createResourceTag: (name: string, tagType: string, description?: string) =>
-    api.post('/resources/tags', null, {
-      params: { name, tag_type: tagType, description }
-    }),
+  createResourceTag: (name: string, tagType: string, description?: string) => {
+    const formData = new FormData();
+    formData.append('name', name);
+    formData.append('tag_type', tagType);
+    if (description) {
+      formData.append('description', description);
+    }
+    return api.post('/resources/tags', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
+    });
+  },
   deleteResourceTag: (id: number) =>
     api.delete(`/resources/tags/${id}`),
 };

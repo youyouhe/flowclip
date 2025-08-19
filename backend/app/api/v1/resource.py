@@ -4,7 +4,7 @@ from sqlalchemy import select, delete, update, func, and_, insert
 from sqlalchemy.orm import selectinload
 from typing import List, Optional
 from app.core.database import get_db
-from app.models.resource import Resource, ResourceTag, ResourceTagRelation
+from app.models.resource import Resource, ResourceTag, ResourceTagRelation, resource_tags_mapping
 from app.schemas.resource import Resource as ResourceSchema, ResourceCreate, ResourceUpdate, ResourceQuery, ResourceSearchResult
 from fastapi import Depends
 from app.core.security import get_current_user, oauth2_scheme
@@ -470,11 +470,27 @@ async def upload_resource(
         await db.commit()
         await db.refresh(db_resource)
         
-        # 暂时跳过标签处理，避免 SQLAlchemy 关系问题
-        # TODO: Fix SQLAlchemy relation issues for tag handling
+        # 处理标签关联
         if tags:
-            print(f"⚠️ Tag processing skipped: {tags}")
-            print("TODO: Fix SQLAlchemy relation issues for tag handling")
+            tag_ids = [int(tag_id.strip()) for tag_id in tags.split(',') if tag_id.strip().isdigit()]
+            if tag_ids:
+                # 直接插入到resource_tags_mapping表中
+                for tag_id in tag_ids:
+                    # 检查标签是否存在
+                    tag_check = await db.execute(
+                        select(ResourceTag).where(ResourceTag.id == tag_id)
+                    )
+                    if tag_check.scalar_one_or_none():
+                        # 插入关联记录到resource_tags_mapping表
+                        await db.execute(
+                            resource_tags_mapping.insert().values(
+                                resource_id=db_resource.id,
+                                tag_id=tag_id
+                            )
+                        )
+                
+                await db.commit()
+                await db.refresh(db_resource)
         
         return {"message": "文件上传成功", "resource": db_resource}
         
@@ -590,3 +606,33 @@ async def get_resource_view_url(
         import traceback
         print(f"Traceback: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"生成查看链接失败: {str(e)}")
+
+
+@router.get("/thumbnail-url")
+async def get_thumbnail_url(
+    path: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """根据缩略图路径生成预签名URL"""
+    if not path:
+        raise HTTPException(status_code=400, detail="路径参数不能为空")
+    
+    try:
+        # 验证路径格式（基础验证）
+        if not path.startswith("users/") and not path.startswith("global-resources/"):
+            raise HTTPException(status_code=400, detail="无效的文件路径")
+        
+        # 生成预签名URL
+        minio_service = get_minio_service()
+        download_url = await minio_service.get_file_url(path, expiry=86400)  # 24小时有效期
+        
+        if not download_url:
+            raise HTTPException(status_code=500, detail="无法生成缩略图URL")
+        
+        return {"download_url": download_url}
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"生成缩略图URL失败: {str(e)}")

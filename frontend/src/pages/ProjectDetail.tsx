@@ -14,7 +14,7 @@ import {
   LoadingOutlined
 } from '@ant-design/icons';
 import { projectAPI } from '../services/api';
-import { videoAPI } from '../services/api';
+import { videoAPI, resourceAPI } from '../services/api';
 
 const { Title, Text } = Typography;
 const { TabPane } = Tabs;
@@ -40,6 +40,7 @@ interface Video {
   duration?: number;
   file_size?: number;
   thumbnail_url?: string;
+  thumbnail_path?: string;  // 新增字段
   status: string;
   download_progress: number;
   created_at: string;

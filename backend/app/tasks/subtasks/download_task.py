@@ -142,7 +142,22 @@ def download_video(self, video_url: str, project_id: int, user_id: int, quality:
                             video.file_path = result['minio_path']
                             video.filename = result['filename']
                             video.file_size = result['filesize']
-                            video.thumbnail_url = result.get('thumbnail_url')
+                            
+                            # 保存缩略图路径而不是完整URL
+                            thumbnail_url = result.get('thumbnail_url')
+                            if thumbnail_url:
+                                # 从完整URL中提取对象路径
+                                from urllib.parse import urlparse, parse_qs
+                                parsed_url = urlparse(thumbnail_url)
+                                # 路径格式: /bucket_name/object_path
+                                # 我们需要的是object_path部分
+                                path_parts = parsed_url.path.lstrip('/').split('/', 1)
+                                if len(path_parts) > 1:
+                                    thumbnail_path = path_parts[1]  # 获取对象路径部分
+                                    video.thumbnail_path = thumbnail_path
+                                else:
+                                    # 如果无法解析路径，仍然保存完整URL以保持向后兼容
+                                    video.thumbnail_url = thumbnail_url
                             db.commit()
                             print(f"已更新视频记录: video_id={video.id}")
                         

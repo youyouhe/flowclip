@@ -35,6 +35,7 @@ import {
 import { videoAPI, projectAPI } from '../services/api';
 import { useNavigate } from 'react-router-dom';
 import { wsService, startHeartbeat, stopHeartbeat } from '../services/websocket';
+import { useThumbnail } from '../hooks/useThumbnail';
 import dayjs from 'dayjs';
 
 interface Video {
@@ -46,6 +47,7 @@ interface Video {
   duration?: number;
   file_size?: number;
   thumbnail_url?: string;
+  thumbnail_path?: string;  // 新增字段
   status: string;
   download_progress: number;
   processing_progress?: number; // Add this
@@ -68,36 +70,21 @@ const extractYouTubeVideoId = (url: string): string | null => {
 
 interface ThumbnailRendererProps {
   video: Video;
-  thumbnailUrl?: string;
   title: string;
 }
 
-const ThumbnailRenderer: React.FC<ThumbnailRendererProps> = ({ video, thumbnailUrl, title }) => {
+const ThumbnailRenderer: React.FC<ThumbnailRendererProps> = ({ video, title }) => {
+  const { thumbnailUrl, loading, error } = useThumbnail(video);
   const [imgError, setImgError] = useState(false);
-  const [loading, setLoading] = useState(false);
 
   const handleImageError = () => {
     console.warn(`Thumbnail failed to load for video ${video.id}: ${thumbnailUrl}`);
     setImgError(true);
   };
 
-  const handleRetry = async () => {
-    setLoading(true);
-    setImgError(false);
-    
-    try {
-      // 尝试重新获取缩略图URL
-      const response = await videoAPI.getThumbnailDownloadUrl(video.id);
-      if (response.data.download_url) {
-        // 通过更新父组件的状态来触发重新渲染
-        window.location.reload();
-      }
-    } catch (error) {
-      console.error(`Failed to retry thumbnail for video ${video.id}:`, error);
-      setImgError(true);
-    } finally {
-      setLoading(false);
-    }
+  const handleRetry = () => {
+    // 重新加载页面以重新获取缩略图
+    window.location.reload();
   };
 
   const getThumbnailSrc = () => {
@@ -217,19 +204,30 @@ const Videos: React.FC = () => {
       // 获取每个视频的缩略图URL
       const videoData = response.data.videos || response.data;
       const thumbnailPromises = videoData.map(async (video: Video) => {
-        if (video.url) {
+        // 首先尝试使用新的缩略图路径生成URL
+        if (video.thumbnail_path) {
+          try {
+            const thumbnailResponse = await resourceAPI.getThumbnailUrlByPath(video.thumbnail_path);
+            return { id: video.id, url: thumbnailResponse.data.download_url };
+          } catch (error) {
+            console.error(`通过路径获取视频 ${video.id} 缩略图失败:`, error);
+          }
+        }
+        
+        // 如果没有thumbnail_path或获取失败，尝试使用旧的thumbnail_url
+        if (video.thumbnail_url) {
           try {
             const thumbnailResponse = await videoAPI.getThumbnailDownloadUrl(video.id);
             return { id: video.id, url: thumbnailResponse.data.download_url };
           } catch (error) {
             console.error(`获取视频 ${video.id} 缩略图失败:`, error);
-            // 生成一个默认的YouTube缩略图URL作为备用
-            const youtubeVideoId = extractYouTubeVideoId(video.url);
-            const fallbackUrl = youtubeVideoId ? `https://img.youtube.com/vi/${youtubeVideoId}/default.jpg` : null;
-            return { id: video.id, url: fallbackUrl };
           }
         }
-        return { id: video.id, url: null };
+        
+        // 如果都没有，生成一个默认的YouTube缩略图URL作为备用
+        const youtubeVideoId = extractYouTubeVideoId(video.url);
+        const fallbackUrl = youtubeVideoId ? `https://img.youtube.com/vi/${youtubeVideoId}/default.jpg` : null;
+        return { id: video.id, url: fallbackUrl };
       });
       
       const thumbnailResults = await Promise.all(thumbnailPromises);
@@ -560,7 +558,6 @@ const Videos: React.FC = () => {
         <div className="flex items-center">
           <ThumbnailRenderer 
             video={record}
-            thumbnailUrl={thumbnailUrls[record.id]}
             title={title}
           />
           <div>
