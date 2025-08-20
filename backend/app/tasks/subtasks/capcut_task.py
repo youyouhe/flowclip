@@ -6,6 +6,7 @@ import requests
 import json
 import time
 import logging
+import subprocess
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, Any
@@ -99,7 +100,6 @@ def export_slice_to_capcut(self, slice_id: int, draft_folder: str, user_id: int 
         if not celery_task_id:
             celery_task_id = "unknown"
             
-        print(f"DEBUG: 开始CapCut导出任务 - 切片ID: {slice_id}, 类型: {slice_obj.type}")
         _update_task_status(celery_task_id, ProcessingTaskStatus.RUNNING, 5, "开始CapCut导出任务")
         self.update_state(state='PROGRESS', meta={'progress': 5, 'stage': ProcessingStage.CAPCUT_EXPORT, 'message': '开始CapCut导出任务'})
         
@@ -113,6 +113,9 @@ def export_slice_to_capcut(self, slice_id: int, draft_folder: str, user_id: int 
             slice_obj = db.get(VideoSlice, slice_id)
             if not slice_obj:
                 raise Exception("切片不存在")
+            
+            # 添加调试信息
+            print(f"DEBUG: 开始CapCut导出任务 - 切片ID: {slice_id}, 类型: {slice_obj.type}")
             
             # 更新切片的CapCut状态为处理中
             slice_obj.capcut_status = "processing"
@@ -180,6 +183,17 @@ def export_slice_to_capcut(self, slice_id: int, draft_folder: str, user_id: int 
                             max_retries=3
                         ))
                         
+                        # 添加电视彩虹屏特效 (从水波纹结束后持续到子切片结束)
+                        print(f"DEBUG: 添加电视彩虹屏特效 - 时间轴起始: {current_time + 3}秒, 时间轴结束: {current_time + sub_slice.duration}秒")
+                        rainbow_effect_result = asyncio.run(capcut_service.add_effect(
+                            draft_id=draft_id,
+                            effect_type="电视彩虹屏",
+                            start=current_time + 3,
+                            end=current_time + sub_slice.duration,
+                            track_name=f"rainbow_effect_track_{i+1}",
+                            max_retries=3
+                        ))
+                        
                         # 获取水波纹音频资源
                         audio_url = _get_resource_by_tag_from_db("水波纹", "audio")
                         if not audio_url:
@@ -206,8 +220,18 @@ def export_slice_to_capcut(self, slice_id: int, draft_folder: str, user_id: int 
                                 text=sub_slice.cover_title,
                                 start=current_time,
                                 end=current_time + 3,
+                                font="挥墨体",
+                                font_color="#ffde00",
+                                font_size=8.0,
                                 track_name=f"title_track_{i+1}",
-                                transform_y=0.75,  # 标题位置在屏幕上部
+                                transform_x=0.0,
+                                transform_y=0.0,  # 标题位置在屏幕中心
+                                font_alpha=1.0,
+                                border_alpha=1.0,
+                                border_color="#000000",
+                                border_width=15.0,
+                                width=1080,
+                                height=1920,
                                 max_retries=3
                             ))
                         
@@ -225,15 +249,80 @@ def export_slice_to_capcut(self, slice_id: int, draft_folder: str, user_id: int 
                         ))
                         
                         # 添加子切片字幕（如果有）
+                        print(f"DEBUG: 检查子切片 {sub_slice.id} 是否需要添加字幕 - SRT URL: {sub_slice.srt_url}")
                         if sub_slice.srt_url:
-                            srt_path = f"{settings.minio_public_endpoint}/{settings.minio_bucket_name}/{sub_slice.srt_url}"
-                            print(f"DEBUG: 添加子切片字幕 - URL: {srt_path}, 时间偏移: {current_time}秒")
-                            subtitle_result = asyncio.run(capcut_service.add_subtitle(
-                                draft_id=draft_id,
-                                srt_path=srt_path,
-                                time_offset=current_time,
-                                max_retries=3
-                            ))
+                            try:
+                                # 从MinIO读取SRT文件内容并处理编码
+                                print(f"DEBUG: 从MinIO读取子切片 {sub_slice.id} 的SRT文件内容")
+                                response = minio_service.internal_client.get_object(settings.minio_bucket_name, sub_slice.srt_url)
+                                content_bytes = response.read()
+                                response.close()
+                                response.release_conn()
+                                
+                                # 尝试多种编码解码，优先处理BOM
+                                srt_content = None
+                                try:
+                                    # 优先使用utf-8-sig，它会自动处理BOM
+                                    srt_content = content_bytes.decode('utf-8-sig')
+                                except UnicodeDecodeError:
+                                    try:
+                                        srt_content = content_bytes.decode('utf-8')
+                                    except UnicodeDecodeError:
+                                        try:
+                                            srt_content = content_bytes.decode('gbk')
+                                        except UnicodeDecodeError:
+                                            srt_content = content_bytes.decode('latin-1')
+                                
+                                # 额外清理：移除可能残留的BOM字符
+                                if srt_content:
+                                    # BOM字符为 '\ufeff'
+                                    srt_content = srt_content.replace('\ufeff', '')
+                                    # 同时清理其他可能的不可见字符
+                                    srt_content = srt_content.strip()
+                                
+                                print(f"DEBUG: 成功读取子切片 {sub_slice.id} 的SRT内容，长度: {len(srt_content)}")
+                                
+                                if srt_content and srt_content.strip():
+                                    print(f"DEBUG: 添加子切片字幕 - 内容长度: {len(srt_content)}, 时间偏移: {current_time}秒")
+                                    subtitle_result = asyncio.run(capcut_service.add_subtitle(
+                                        draft_id=draft_id,
+                                        srt_path=srt_content,  # 传递实际内容而不是URL
+                                        time_offset=current_time,
+                                        font="HarmonyOS_Sans_SC_Regular",
+                                        font_size=8.0,
+                                        font_color="#ffde00",
+                                        bold=False,
+                                        italic=False,
+                                        underline=False,
+                                        vertical=False,
+                                        alpha=1.0,
+                                        border_alpha=1.0,
+                                        border_color="#000000",
+                                        border_width=15.0,
+                                        background_color="#000000",
+                                        background_style=0,
+                                        background_alpha=0.0,
+                                        transform_x=0.0,
+                                        transform_y=-0.8,
+                                        scale_x=1.0,
+                                        scale_y=1.0,
+                                        rotation=0.0,
+                                        track_name=f"subtitle_{sub_slice.id}",
+                                        width=1080,
+                                        height=1920,
+                                        max_retries=3
+                                    ))
+                                    print(f"DEBUG: 子切片 {sub_slice.id} 字幕添加结果: {subtitle_result}")
+                                    if subtitle_result and subtitle_result.get("success"):
+                                        print(f"DEBUG: 子切片 {sub_slice.id} 字幕成功添加到草稿 {draft_id}")
+                                    else:
+                                        print(f"DEBUG: 子切片 {sub_slice.id} 字幕添加失败: {subtitle_result.get('error') if subtitle_result else '未知错误'}")
+                                else:
+                                    print(f"DEBUG: 子切片 {sub_slice.id} SRT内容为空")
+                            except Exception as e:
+                                print(f"DEBUG: 读取或添加子切片 {sub_slice.id} 字幕失败: {str(e)}")
+                        else:
+                            print(f"DEBUG: 子切片 {sub_slice.id} 没有SRT URL，跳过字幕添加")
                         
                         current_time += sub_slice.duration
                     except Exception as e:
@@ -241,12 +330,52 @@ def export_slice_to_capcut(self, slice_id: int, draft_folder: str, user_id: int 
                         # 继续处理其他子切片
                         continue
             else:
-                # 对于full切片，直接添加整个切片视频，不添加特效和音效
+                # 对于full切片，添加水波纹特效和音效，然后添加整个切片视频
                 try:
                     progress = 45
                     message = "处理完整切片"
                     _update_task_status(celery_task_id, ProcessingTaskStatus.RUNNING, progress, message)
                     self.update_state(state='PROGRESS', meta={'progress': progress, 'stage': ProcessingStage.CAPCUT_EXPORT, 'message': message})
+                    
+                    # 添加水波纹特效 (前3秒)
+                    print(f"DEBUG: 添加水波纹特效 - 时间轴起始: 0秒, 时间轴结束: 3秒")
+                    effect_result = asyncio.run(capcut_service.add_effect(
+                        draft_id=draft_id,
+                        effect_type="水波纹",
+                        start=0,
+                        end=3,
+                        track_name="effect_track_main",
+                        max_retries=3
+                    ))
+                    
+                    # 添加电视彩虹屏特效 (从水波纹结束后持续到视频结束)
+                    print(f"DEBUG: 添加电视彩虹屏特效 - 时间轴起始: 3秒, 时间轴结束: {slice_obj.duration}秒")
+                    rainbow_effect_result = asyncio.run(capcut_service.add_effect(
+                        draft_id=draft_id,
+                        effect_type="电视彩虹屏",
+                        start=3,
+                        end=slice_obj.duration,
+                        track_name="rainbow_effect_track_main",
+                        max_retries=3
+                    ))
+                    
+                    # 获取水波纹音频资源
+                    audio_url = _get_resource_by_tag_from_db("水波纹", "audio")
+                    if not audio_url:
+                        # 如果获取失败，使用默认音频
+                        audio_url = "http://tmpfiles.org/dl/9816523/mixkit-liquid-bubble-3000.wav"
+                    
+                    print(f"DEBUG: 添加水波纹音频 - URL: {audio_url}, 时间轴起始: 0秒, 时间轴结束: 3秒")
+                    audio_result = asyncio.run(capcut_service.add_audio(
+                        draft_id=draft_id,
+                        audio_url=audio_url,
+                        start=0,
+                        end=3,
+                        track_name="bubble_audio_track_main",
+                        volume=0.5,
+                        target_start=0,
+                        max_retries=3
+                    ))
                     
                     # 添加完整切片视频
                     video_url = f"{settings.minio_public_endpoint}/{settings.minio_bucket_name}/{slice_obj.sliced_file_path}"
@@ -276,20 +405,100 @@ def export_slice_to_capcut(self, slice_id: int, draft_folder: str, user_id: int 
                 text=slice_obj.cover_title,
                 start=0,
                 end=current_time,
+                font="挥墨体",
+                font_color="#ffde00",
+                font_size=8.0,
+                track_name="cover_title_track",
+                transform_x=0.0,
+                transform_y=0.75,
+                font_alpha=1.0,
+                border_alpha=1.0,
+                border_color="#000000",
+                border_width=15.0,
+                width=1080,
+                height=1920,
                 max_retries=3
             ))
             
             # 添加字幕（仅对full切片添加完整视频的字幕，fragment切片已在子切片处理中添加）
+            print(f"DEBUG: 检查是否需要添加字幕 - 切片类型: {slice_obj.type}, 切片SRT URL: {slice_obj.srt_url}")
             if slice_obj.type != "fragment":
+                print("DEBUG: 切片类型为full，准备添加完整视频字幕")
                 # 对于full切片，添加完整视频的字幕
-                if transcript and transcript.file_path:
-                    srt_path = f"{settings.minio_public_endpoint}/{settings.minio_bucket_name}/{transcript.file_path}"
-                    print(f"DEBUG: 添加完整切片字幕 - URL: {srt_path}")
-                    subtitle_result = asyncio.run(capcut_service.add_subtitle(
-                        draft_id=draft_id,
-                        srt_path=srt_path,
-                        max_retries=3
-                    ))
+                if slice_obj.srt_url:
+                    try:
+                        # 从MinIO读取SRT文件内容并处理编码
+                        print(f"DEBUG: 从MinIO读取完整切片的SRT文件内容")
+                        response = minio_service.internal_client.get_object(settings.minio_bucket_name, slice_obj.srt_url)
+                        content_bytes = response.read()
+                        response.close()
+                        response.release_conn()
+                        
+                        # 尝试多种编码解码，优先处理BOM
+                        srt_content = None
+                        try:
+                            # 优先使用utf-8-sig，它会自动处理BOM
+                            srt_content = content_bytes.decode('utf-8-sig')
+                        except UnicodeDecodeError:
+                            try:
+                                srt_content = content_bytes.decode('utf-8')
+                            except UnicodeDecodeError:
+                                try:
+                                    srt_content = content_bytes.decode('gbk')
+                                except UnicodeDecodeError:
+                                    srt_content = content_bytes.decode('latin-1')
+                        
+                        # 额外清理：移除可能残留的BOM字符
+                        if srt_content:
+                            # BOM字符为 '\ufeff'
+                            srt_content = srt_content.replace('\ufeff', '')
+                            # 同时清理其他可能的不可见字符
+                            srt_content = srt_content.strip()
+                        
+                        print(f"DEBUG: 成功读取完整切片的SRT内容，长度: {len(srt_content)}")
+                        
+                        if srt_content and srt_content.strip():
+                            print(f"DEBUG: 添加完整切片字幕 - 内容长度: {len(srt_content)}")
+                            subtitle_result = asyncio.run(capcut_service.add_subtitle(
+                                draft_id=draft_id,
+                                srt_path=srt_content,  # 传递实际内容而不是URL
+                                font="HarmonyOS_Sans_SC_Regular",
+                                font_size=8.0,
+                                font_color="#ffde00",
+                                bold=False,
+                                italic=False,
+                                underline=False,
+                                vertical=False,
+                                alpha=1.0,
+                                border_alpha=1.0,
+                                border_color="#000000",
+                                border_width=15.0,
+                                background_color="#000000",
+                                background_style=0,
+                                background_alpha=0.0,
+                                transform_x=0.0,
+                                transform_y=-0.8,
+                                scale_x=1.0,
+                                scale_y=1.0,
+                                rotation=0.0,
+                                track_name="subtitle",
+                                width=1080,
+                                height=1920,
+                                max_retries=3
+                            ))
+                            print(f"DEBUG: 字幕添加结果: {subtitle_result}")
+                            if subtitle_result and subtitle_result.get("success"):
+                                print(f"DEBUG: 字幕成功添加到草稿 {draft_id}")
+                            else:
+                                print(f"DEBUG: 字幕添加失败: {subtitle_result.get('error') if subtitle_result else '未知错误'}")
+                        else:
+                            print(f"DEBUG: 完整切片SRT内容为空")
+                    except Exception as e:
+                        print(f"DEBUG: 读取或添加完整切片字幕失败: {str(e)}")
+                else:
+                    print("DEBUG: 没有可用的切片SRT文件，跳过字幕添加")
+            else:
+                print("DEBUG: 切片类型为fragment，字幕将在子切片处理中添加")
             
             _update_task_status(celery_task_id, ProcessingTaskStatus.RUNNING, 90, "保存草稿")
             self.update_state(state='PROGRESS', meta={'progress': 90, 'stage': ProcessingStage.CAPCUT_EXPORT, 'message': '保存草稿'})
