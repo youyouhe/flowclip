@@ -22,7 +22,8 @@ class AudioProcessor:
         video_id: str, 
         project_id: int, 
         user_id: int,
-        audio_format: str = "wav"
+        audio_format: str = "wav",
+        custom_filename: str = None
     ) -> Dict[str, Any]:
         """从视频中提取音频并保存到MinIO"""
         
@@ -34,7 +35,10 @@ class AudioProcessor:
                 temp_path = Path(temp_dir)
                 
                 # 构建输出音频文件路径
-                audio_filename = f"{video_id}.{audio_format}"
+                if custom_filename:
+                    audio_filename = f"{custom_filename}.{audio_format}"
+                else:
+                    audio_filename = f"{video_id}.{audio_format}"
                 output_path = temp_path / audio_filename
                 
                 # 使用ffmpeg提取音频
@@ -66,9 +70,12 @@ class AudioProcessor:
                 audio_info = await self._get_audio_info(str(output_path))
                 
                 # 上传到MinIO
-                audio_object_name = minio_service.generate_audio_object_name(
-                    user_id, project_id, video_id, audio_format
-                )
+                if custom_filename:
+                    audio_object_name = f"users/{user_id}/projects/{project_id}/audio/{custom_filename}.{audio_format}"
+                else:
+                    audio_object_name = minio_service.generate_audio_object_name(
+                        user_id, project_id, video_id, audio_format
+                    )
                 
                 audio_url = await minio_service.upload_file(
                     str(output_path),
@@ -386,6 +393,78 @@ class AudioProcessor:
         
         return output_files
     
+    async def segment_audio_by_time(
+        self,
+        audio_path: str,
+        start_time: float,
+        end_time: float,
+        output_path: str = None
+    ) -> str:
+        """根据时间范围分割音频文件"""
+        import subprocess
+        import tempfile
+        import os
+        from pathlib import Path
+        
+        logger.info(f"分割音频文件: {audio_path}, 时间范围: {start_time}s - {end_time}s")
+        
+        try:
+            # 如果没有指定输出路径，创建临时文件
+            if output_path is None:
+                with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as tmp_file:
+                    output_path = tmp_file.name
+            
+            # 构建FFmpeg命令进行音频分割
+            duration = end_time - start_time
+            cmd = [
+                'ffmpeg',
+                '-ss', str(start_time),  # 开始时间
+                '-i', audio_path,  # 输入文件
+                '-t', str(duration),  # 持续时间
+                '-c:a', 'pcm_s16le',  # 重新编码为16-bit PCM
+                '-ar', '16000',  # 采样率16kHz
+                '-ac', '1',  # 单声道
+                '-y',  # 覆盖输出文件
+                output_path
+            ]
+            
+            logger.info(f"执行FFmpeg命令: {' '.join(cmd)}")
+            
+            # 执行FFmpeg命令
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=300  # 5分钟超时
+            )
+            
+            if result.returncode != 0:
+                logger.error(f"FFmpeg执行失败: {result.stderr}")
+                raise Exception(f"音频分割失败: {result.stderr}")
+            
+            # 检查输出文件
+            if not os.path.exists(output_path):
+                raise Exception("分割后的音频文件不存在")
+            
+            # 检查文件大小
+            file_size = os.path.getsize(output_path)
+            logger.info(f"音频分割成功: {output_path}, 文件大小: {file_size} bytes")
+            
+            # 如果文件太小(小于100字节)，可能是空文件
+            if file_size < 100:
+                logger.warning(f"警告: 分割后的音频文件可能为空，大小: {file_size} bytes")
+                # 直接抛出异常，避免将空文件提交给ASR服务
+                raise Exception(f"分割后的音频文件为空，大小: {file_size} bytes，跳过ASR处理")
+            
+            return output_path
+            
+        except subprocess.TimeoutExpired:
+            logger.error("音频分割超时")
+            raise Exception("音频分割超时")
+        except Exception as e:
+            logger.error(f"音频分割失败: {str(e)}")
+            raise Exception(f"音频分割失败: {str(e)}")
+
     async def generate_srt_from_audio(
         self,
         audio_path: str,
@@ -395,7 +474,9 @@ class AudioProcessor:
         api_url: str = None,
         lang: str = "zh",
         max_workers: int = 5,
-        custom_filename: str = None
+        custom_filename: str = None,
+        start_time: float = None,
+        end_time: float = None
     ) -> Dict[str, Any]:
         """从音频文件生成SRT字幕文件 - 更新为直接处理音频文件"""
         
@@ -420,21 +501,44 @@ class AudioProcessor:
                 get_wav_duration
             )
             
+            # 如果提供了时间范围，先分割音频
+            audio_to_process = audio_path
+            temp_segmented_file = None
+            
+            if start_time is not None and end_time is not None:
+                logger.info(f"根据时间范围分割音频: {start_time}s - {end_time}s")
+                temp_segmented_file = await self.segment_audio_by_time(
+                    audio_path=audio_path,
+                    start_time=start_time,
+                    end_time=end_time
+                )
+                audio_to_process = temp_segmented_file
+                logger.info(f"使用分割后的音频文件: {audio_to_process}")
+                
+                # 检查分割后的文件是否存在和大小
+                if os.path.exists(audio_to_process):
+                    file_size = os.path.getsize(audio_to_process)
+                    logger.info(f"分割后文件大小: {file_size} bytes")
+                    if file_size < 100:
+                        logger.warning(f"警告: 分割后的音频文件可能为空，大小: {file_size} bytes")
+                        # 如果文件为空，直接返回错误，不提交给ASR服务
+                        raise Exception(f"分割后的音频文件为空，大小: {file_size} bytes，跳过ASR处理")
+            
             # 创建临时目录
             with tempfile.TemporaryDirectory() as temp_dir:
                 temp_path = Path(temp_dir)
                 
                 # 如果传入的是音频文件，创建临时目录并复制文件
-                if os.path.isfile(audio_path):
+                if os.path.isfile(audio_to_process):
                     import shutil
                     temp_audio_dir = temp_path / "audio"
                     temp_audio_dir.mkdir()
-                    dest_audio_path = temp_audio_dir / Path(audio_path).name
-                    shutil.copy2(audio_path, dest_audio_path)
+                    dest_audio_path = temp_audio_dir / Path(audio_to_process).name
+                    shutil.copy2(audio_to_process, dest_audio_path)
                     process_dir = str(temp_audio_dir)
                 else:
                     # 如果传入的是目录，直接使用
-                    process_dir = audio_path
+                    process_dir = audio_to_process
                 
                 # 处理音频文件生成SRT
                 import sys
@@ -443,11 +547,11 @@ class AudioProcessor:
                 from wav_to_srt_direct_updated import process_audio_file
                 
                 # 检查process_dir是文件还是目录
-                if os.path.isfile(audio_path):
+                if os.path.isfile(audio_to_process):
                     # 处理单个音频文件
-                    logger.info(f"处理单个音频文件: {audio_path}")
+                    logger.info(f"处理单个音频文件: {audio_to_process}")
                     result = process_audio_file(
-                        file_path=audio_path,
+                        file_path=audio_to_process,
                         api_url=api_url,
                         index=1,  # 为单个文件指定索引
                         lang=lang
@@ -500,7 +604,9 @@ class AudioProcessor:
                     raise Exception("没有成功处理的音频文件")
                 
                 # 使用增强版时间戳调整（基于wav_to_srt_direct_updated.py的修复）
-                adjusted_segments = adjust_timestamps_with_duration(results)
+                # 如果提供了时间范围，使用start_time作为时间偏移量
+                time_offset = start_time if start_time is not None else 0.0
+                adjusted_segments = adjust_timestamps_with_duration(results, time_offset)
                 
                 # 验证和清理字幕片段
                 adjusted_segments = validate_segments(adjusted_segments)
@@ -554,6 +660,14 @@ class AudioProcessor:
                 )
                 
                 logger.info(f"SRT字幕生成完成，共 {len(adjusted_segments)} 条字幕")
+                
+                # 清理临时分割的音频文件
+                if temp_segmented_file and os.path.exists(temp_segmented_file):
+                    try:
+                        os.unlink(temp_segmented_file)
+                        logger.info(f"已清理临时分割音频文件: {temp_segmented_file}")
+                    except Exception as cleanup_error:
+                        logger.warning(f"清理临时分割音频文件失败: {cleanup_error}")
                 
                 return {
                     'success': True,

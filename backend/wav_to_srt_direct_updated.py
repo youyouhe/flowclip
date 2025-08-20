@@ -65,6 +65,24 @@ def process_audio_file(file_path, api_url, index, lang="zh", retry_count=3, retr
     print(f"处理文件 {index}: {file_path}")
     start_time = time.time()
     
+    # 检查文件是否存在和大小
+    if not os.path.exists(file_path):
+        print(f"错误: 文件不存在 {file_path}")
+        return {
+            'index': index,
+            'file_path': file_path,
+            'error': '文件不存在'
+        }
+    
+    file_size = os.path.getsize(file_path)
+    print(f"文件大小: {file_size} bytes")
+    
+    # 如果文件太小，可能是空文件
+    if file_size < 100:
+        print(f"警告: 文件可能为空，大小: {file_size} bytes")
+        # 直接抛出异常，避免将空文件提交给ASR服务
+        raise Exception(f'文件太小，可能是空文件，大小: {file_size} bytes')
+    
     for attempt in range(retry_count):
         try:
             with open(file_path, 'rb') as audio_file:

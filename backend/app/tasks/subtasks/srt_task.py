@@ -64,13 +64,13 @@ def generate_srt(self, video_id: str, project_id: int, user_id: int, split_files
             print(f"Error ensuring processing task exists: {e}")
             return False
     
-    def _get_audio_file_from_db(video_id_str: str, sub_slice_id: int = None) -> dict:
+    def _get_audio_file_from_db(video_id_str: str, sub_slice_id: int = None, slice_id: int = None) -> dict:
         """从数据库获取音频文件信息 - 同步版本"""
         with get_sync_db() as db:
             from sqlalchemy import select
             from app.models.processing_task import ProcessingTask
             from app.models.video import Video
-            from app.models.video_slice import VideoSubSlice
+            from app.models.video_slice import VideoSubSlice, VideoSlice
             
             # 如果是子切片，直接从子切片记录中获取音频路径和时间信息
             if sub_slice_id:
@@ -114,6 +114,22 @@ def generate_srt(self, video_id: str, project_id: int, user_id: int, split_files
                         return None
                 else:
                     print(f"警告: 未找到子切片记录: sub_slice_id={sub_slice_id}")
+                    return None
+            
+            # 如果是full类型切片，从切片记录中获取音频路径
+            elif slice_id:
+                print(f"DEBUG: 查询切片信息: slice_id={slice_id}")
+                video_slice = db.query(VideoSlice).filter(VideoSlice.id == slice_id).first()
+                if video_slice and video_slice.audio_url:
+                    print(f"DEBUG: 找到切片: slice_id={slice_id}, audio_url={video_slice.audio_url}")
+                    result = {
+                        "audio_path": video_slice.audio_url,
+                        "video_id": video_id_str
+                    }
+                    print(f"DEBUG: 返回切片音频信息: {result}")
+                    return result
+                else:
+                    print(f"警告: 切片 {slice_id} 没有音频文件路径")
                     return None
             
             # 首先查找视频记录（非子切片情况）
@@ -190,7 +206,7 @@ def generate_srt(self, video_id: str, project_id: int, user_id: int, split_files
         self.update_state(state='PROGRESS', meta={'progress': 10, 'stage': ProcessingStage.GENERATE_SRT, 'message': '开始生成字幕'})
         
         # 获取音频文件信息
-        audio_info = _get_audio_file_from_db(video_id, sub_slice_id)
+        audio_info = _get_audio_file_from_db(video_id, sub_slice_id, slice_id)
         if not audio_info:
             if sub_slice_id:
                 error_msg = f"没有找到可用的音频文件，请先提取音频 (sub_slice_id={sub_slice_id})"
@@ -239,6 +255,12 @@ def generate_srt(self, video_id: str, project_id: int, user_id: int, split_files
                     for chunk in response.iter_content(chunk_size=8192):
                         f.write(chunk)
                 
+                # 检查下载的文件大小
+                downloaded_file_size = os.path.getsize(audio_path)
+                print(f"下载的音频文件大小: {downloaded_file_size} bytes")
+                if downloaded_file_size < 100:
+                    raise Exception(f"下载的音频文件太小，可能下载失败，大小: {downloaded_file_size} bytes")
+                
                 _update_task_status(celery_task_id, ProcessingTaskStatus.RUNNING, 70, "正在生成字幕")
                 self.update_state(state='PROGRESS', meta={'progress': 70, 'stage': ProcessingStage.GENERATE_SRT, 'message': '正在生成字幕'})
             
@@ -253,10 +275,11 @@ def generate_srt(self, video_id: str, project_id: int, user_id: int, split_files
                 # 准备时间参数（如果是子切片）
                 start_time = None
                 end_time = None
-                if sub_slice_id and audio_info and 'start_time' in audio_info and 'end_time' in audio_info:
+                # 对于子切片，音频文件已经是分割好的完整文件，不需要再进行时间范围分割
+                if not sub_slice_id and audio_info and 'start_time' in audio_info and 'end_time' in audio_info:
                     start_time = audio_info['start_time']
                     end_time = audio_info['end_time']
-                    print(f"为子切片 {sub_slice_id} 生成SRT，时间范围: {start_time}s - {end_time}s")
+                    print(f"为完整音频生成SRT，时间范围: {start_time}s - {end_time}s")
                 
                 result = run_async(
                     audio_processor.generate_srt_from_audio(
