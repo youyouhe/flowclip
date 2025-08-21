@@ -9,6 +9,8 @@ import asyncio
 from pathlib import Path
 import logging
 import yt_dlp
+import urllib.request
+import socket
 from app.core.config import settings
 from app.services.minio_client import minio_service
 from app.services.progress_service import update_video_progress
@@ -347,6 +349,27 @@ class YouTubeDownloaderMinio:
             logger.info(f"执行命令: {' '.join(cmd)}")
             
             try:
+                # 记录环境信息用于调试
+                logger.info(f"执行环境信息:")
+                logger.info(f"  工作目录权限: {os.stat(temp_path).st_mode}")
+                logger.info(f"  当前用户: {os.getuid()}")
+                logger.info(f"  环境变量PATH: {os.environ.get('PATH', 'N/A')}")
+                
+                # 检查yt-dlp是否可执行
+                import shutil as shutil_module
+                yt_dlp_path = shutil_module.which('yt-dlp')
+                if yt_dlp_path:
+                    logger.info(f"  yt-dlp路径: {yt_dlp_path}")
+                    # 检查yt-dlp版本
+                    try:
+                        version_result = subprocess.run(['yt-dlp', '--version'], 
+                                                       capture_output=True, text=True, timeout=10)
+                        logger.info(f"  yt-dlp版本: {version_result.stdout.strip()}")
+                    except Exception as version_error:
+                        logger.warning(f"  无法获取yt-dlp版本: {version_error}")
+                else:
+                    logger.error("  yt-dlp未找到在PATH中")
+                
                 # 执行命令行下载，实时解析输出
                 process = subprocess.Popen(
                     cmd, 
@@ -450,6 +473,70 @@ class YouTubeDownloaderMinio:
                     for line in remaining_output.split('\n') if remaining_output else []:
                         if line.strip():
                             error_lines.append(line.strip())
+                    
+                    # 尝试直接执行yt-dlp命令以获取更详细的错误信息
+                    logger.info("尝试直接执行yt-dlp命令以获取更详细的错误信息...")
+                    try:
+                        direct_result = subprocess.run(cmd, 
+                                                     cwd=str(temp_path),
+                                                     capture_output=True, 
+                                                     text=True, 
+                                                     timeout=30)
+                        if direct_result.returncode != 0:
+                            logger.error(f"直接执行yt-dlp命令失败:")
+                            logger.error(f"  返回码: {direct_result.returncode}")
+                            logger.error(f"  标准输出: {direct_result.stdout}")
+                            logger.error(f"  错误输出: {direct_result.stderr}")
+                    except subprocess.TimeoutExpired:
+                        logger.error("直接执行yt-dlp命令超时")
+                    except Exception as direct_error:
+                        logger.error(f"直接执行yt-dlp命令时发生异常: {direct_error}")
+                    
+                    # 记录完整的错误输出用于调试
+                    logger.error(f"yt-dlp命令执行失败，返回码: {process.returncode}")
+                    logger.error(f"完整命令: {' '.join(cmd)}")
+                    logger.error(f"工作目录: {temp_path}")
+                    logger.error(f"工作目录内容: {list(temp_path.iterdir()) if temp_path.exists() else '目录不存在'}")
+                    
+                    # 检查系统环境
+                    try:
+                        # 检查磁盘空间
+                        import shutil as shutil_module
+                        disk_usage = shutil_module.disk_usage(temp_path)
+                        logger.error(f"磁盘空间 - 总计: {disk_usage.total}, 已用: {disk_usage.used}, 可用: {disk_usage.free}")
+                        
+                        # 检查内存使用情况
+                        try:
+                            import psutil
+                            memory = psutil.virtual_memory()
+                            logger.error(f"内存使用 - 总计: {memory.total}, 可用: {memory.available}, 使用率: {memory.percent}%")
+                        except ImportError:
+                            logger.warning("psutil未安装，跳过内存检查")
+                    except Exception as sys_error:
+                        logger.warning(f"系统信息检查失败: {sys_error}")
+                    
+                    # 检查网络连接
+                    try:
+                        import urllib.request
+                        urllib.request.urlopen('https://www.youtube.com', timeout=5)
+                        logger.info("网络连接正常")
+                    except Exception as net_error:
+                        logger.error(f"网络连接检查失败: {net_error}")
+                        # 尝试备用网络检查
+                        try:
+                            import socket
+                            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                            sock.settimeout(5)
+                            result = sock.connect_ex(('8.8.8.8', 53))
+                            sock.close()
+                            if result == 0:
+                                logger.info("DNS连接正常")
+                            else:
+                                logger.error("DNS连接失败")
+                        except Exception as dns_error:
+                            logger.error(f"DNS连接检查失败: {dns_error}")
+                    
+                    logger.error(f"错误输出详情: {'; '.join(error_lines) if error_lines else '无详细错误信息'}")
                     
                     error_msg = f"yt-dlp下载失败，返回码: {process.returncode}"
                     if error_lines:

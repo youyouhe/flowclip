@@ -4,6 +4,7 @@ import { PlayCircleOutlined, ScissorOutlined, UploadOutlined, EyeOutlined, EditO
 import { llmAPI } from '../services/api';
 import { videoAPI } from '../services/api';
 import { videoSliceAPI } from '../services/api';
+import { asrAPI } from '../services/api';
 import { wsService, startHeartbeat, stopHeartbeat } from '../services/websocket';
 
 const { Title, Text, Paragraph } = Typography;
@@ -147,6 +148,9 @@ const SliceManagement: React.FC = () => {
   const [coverTitle, setCoverTitle] = useState('');
   const [form] = Form.useForm();
   
+  // ASR服务状态
+  const [asrStatus, setAsrStatus] = useState<'online' | 'offline' | 'checking'>('checking');
+  
   // SRT查看弹窗状态
   const [srtModalVisible, setSrtModalVisible] = useState(false);
   const [srtModalLoading, setSrtModalLoading] = useState(false);
@@ -186,9 +190,19 @@ const SliceManagement: React.FC = () => {
     chapters: SliceChapter[];
   }
 
+  const checkAsrStatus = async () => {
+    try {
+      const response = await asrAPI.getStatus();
+      setAsrStatus(response.data.status === 'online' ? 'online' : 'offline');
+    } catch (error) {
+      setAsrStatus('offline');
+    }
+  };
+
   useEffect(() => {
     loadVideos();
     initWebSocket();
+    checkAsrStatus();
     return () => {
       stopHeartbeat();
       wsService.disconnect();
@@ -811,6 +825,18 @@ const SliceManagement: React.FC = () => {
         <Col span={24}>
           <Card title="视频切片管理">
             <Space direction="vertical" style={{ width: '100%' }} size="large">
+              {/* ASR服务状态 */}
+              <Row gutter={16} style={{ marginBottom: 16 }}>
+                <Col>
+                  <Tag color={asrStatus === 'online' ? 'success' : asrStatus === 'checking' ? 'processing' : 'error'}>
+                    ASR服务: {asrStatus === 'online' ? '在线' : asrStatus === 'checking' ? '检查中...' : '离线'}
+                  </Tag>
+                  <Button size="small" onClick={checkAsrStatus} style={{ marginLeft: 8 }}>
+                    刷新
+                  </Button>
+                </Col>
+              </Row>
+              
               {/* 切片处理进度显示 */}
               {sliceProgress.isProcessing && (
                 <Alert

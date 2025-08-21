@@ -229,6 +229,12 @@ export const capcutAPI = {
     api.get('/capcut/status'),
 };
 
+// ASR相关API
+export const asrAPI = {
+  getStatus: () =>
+    api.get('/asr/status'),
+};
+
 // 资源管理相关API
 export const resourceAPI = {
   // 资源管理
