@@ -99,42 +99,42 @@ export const projectAPI = {
 // 视频相关API
 export const videoAPI = {
   getVideos: (params?: any) =>
-    api.get('/videos', { params }),
+    api.get('/videos/', { params }),
   getActiveVideos: () =>
-    api.get('/videos/active'),
+    api.get('/videos/active/'),
   getVideo: (id: number) =>
-    api.get(`/videos/${id}`),
+    api.get(`/videos/${id}/`),
   createVideo: (data: any) =>
-    api.post('/videos', data),
+    api.post('/videos/', data),
   updateVideo: (id: number, data: any) =>
-    api.put(`/videos/${id}`, data),
+    api.put(`/videos/${id}/`, data),
   deleteVideo: (id: number) =>
-    api.delete(`/videos/${id}`),
+    api.delete(`/videos/${id}/`),
   downloadVideo: (url: string, projectId: number, quality: string) =>
-    api.post(`/videos/download?quality=${quality}`, { url, project_id: projectId }),
+    api.post(`/videos/download/?quality=${quality}`, { url, project_id: projectId }),
   downloadVideoWithCookies: (formData: FormData, quality: string = 'best') =>
-    api.post(`/videos/download?quality=${quality}`, formData, {
+    api.post(`/videos/download/?quality=${quality}`, formData, {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
     }),
   getVideoDownloadUrl: (id: number, expiry: number = 3600) =>
-    api.get(`/videos/${id}/download-url?expiry=${expiry}`),
+    api.get(`/videos/${id}/download-url/?expiry=${expiry}`),
   
     extractAudio: (videoId: number) =>
-    api.post(`/videos/${videoId}/extract-audio`),
+    api.post(`/videos/${videoId}/extract-audio/`),
     generateSrt: (videoId: number) =>
-    api.post(`/videos/${videoId}/generate-srt`),
+    api.post(`/videos/${videoId}/generate-srt/`),
   getTaskStatus: (videoId: number, taskId: string) =>
-    api.get(`/videos/${videoId}/task-status/${taskId}`),
+    api.get(`/videos/${videoId}/task-status/${taskId}/`),
   getAudioDownloadUrl: (videoId: number, expiry: number = 3600) =>
-    api.get(`/videos/${videoId}/audio-download-url?expiry=${expiry}`),
+    api.get(`/videos/${videoId}/audio-download-url/?expiry=${expiry}`),
   getSrtDownloadUrl: (videoId: number, expiry: number = 3600) =>
-    api.get(`/videos/${videoId}/srt-download-url?expiry=${expiry}`),
+    api.get(`/videos/${videoId}/srt-download-url/?expiry=${expiry}`),
   getSrtContent: (videoId: number) =>
-    api.get(`/videos/${videoId}/srt-content`),
+    api.get(`/videos/${videoId}/srt-content/`),
   getThumbnailDownloadUrl: (videoId: number, expiry: number = 3600) =>
-    api.get(`/videos/${videoId}/thumbnail-download-url?expiry=${expiry}`),
+    api.get(`/videos/${videoId}/thumbnail-download-url/?expiry=${expiry}`),
   
   // 新增：根据路径获取缩略图URL
   getThumbnailUrlByPath: (path: string) =>
