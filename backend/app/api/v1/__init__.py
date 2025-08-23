@@ -10,6 +10,8 @@ from .resource import router as resource_router
 from .llm import router as llm_router
 from .video_slice import router as video_slice_router
 from .websocket import router as websocket_router
+from .asr import router as asr_router
+from .system_config import router as system_config_router
 
 api_router = APIRouter()
 api_router.include_router(auth_router, prefix="/auth", tags=["auth"])
@@ -23,3 +25,5 @@ api_router.include_router(resource_router, prefix="/resources", tags=["resources
 api_router.include_router(llm_router, prefix="/llm", tags=["llm"])
 api_router.include_router(video_slice_router, prefix="/video-slice", tags=["video-slice"])
 api_router.include_router(websocket_router, prefix="/ws", tags=["websocket"])
+api_router.include_router(asr_router, prefix="/asr", tags=["asr"])
+api_router.include_router(system_config_router, prefix="/system", tags=["system"])

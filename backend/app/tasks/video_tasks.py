@@ -4,6 +4,9 @@
 from .subtasks.simple_task import add
 from .subtasks.download_task import download_video
 from .subtasks.audio_task import extract_audio
+from .subtasks.video_audio_task import extract_video_audio
+from .subtasks.slice_audio_task import extract_slice_audio
+from .subtasks.sub_slice_audio_task import extract_sub_slice_audio
 from .subtasks.srt_task import generate_srt
 from .subtasks.slice_task import process_video_slices
 from .subtasks.capcut_task import export_slice_to_capcut
@@ -18,6 +21,9 @@ __all__ = [
     'add',
     'download_video', 
     'extract_audio',
+    'extract_video_audio',
+    'extract_slice_audio',
+    'extract_sub_slice_audio',
     'generate_srt',
     'process_video_slices',
     'export_slice_to_capcut',

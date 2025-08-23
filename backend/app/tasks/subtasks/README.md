@@ -27,7 +27,16 @@ tasks/
 - `download_video()`: 从YouTube下载视频并上传到MinIO
 
 ### audio_task.py
-- `extract_audio()`: 从视频中提取音频
+- `extract_audio()`: 从视频中提取音频（向后兼容的主函数）
+
+### video_audio_task.py
+- `extract_video_audio()`: 从视频中提取音频
+
+### slice_audio_task.py
+- `extract_slice_audio()`: 从视频切片中提取音频
+
+### sub_slice_audio_task.py
+- `extract_sub_slice_audio()`: 从视频子切片中提取音频
 
 ### srt_task.py
 - `generate_srt()`: 生成SRT字幕文件

@@ -476,17 +476,25 @@ class AudioProcessor:
         max_workers: int = 5,
         custom_filename: str = None,
         start_time: float = None,
-        end_time: float = None
+        end_time: float = None,
+        asr_service_url: str = None  # 添加新参数
     ) -> Dict[str, Any]:
         """从音频文件生成SRT字幕文件 - 更新为直接处理音频文件"""
         
         logger.info(f"开始生成SRT字幕: {audio_path}")
         
-        # 如果没有提供API URL，则使用配置中的默认值
-        if api_url is None:
+        # 优先使用传入的asr_service_url，其次是api_url，最后是默认配置
+        if asr_service_url:
+            final_api_url = f"{asr_service_url.rstrip('/')}/asr"
+            logger.info(f"使用动态传入的ASR服务URL: {final_api_url}")
+        elif api_url:
+            final_api_url = api_url
+            logger.info(f"使用api_url参数指定的ASR服务URL: {final_api_url}")
+        else:
             from app.core.config import settings
-            api_url = settings.asr_service_url
-            logger.info(f"使用默认ASR服务URL: {api_url}")
+            final_api_url = f"{settings.asr_service_url}/asr"
+            logger.info(f"使用默认配置的ASR服务URL: {final_api_url}")
+        
         
         try:
             # 导入SRT生成模块和工具
@@ -552,7 +560,7 @@ class AudioProcessor:
                     logger.info(f"处理单个音频文件: {audio_to_process}")
                     result = process_audio_file(
                         file_path=audio_to_process,
-                        api_url=api_url,
+                        api_url=final_api_url,
                         index=1,  # 为单个文件指定索引
                         lang=lang
                     )

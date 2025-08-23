@@ -15,6 +15,7 @@ import SliceManagement from './pages/SliceManagement';
 import CapCut from './pages/CapCut';
 import ResourceManagement from './pages/ResourceManagement';
 import Logs from './pages/Logs';
+import SystemConfig from './pages/SystemConfig';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import AuthProvider from './components/AuthProvider';
@@ -44,6 +45,7 @@ function App() {
               <Route path="capcut" element={<CapCut />} />
               <Route path="resource-management" element={<ResourceManagement />} />
               <Route path="logs" element={<Logs />} />
+              <Route path="system-config" element={<SystemConfig />} />
             </Route>
           </Routes>
         </Router>

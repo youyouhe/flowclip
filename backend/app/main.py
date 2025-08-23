@@ -134,6 +134,18 @@ async def startup_event():
     # 数据库连接成功，创建表
     await create_tables()
     
+    # 从数据库加载系统配置
+    from app.services.system_config_service import SystemConfigService
+    from app.core.database import get_sync_db
+    try:
+        db = get_sync_db()
+        import asyncio
+        asyncio.run(SystemConfigService.update_settings_from_db(db))
+        db.close()
+        logging.info("System configurations loaded from database")
+    except Exception as e:
+        logging.warning(f"Failed to load system configurations from database: {e}")
+    
     # 初始化MinIO桶
     await minio_service.ensure_bucket_exists()
     

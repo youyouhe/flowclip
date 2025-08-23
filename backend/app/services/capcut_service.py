@@ -224,31 +224,46 @@ class CapCutService:
                       transform_y: float = 0.75, font_alpha: float = 1.0,
                       border_alpha: float = 1.0, border_color: str = "#000000",
                       border_width: float = 15.0, width: int = 1080, height: int = 1920,
+                      intro_animation: str = None, intro_duration: float = 0.5,
+                      outro_animation: str = None, outro_duration: float = 0.5,
                       max_retries: int = 3) -> Dict[str, Any]:
         """添加文本"""
         for attempt in range(max_retries):
             try:
                 logger.info(f"尝试添加文本到草稿 {draft_id} (尝试 {attempt + 1}/{max_retries})")
+                # 构建请求数据
+                data = {
+                    "draft_id": draft_id,
+                    "text": text,
+                    "start": start,
+                    "end": end,
+                    "font": font,
+                    "font_color": font_color,
+                    "font_size": font_size,
+                    "track_name": track_name,
+                    "transform_x": transform_x,
+                    "transform_y": transform_y,
+                    "font_alpha": font_alpha,
+                    "border_alpha": border_alpha,
+                    "border_color": border_color,
+                    "border_width": border_width,
+                    "width": width,
+                    "height": height
+                }
+                
+                # 添加可选的动画参数
+                if intro_animation is not None:
+                    data["intro_animation"] = intro_animation
+                if intro_duration is not None:
+                    data["intro_duration"] = intro_duration
+                if outro_animation is not None:
+                    data["outro_animation"] = outro_animation
+                if outro_duration is not None:
+                    data["outro_duration"] = outro_duration
+                
                 response = requests.post(
                     f"{self.base_url}/add_text",
-                    json={
-                        "draft_id": draft_id,
-                        "text": text,
-                        "start": start,
-                        "end": end,
-                        "font": font,
-                        "font_color": font_color,
-                        "font_size": font_size,
-                        "track_name": track_name,
-                        "transform_x": transform_x,
-                        "transform_y": transform_y,
-                        "font_alpha": font_alpha,
-                        "border_alpha": border_alpha,
-                        "border_color": border_color,
-                        "border_width": border_width,
-                        "width": width,
-                        "height": height
-                    },
+                    json=data,
                     timeout=30
                 )
                 response.raise_for_status()

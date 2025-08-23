@@ -285,4 +285,16 @@ export const dashboardAPI = {
     api.get('/status/videos/running'),
 };
 
+// 系统配置相关API
+export const systemConfigAPI = {
+  getSystemConfigs: () =>
+    api.get('/system/system-config'),
+  updateSystemConfig: (data: any) =>
+    api.post('/system/system-config', data),
+  updateSystemConfigs: (data: any) =>
+    api.post('/system/system-config/batch', data),
+  checkServiceStatus: (serviceName: string) =>
+    api.get(`/system/system-config/service-status/${serviceName}`),
+};
+
 export default api;

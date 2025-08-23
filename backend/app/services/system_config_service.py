@@ -48,6 +48,13 @@ class SystemConfigService:
             # 对于同步会话，使用query方法
             configs = db.query(SystemConfig).all()
         return {config.key: config.value for config in configs}
+
+    @staticmethod
+    def get_all_configs_sync(db: Session) -> Dict[str, str]:
+        """获取所有配置项的同步版本"""
+        configs = db.query(SystemConfig).all()
+        return {config.key: config.value for config in configs}
+    
     
     @staticmethod
     async def get_config(db: Session, key: str) -> Optional[str]:

@@ -62,6 +62,8 @@ def process_video_slices(self, analysis_id: int, video_id: int, project_id: int,
                 """提交切片的音频提取和SRT任务"""
                 try:
                     from app.tasks.subtasks.audio_task import extract_audio
+                    from app.tasks.subtasks.slice_audio_task import extract_slice_audio
+                    from app.tasks.subtasks.sub_slice_audio_task import extract_sub_slice_audio
                     from app.tasks.subtasks.srt_task import generate_srt
                     
                     if video_slice.type == "full":
@@ -69,15 +71,14 @@ def process_video_slices(self, analysis_id: int, video_id: int, project_id: int,
                         print(f"提交Full类型切片处理任务: slice_id={video_slice.id}")
                         
                         # 提交音频提取任务
-                        audio_task = extract_audio.delay(
+                        audio_task = extract_slice_audio.delay(
                             video_id=str(video_slice.video_id),
                             project_id=project_id,
                             user_id=user_id,
                             video_minio_path=video_slice.sliced_file_path,
-                            create_processing_task=True,
-                            # 添加回调信息
                             slice_id=video_slice.id,
-                            trigger_srt_after_audio=True
+                            create_processing_task=True,
+                            trigger_srt_after_audio=True  # 启用SRT自动触发
                         )
                         video_slice.audio_processing_status = "processing"
                         video_slice.audio_task_id = audio_task.id
@@ -85,7 +86,8 @@ def process_video_slices(self, analysis_id: int, video_id: int, project_id: int,
                         print(f"Full类型切片将等待音频提取完成后自动触发SRT生成")
                         
                     elif video_slice.type == "fragment":
-                        # Fragment类型切片：为所有子切片提交音频和SRT任务
+                        # Fragment类型切片：只为所有子切片提交音频提取任务
+                        # SRT任务将在音频提取完成后触发
                         print(f"提交Fragment类型切片处理任务: slice_id={video_slice.id}, sub_slices_count={len(video_slice.sub_slices)}")
                         
                         for i, sub_slice in enumerate(video_slice.sub_slices):
@@ -93,29 +95,20 @@ def process_video_slices(self, analysis_id: int, video_id: int, project_id: int,
                                 print(f"处理子切片 {i+1}/{len(video_slice.sub_slices)}: sub_slice_id={sub_slice.id}")
                                 
                                 # 提交子切片音频提取任务
-                                sub_audio_task = extract_audio.delay(
+                                # 音频提取完成后将自动触发SRT任务
+                                sub_audio_task = extract_sub_slice_audio.delay(
                                     video_id=str(video_slice.video_id),
                                     project_id=project_id,
                                     user_id=user_id,
                                     video_minio_path=sub_slice.sliced_file_path,
-                                    create_processing_task=True
+                                    sub_slice_id=sub_slice.id,
+                                    create_processing_task=True,
+                                    trigger_srt_after_audio=True  # 启用SRT自动触发
                                 )
                                 sub_slice.audio_processing_status = "processing"
                                 sub_slice.audio_task_id = sub_audio_task.id
                                 print(f"子切片音频提取任务已提交: sub_slice_id={sub_slice.id}, task_id={sub_audio_task.id}")
-                                
-                                # 提交子切片SRT生成任务
-                                sub_srt_task = generate_srt.delay(
-                                    video_id=str(video_slice.video_id),
-                                    project_id=project_id,
-                                    user_id=user_id,
-                                    split_files=[],
-                                    sub_slice_id=sub_slice.id,
-                                    create_processing_task=True
-                                )
-                                sub_slice.srt_processing_status = "processing"
-                                sub_slice.srt_task_id = sub_srt_task.id
-                                print(f"子切片SRT生成任务已提交: sub_slice_id={sub_slice.id}, task_id={sub_srt_task.id}")
+                                print(f"子切片音频提取完成后将自动触发SRT生成")
                                 
                             except Exception as e:
                                 print(f"提交子切片 {sub_slice.id} 处理任务失败: {str(e)}")
@@ -133,30 +126,43 @@ def process_video_slices(self, analysis_id: int, video_id: int, project_id: int,
                 """
                 判断切片类型：如果子切片在时间轴上连续则为full，否则为fragment
                 """
+                print(f"切片类型判断输入: parent_start={parent_start}, parent_end={parent_end}")
+                print(f"子切片数据: {sub_slices_data}")
+                
                 if not sub_slices_data:
                     return "fragment"  # 没有子切片则认为是fragment
                 
                 # 按开始时间排序
                 sorted_sub_slices = sorted(sub_slices_data, key=lambda x: x['start_time'])
+                print(f"排序后的子切片: {sorted_sub_slices}")
                 
                 # 检查是否连续
                 is_continuous = True
                 previous_end = parent_start
+                print(f"初始previous_end: {previous_end}")
                 
                 for sub_slice in sorted_sub_slices:
                     # 检查当前子切片的开始时间是否与前一个子切片的结束时间连续
-                    # 正常情况下应该是相等的（连续），允许100毫秒以内的正向间隙，但不允许重叠（负值）
+                    # 正常情况下应该是相等的（连续），允许3秒以内的正向间隙，但不允许重叠（负值）
                     time_diff = sub_slice['start_time'] - previous_end
+                    print(f"检查连续性: previous_end={previous_end}, sub_slice_start={sub_slice['start_time']}, time_diff={time_diff}")
                     if time_diff < -0.1 or time_diff > 3:
+                        print(f"时间不连续: previous_end={previous_end}, sub_slice_start={sub_slice['start_time']}, time_diff={time_diff}")
                         is_continuous = False
                         break
                     previous_end = sub_slice['end_time']
+                    print(f"更新previous_end为: {previous_end}")
                 
-                # 检查结尾是否匹配父切片的结束时间（允许100毫秒以内的误差）
-                if abs(parent_end - previous_end) > 3:
+                # 检查结尾是否匹配父切片的结束时间（允许3秒以内的误差）
+                end_diff = abs(parent_end - previous_end)
+                print(f"检查结尾匹配: parent_end={parent_end}, previous_end={previous_end}, end_diff={end_diff}")
+                if end_diff > 3:
+                    print(f"结尾不匹配: parent_end={parent_end}, previous_end={previous_end}, end_diff={end_diff}")
                     is_continuous = False
                 
-                return "full" if is_continuous else "fragment"
+                slice_type = "full" if is_continuous else "fragment"
+                print(f"切片类型判断: sub_slices_count={len(sub_slices_data)}, is_continuous={is_continuous}, type={slice_type}")
+                return slice_type
             # 获取分析数据和视频信息
             with get_sync_db() as db:
                 from sqlalchemy import select
@@ -320,6 +326,12 @@ def process_video_slices(self, analysis_id: int, video_id: int, project_id: int,
                             # 判断切片类型（full 或 fragment）
                             slice_type = _determine_slice_type(sub_slices_data, start_time, end_time)
                             video_slice.type = slice_type
+                            print(f"设置切片类型: slice_id={video_slice.id}, type={slice_type}")
+                            
+                            # 重新加载video_slice及其子切片以确保关联数据完整
+                            db.commit()  # 先提交确保类型被保存
+                            db.refresh(video_slice)
+                            print(f"刷新后切片类型: slice_id={video_slice.id}, type={video_slice.type}")
                             
                             # 提交音频提取和SRT任务
                             try:

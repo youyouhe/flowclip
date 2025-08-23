@@ -17,6 +17,7 @@ from app.core.database import get_sync_db
 from app.core.config import settings
 from app.models import Video, ProcessingTask
 from sqlalchemy import select
+from app.services.system_config_service import SystemConfigService
 
 # 创建logger
 logger = logging.getLogger(__name__)
@@ -188,22 +189,22 @@ def generate_srt(self, video_id: str, project_id: int, user_id: int, split_files
         except Exception as e:
             print(f"Error updating task status: {type(e).__name__}: {e}")
     
-    def run_async(coro):
-        """运行异步代码的辅助函数"""
-        try:
-            loop = asyncio.get_event_loop()
-        except RuntimeError:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-        return loop.run_until_complete(coro)
-    
     try:
         celery_task_id = self.request.id
         if not celery_task_id:
             celery_task_id = "unknown"
             
+        
+        # 动态获取最新的ASR服务URL
+        with get_sync_db() as db:
+            from app.core.config import settings
+            db_configs = SystemConfigService.get_all_configs_sync(db)
+            asr_service_url = db_configs.get("asr_service_url", settings.asr_service_url)
+            logger.info(f"动态获取ASR服务URL: {asr_service_url}")
+        
         _update_task_status(celery_task_id, ProcessingTaskStatus.RUNNING, 10, "开始生成字幕")
         self.update_state(state='PROGRESS', meta={'progress': 10, 'stage': ProcessingStage.GENERATE_SRT, 'message': '开始生成字幕'})
+        
         
         # 获取音频文件信息
         audio_info = _get_audio_file_from_db(video_id, sub_slice_id, slice_id)
@@ -242,6 +243,15 @@ def generate_srt(self, video_id: str, project_id: int, user_id: int, split_files
                             object_name = audio_minio_path
                     else:
                         object_name = audio_minio_path
+                
+                def run_async(coro):
+                    """运行异步代码的辅助函数"""
+                    try:
+                        loop = asyncio.get_event_loop()
+                    except RuntimeError:
+                        loop = asyncio.new_event_loop()
+                        asyncio.set_event_loop(loop)
+                    return loop.run_until_complete(coro)
                 
                 audio_url = run_async(minio_service.get_file_url(object_name, expiry=3600))
                 if not audio_url:
@@ -289,7 +299,8 @@ def generate_srt(self, video_id: str, project_id: int, user_id: int, split_files
                         user_id=user_id,
                         custom_filename=custom_filename,
                         start_time=start_time,
-                        end_time=end_time
+                        end_time=end_time,
+                        asr_service_url=asr_service_url  # 传递最新的URL
                     )
                 )
                 

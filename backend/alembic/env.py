@@ -71,8 +71,6 @@ def get_sync_database_url():
                     sync_url += f"?{parsed.query}"
                 
         return sync_url
-    elif url.startswith('sqlite+aiosqlite://'):
-        return url.replace('sqlite+aiosqlite://', 'sqlite://')
     return url
 
 target_metadata = Base.metadata

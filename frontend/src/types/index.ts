@@ -5,6 +5,7 @@ export interface User {
   fullName?: string;
   avatarUrl?: string;
   isActive: boolean;
+  is_superuser?: boolean;
   createdAt: string;
 }
 

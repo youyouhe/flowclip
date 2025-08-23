@@ -212,12 +212,15 @@ def export_slice_to_capcut(self, slice_id: int, draft_folder: str, user_id: int 
                             max_retries=3
                         ))
                         
-                        # 添加子切片标题文本（与水波纹特效同步显示）
+                        # 添加子切片标题文本（与水波纹特效同步显示，带年月信息）
                         if sub_slice.cover_title:
-                            print(f"DEBUG: 添加子切片标题 - 文本: {sub_slice.cover_title}, 时间轴起始: {current_time}秒, 时间轴结束: {current_time + 3}秒")
+                            from datetime import datetime
+                            current_date = datetime.now().strftime("%Y-%m-%d")
+                            sub_title_with_date = f"{sub_slice.cover_title}({current_date})"
+                            print(f"DEBUG: 添加子切片标题 - 文本: {sub_title_with_date}, 时间轴起始: {current_time}秒, 时间轴结束: {current_time + 3}秒")
                             text_result = asyncio.run(capcut_service.add_text(
                                 draft_id=draft_id,
-                                text=sub_slice.cover_title,
+                                text=sub_title_with_date,
                                 start=current_time,
                                 end=current_time + 3,
                                 font="挥墨体",
@@ -232,6 +235,7 @@ def export_slice_to_capcut(self, slice_id: int, draft_folder: str, user_id: int 
                                 border_width=15.0,
                                 width=1080,
                                 height=1920,
+                                intro_animation="收拢",
                                 max_retries=3
                             ))
                         
@@ -398,11 +402,14 @@ def export_slice_to_capcut(self, slice_id: int, draft_folder: str, user_id: int 
             _update_task_status(celery_task_id, ProcessingTaskStatus.RUNNING, 80, "添加文本和字幕")
             self.update_state(state='PROGRESS', meta={'progress': 80, 'stage': ProcessingStage.CAPCUT_EXPORT, 'message': '添加文本和字幕'})
             
-            # 添加覆盖文本
-            print(f"DEBUG: 添加切片覆盖标题 - 文本: {slice_obj.cover_title}, 时间轴起始: 0秒, 时间轴结束: {current_time}秒")
+            # 添加覆盖文本（带年月信息）
+            from datetime import datetime
+            current_date = datetime.now().strftime("%Y-%m-%d")
+            cover_title_with_date = f"{slice_obj.cover_title}({current_date})"
+            print(f"DEBUG: 添加切片覆盖标题 - 文本: {cover_title_with_date}, 时间轴起始: 0秒, 时间轴结束: {current_time}秒")
             text_result = asyncio.run(capcut_service.add_text(
                 draft_id=draft_id,
-                text=slice_obj.cover_title,
+                text=cover_title_with_date,
                 start=0,
                 end=current_time,
                 font="挥墨体",

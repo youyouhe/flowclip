@@ -62,7 +62,7 @@ def parse_srt_text(srt_text: str) -> List[Dict[str, Any]]:
     return segments
 
 
-def adjust_timestamps_with_duration(results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def adjust_timestamps_with_duration(results: List[Dict[str, Any]], time_offset: float = 0.0) -> List[Dict[str, Any]]:
     """
     基于wav文件实际时长调整时间戳的增强版本
     
@@ -71,12 +71,13 @@ def adjust_timestamps_with_duration(results: List[Dict[str, Any]]) -> List[Dict[
                 - file_path: 音频文件路径
                 - segments: 识别出的字幕片段
                 - wav_duration: WAV文件实际时长（可选）
+        time_offset: 时间偏移量（秒），用于调整所有时间戳
     
     Returns:
         调整后的字幕片段列表
     """
     all_segments = []
-    current_offset = 0
+    current_offset = time_offset  # 使用传入的时间偏移量作为起始偏移
     
     for result in results:
         if 'error' in result:

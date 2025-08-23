@@ -331,31 +331,46 @@ class CapCutServiceAPI:
                       transform_y: float = 0.15, font_alpha: float = 1.0,
                       border_alpha: float = 1.0, border_color: str = "#000000",
                       border_width: float = 15.0, width: int = 1080, height: int = 1920,
+                      intro_animation: str = None, intro_duration: float = 0.5,
+                      outro_animation: str = None, outro_duration: float = 0.5,
                       max_retries: int = 3) -> Dict[str, Any]:
         """添加文本"""
         for attempt in range(max_retries):
             try:
                 logger.info(f"尝试添加文本到草稿 {draft_id} (尝试 {attempt + 1}/{max_retries})")
+                # 构建请求数据
+                data = {
+                    "draft_id": draft_id,
+                    "text": text,
+                    "start": start,
+                    "end": end,
+                    "font": font,
+                    "font_color": font_color,
+                    "font_size": font_size,
+                    "track_name": track_name,
+                    "transform_x": transform_x,
+                    "transform_y": transform_y,
+                    "font_alpha": font_alpha,
+                    "border_alpha": border_alpha,
+                    "border_color": border_color,
+                    "border_width": border_width,
+                    "width": width,
+                    "height": height
+                }
+                
+                # 添加可选的动画参数
+                if intro_animation is not None:
+                    data["intro_animation"] = intro_animation
+                if intro_duration is not None:
+                    data["intro_duration"] = intro_duration
+                if outro_animation is not None:
+                    data["outro_animation"] = outro_animation
+                if outro_duration is not None:
+                    data["outro_duration"] = outro_duration
+                
                 response = requests.post(
                     f"{self.base_url}/add_text",
-                    json={
-                        "draft_id": draft_id,
-                        "text": text,
-                        "start": start,
-                        "end": end,
-                        "font": font,
-                        "font_color": font_color,
-                        "font_size": font_size,
-                        "track_name": track_name,
-                        "transform_x": transform_x,
-                        "transform_y": transform_y,
-                        "font_alpha": font_alpha,
-                        "border_alpha": border_alpha,
-                        "border_color": border_color,
-                        "border_width": border_width,
-                        "width": width,
-                        "height": height
-                    },
+                    json=data,
                     timeout=30
                 )
                 response.raise_for_status()
@@ -567,10 +582,12 @@ async def export_slice_to_capcut(
 async def get_capcut_status():
     """获取CapCut服务状态"""
     try:
-        # 测试创建草稿端点来判断服务是否在线
-        response = requests.post(f"{CAPCUT_API_BASE_URL}/create_draft", 
-                              json={"width": 1080, "height": 1920}, 
-                              timeout=5)
-        return {"status": "online" if response.status_code == 200 else "offline"}
+        # 使用专门的健康检查端点
+        response = requests.get(f"{CAPCUT_API_BASE_URL}/health", timeout=5)
+        if response.status_code == 200:
+            health_data = response.json()
+            if health_data.get("status") == "healthy":
+                return {"status": "online"}
+        return {"status": "offline"}
     except:
         return {"status": "offline"}

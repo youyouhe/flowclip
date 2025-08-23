@@ -243,19 +243,15 @@ async def check_service_status(
         elif service_name.lower() == "asr":
             # ASR服务健康检查
             asr_service_url = get_config("asr_service_url", settings.asr_service_url)
+            base_url = asr_service_url.rstrip('/')
+            health_check_url = f"{base_url}/health"
             
-            # 确保URL格式正确，移除可能的多余路径
-            if asr_service_url.endswith('/asr'):
-                base_url = asr_service_url[:-4]  # 移除末尾的'/asr'
-            else:
-                base_url = asr_service_url.rstrip('/')
-            
-            logger.info(f"ASR配置: url={asr_service_url}, base_url={base_url}")
+            logger.info(f"ASR配置: checking url={health_check_url}")
             
             try:
-                # 尝试访问根路径来检查服务是否在线
-                response = requests.get(base_url, timeout=5)
-                if response.status_code == 200:
+                # 尝试访问/health端点
+                response = requests.get(health_check_url, timeout=5)
+                if response.status_code == 200 and response.json().get("status") == "healthy":
                     return ServiceStatus(
                         service=service_name,
                         status="online",

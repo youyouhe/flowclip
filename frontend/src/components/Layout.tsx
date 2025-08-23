@@ -1,7 +1,7 @@
 import React from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { Layout as AntLayout, Menu } from 'antd';
-import { ProjectOutlined, VideoCameraOutlined, DashboardOutlined, FileTextOutlined, LogoutOutlined, RobotOutlined, ScissorOutlined, HomeOutlined, VideoCameraAddOutlined, PictureOutlined } from '@ant-design/icons';
+import { ProjectOutlined, VideoCameraOutlined, DashboardOutlined, FileTextOutlined, LogoutOutlined, RobotOutlined, ScissorOutlined, HomeOutlined, VideoCameraAddOutlined, PictureOutlined, SettingOutlined } from '@ant-design/icons';
 import { useAuth } from './AuthProvider';
 
 const { Header, Sider, Content } = AntLayout;
@@ -56,6 +56,11 @@ const Layout: React.FC = () => {
       key: '/dashboard/logs',
       icon: <FileTextOutlined />,
       label: '日志管理',
+    },
+    {
+      key: '/dashboard/system-config',
+      icon: <SettingOutlined />,
+      label: '系统配置',
     },
     {
       key: 'logout',

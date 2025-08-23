@@ -7,6 +7,7 @@ from .transcript import Transcript, AnalysisResult
 from .processing_task import ProcessingTask, ProcessingTaskLog, ProcessingStatus
 from .video_slice import LLMAnalysis, VideoSlice, VideoSubSlice
 from .resource import Resource, ResourceTag, ResourceTagRelation
+from .system_config import SystemConfig
 
 __all__ = [
     "User",
@@ -25,5 +26,6 @@ __all__ = [
     "VideoSubSlice",
     "Resource",
     "ResourceTag",
-    "ResourceTagRelation"
+    "ResourceTagRelation",
+    "SystemConfig"
 ]

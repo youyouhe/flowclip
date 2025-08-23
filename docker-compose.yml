@@ -98,7 +98,7 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     container_name: yt-slicer-celery
-    command: celery -A app.core.celery worker --loglevel=info
+    command: celery -A app.core.celery worker --loglevel=info --concurrency=1
     environment:
       - DATABASE_URL=mysql+aiomysql://youtube_user:youtube_password@mysql:3306/youtube_slicer?charset=utf8mb4
       - REDIS_URL=redis://redis:6379

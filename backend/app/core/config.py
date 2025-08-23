@@ -10,7 +10,7 @@ class Settings(BaseSettings):
     api_url: Optional[str] = None
     
     # Database
-    database_url: str = "sqlite+aiosqlite:///./youtube_slicer.db"
+    database_url: str = "mysql+aiomysql://youtube_user:youtube_password@mysql:3306/youtube_slicer?charset=utf8mb4"
     
     # MySQL Configuration
     mysql_host: str = "localhost"
@@ -48,7 +48,7 @@ class Settings(BaseSettings):
     youtube_cookies_file: Optional[str] = "/home/cat/github/slice-youtube/youtube_cookies.txt"
     
     # ASR Service Configuration
-    asr_service_url: str = "http://192.168.8.107:5001/asr"
+    asr_service_url: str = "http://192.168.8.107:5001"
     
     # LLM Configuration
     openrouter_api_key: Optional[str] = None
@@ -125,52 +125,56 @@ chapters (子主题/章节列表):
 
 要求： 将该核心主题下的所有子主题，以列表形式呈现。每个子主题包含 cover_title (简短精炼的子标题), start 和 end。
 
-注意：这里我将你原先的 subtitles 字段改为了 chapters，这个词在视频语境下更准确，不易混淆。
+要求： 为了丰富视频视觉效果，子主题中有可以图像化的概念，名词，请标记出来。
 
 第四步：格式化输出
 
 请严格按照以下 JSON 格式组织并输出你的分析结果。确保所有时间戳格式为 hh:mm:ss,ms。
 
-
 [
   {
-    "cover_title": "颠覆认知！为什么说“努力”本身毫无价值？",
-    "title": "深度剖析：重新定义努力与成果的关系",
-    "desc": "本片深入探讨了“无效努力”的陷阱。你是否也曾陷入越努力越焦虑的怪圈？视频将从三个层面为你揭示如何让你的每一次付出都精准有效，最终实现个人成长。你看完后认为哪个观点最重要？",
-    "tags": ["个人成长", "高效努力", "思维模式", "认知心理学"],
-    "start": "00:08:15,250",
-    "end": "00:15:45,800",
+    "cover_title": "川普访华前的大礼包？中国豪购500架波音飞机内幕！",
+    "title": "中美贸易战新动向：美欧达成框架协议与中国购买波音飞机",
+    "desc": "全球贸易战格局正在重塑。一方面，美国与欧盟达成19点贸易框架协议，欧盟承诺巨额采购和投资以换取关税稳定。另一方面，中国时隔多年再次向波音抛出500架飞机的超级大单。这笔价值超600亿美元的订单，是否是为川普访华准备的见面礼，意在换取关税降低和科技松绑？中美欧三方的贸易博弈将走向何方？",
+    "tags": ["中美关系", "贸易战", "波音", "川普访华", "美欧关系"],
+    "start": "00:54:25,449",
+    "end": "01:03:56,380",
     "chapters": [
       {
-        "cover_title": "1. 结果导向：摆脱“感动自己”的陷阱",
-        "start": "00:08:20,100",
-        "end": "00:10:55,300"
+        "cover_title": "美欧贸易战停火？19条框架协议全解读",
+        "start": "00:54:31,469",
+        "end": "00:56:11,159",
+        "visual_cue": [
+          {"concept": "美国龙虾", "timestamp": "00:55:03,960"},
+          {"concept": "欧洲汽车", "timestamp": "00:56:07,090"}
+        ]
       },
       {
-        "cover_title": "2. 什么是真正有效的“刻意练习”？",
-        "start": "00:10:58,500",
-        "end": "00:13:10,600"
+        "cover_title": "不只是口头承诺？欧盟许诺采购7500亿美国能源与6000亿投资",
+        "start": "00:56:11,159",
+        "end": "00:59:25,900",
+        "visual_cue": [
+          {"concept": "美国AI芯片", "timestamp": "00:57:19,960"},
+          {"concept": "美国军事装备", "timestamp": "00:57:50,900"}
+        ]
       },
       {
-        "cover_title": "3. 案例：小A是如何用新方法实现突破的",
-        "start": "00:13:15,000",
-        "end": "00:15:40,100"
+        "cover_title": "超级大单！中国拟购买500架波音飞机，价值超600亿美金",
+        "start": "00:59:25,900",
+        "end": "01:02:26,489",
+        "visual_cue": [
+          {"concept": "波音飞机生产线", "timestamp": "00:59:30,409"}
+        ]
+      },
+      {
+        "cover_title": "交换条件：巨额订单能否换来关税降低与科技松绑？",
+        "start": "01:02:26,489",
+        "end": "01:03:56,380",
+        "visual_cue": []
       }
     ]
-  },
-  {
-    "cover_title": "下一个风口？AI将如何彻底改变内容创作行业",
-    "title": "未来趋势分析：AI在内容创作领域的应用与挑战",
-    "desc": "...",
-    "tags": ["人工智能", "AIGC", "内容创作", "未来趋势"],
-    "start": "00:18:05,000",
-    "end": "00:25:30,900",
-    "chapters": [
-      ...
-    ]
   }
-]
-                   
+]                 
                     '''
     
     # Application

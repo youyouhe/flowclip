@@ -8,51 +8,33 @@ class Base(DeclarativeBase):
     pass
 
 # MySQL specific configuration
-if "mysql" in settings.database_url.lower():
-    # Async engine for FastAPI
-    async_engine = create_async_engine(
-        settings.database_url,
-        echo=settings.sqlalchemy_echo,
-        pool_pre_ping=True,
-        pool_recycle=3600,
-        isolation_level="READ COMMITTED",  # Allow reading committed changes for real-time updates
-        connect_args={
-            "charset": "utf8mb4",
-            "autocommit": False,  # Disable autocommit for better consistency
-        }
-    )
-    
-    # Sync engine for Celery tasks
-    sync_database_url = settings.database_url.replace("+aiomysql", "")
-    sync_database_url = sync_database_url.replace("mysql://", "mysql+pymysql://")
-    sync_engine = create_engine(
-        sync_database_url,
-        echo=settings.sqlalchemy_echo,
-        pool_pre_ping=True,
-        pool_recycle=3600,
-        isolation_level="READ COMMITTED",  # Allow reading committed changes for real-time updates
-        connect_args={
-            "charset": "utf8mb4",
-            "autocommit": False,  # Disable autocommit for better consistency
-        }
-    )
-else:
-    # SQLite configuration
-    async_engine = create_async_engine(
-        settings.database_url,
-        echo=settings.sqlalchemy_echo,
-        poolclass=StaticPool,
-        connect_args={"check_same_thread": False},
-    )
-    
-    # Sync engine for Celery tasks
-    sync_database_url = settings.database_url.replace("+aiosqlite", "")
-    sync_engine = create_engine(
-        sync_database_url,
-        echo=settings.sqlalchemy_echo,
-        poolclass=StaticPool,
-        connect_args={"check_same_thread": False},
-    )
+# Async engine for FastAPI
+async_engine = create_async_engine(
+    settings.database_url,
+    echo=settings.sqlalchemy_echo,
+    pool_pre_ping=True,
+    pool_recycle=3600,
+    isolation_level="READ COMMITTED",  # Allow reading committed changes for real-time updates
+    connect_args={
+        "charset": "utf8mb4",
+        "autocommit": False,  # Disable autocommit for better consistency
+    }
+)
+
+# Sync engine for Celery tasks
+sync_database_url = settings.database_url.replace("+aiomysql", "")
+sync_database_url = sync_database_url.replace("mysql://", "mysql+pymysql://")
+sync_engine = create_engine(
+    sync_database_url,
+    echo=settings.sqlalchemy_echo,
+    pool_pre_ping=True,
+    pool_recycle=3600,
+    isolation_level="READ COMMITTED",  # Allow reading committed changes for real-time updates
+    connect_args={
+        "charset": "utf8mb4",
+        "autocommit": False,  # Disable autocommit for better consistency
+    }
+)
 
 # Async session for FastAPI
 AsyncSessionLocal = async_sessionmaker(
