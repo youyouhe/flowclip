@@ -91,7 +91,7 @@ export const projectAPI = {
   updateProject: (id: number, data: any) =>
     api.put(`/projects/${id}/`, data),
   deleteProject: (id: number) =>
-    api.delete(`/projects/${id}/`),
+    api.delete(`/projects/${id}`),
   getProjectVideos: (projectId: number) =>
     api.get(`/projects/${projectId}/videos/`),
 };
@@ -109,7 +109,7 @@ export const videoAPI = {
   updateVideo: (id: number, data: any) =>
     api.put(`/videos/${id}/`, data),
   deleteVideo: (id: number) =>
-    api.delete(`/videos/${id}/`),
+    api.delete(`/videos/${id}`),
   downloadVideo: (url: string, projectId: number, quality: string) =>
     api.post(`/videos/download?quality=${quality}`, { url, project_id: projectId }),
   downloadVideoWithCookies: (formData: FormData, quality: string = 'best') =>
