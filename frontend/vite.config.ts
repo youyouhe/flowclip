@@ -12,6 +12,7 @@ export default defineConfig({
         target: 'http://backend:8001',
         changeOrigin: true,
         ws: true, // Enable WebSocket proxy for API connections
+        rewrite: (path) => path.replace(/^\/api/, ''),
       },
       '/minio': {
         target: 'http://minio:9000',
