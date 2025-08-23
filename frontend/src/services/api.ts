@@ -4,17 +4,26 @@ const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://backend:8001';
 
 // 处理代理路径，避免重复的 /api
 const getBaseURL = () => {
+  console.log('🔍 Debug - API_BASE_URL:', API_BASE_URL);
+  
   if (API_BASE_URL.startsWith('/')) {
-    // 相对路径，代理会完整转发 /api/v1 路径
-    return `${API_BASE_URL}/v1`;
+    // 相对路径，代理已经包含 /api 前缀，所以只需要 /v1
+    const baseURL = '/v1';
+    console.log('🔍 Debug - Using relative baseURL:', baseURL);
+    return baseURL;
   } else {
     // 绝对路径，需要完整的 /api/v1
-    return `${API_BASE_URL}/api/v1`;
+    const baseURL = `${API_BASE_URL}/api/v1`;
+    console.log('🔍 Debug - Using absolute baseURL:', baseURL);
+    return baseURL;
   }
 };
 
+const baseURL = getBaseURL();
+console.log('🔍 Debug - Final API baseURL:', baseURL);
+
 const api = axios.create({
-  baseURL: getBaseURL(),
+  baseURL: baseURL,
   timeout: 30000,
 });
 
