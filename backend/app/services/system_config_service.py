@@ -132,6 +132,25 @@ class SystemConfigService:
                 setattr(settings, settings_attr, db_configs[db_key])
     
     @staticmethod
+    def update_settings_from_db_sync(db: Session):
+        """从数据库更新settings配置的同步版本"""
+        db_configs = SystemConfigService.get_all_configs_sync(db)
+        
+        # 更新数据库URL
+        if "mysql_host" in db_configs and "mysql_port" in db_configs:
+            host = db_configs.get("mysql_host", settings.mysql_host)
+            port = db_configs.get("mysql_port", str(settings.mysql_port))
+            user = db_configs.get("mysql_user", settings.mysql_user)
+            password = db_configs.get("mysql_password", settings.mysql_password)
+            database = db_configs.get("mysql_database", settings.mysql_database)
+            settings.database_url = f"mysql+aiomysql://{user}:{password}@{host}:{port}/{database}?charset=utf8mb4"
+        
+        # 更新其他配置项
+        for db_key, settings_attr in SystemConfigService.CONFIG_MAPPING.items():
+            if db_key in db_configs:
+                setattr(settings, settings_attr, db_configs[db_key])
+    
+    @staticmethod
     def get_configurable_items() -> List[Dict[str, str]]:
         """获取所有可配置的项目信息"""
         return [

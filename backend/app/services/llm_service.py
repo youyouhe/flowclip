@@ -46,7 +46,7 @@ class LLMService:
         """
         # 动态获取最新的API密钥
         with get_sync_db_context() as db:
-            await SystemConfigService.update_settings_from_db(db)
+            SystemConfigService.update_settings_from_db_sync(db)
         
         api_key = settings.openrouter_api_key
         logger.info(f"开始LLM对话请求 - 消息数量: {len(messages)}, 模型: {self.model}")
