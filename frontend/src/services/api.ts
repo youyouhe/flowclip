@@ -2,8 +2,19 @@ import axios from 'axios';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://backend:8001';
 
+// 处理代理路径，避免重复的 /api
+const getBaseURL = () => {
+  if (API_BASE_URL.startsWith('/')) {
+    // 相对路径，已经在代理中包含了 /api 前缀
+    return `${API_BASE_URL}/v1`;
+  } else {
+    // 绝对路径，需要完整的 /api/v1
+    return `${API_BASE_URL}/api/v1`;
+  }
+};
+
 const api = axios.create({
-  baseURL: `${API_BASE_URL}/api/v1`,
+  baseURL: getBaseURL(),
   timeout: 30000,
 });
 
