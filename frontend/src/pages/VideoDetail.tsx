@@ -542,21 +542,62 @@ const VideoDetail: React.FC = () => {
     
     try {
       setDownloading(true);
-      const response = await videoAPI.getVideoDownloadUrl(video.id, 3600);
-      const url = response.data.download_url;
       
-      // 创建下载链接
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = video.filename || `${video.title}.mp4`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
+      // 使用新的后端代理下载端点，避免MinIO直链问题
+      const apiBaseUrl = import.meta.env.VITE_API_URL || '/api';
+      const token = localStorage.getItem('token');
       
-      message.success('开始下载视频');
+      if (!token) {
+        message.error('请先登录');
+        return;
+      }
+      
+      // 构建代理下载URL
+      const downloadUrl = apiBaseUrl.startsWith('/') 
+        ? `${apiBaseUrl}/v1/videos/${video.id}/video-download`
+        : `${apiBaseUrl}/api/v1/videos/${video.id}/video-download`;
+      
+      // 创建带认证头的下载链接
+      const xhr = new XMLHttpRequest();
+      xhr.open('GET', downloadUrl, true);
+      xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+      xhr.responseType = 'blob';
+      
+      xhr.onload = function() {
+        if (xhr.status === 200) {
+          const blob = new Blob([xhr.response]);
+          const url = window.URL.createObjectURL(blob);
+          const downloadLink = document.createElement('a');
+          downloadLink.href = url;
+          downloadLink.download = video.filename || `${video.title}.mp4`;
+          document.body.appendChild(downloadLink);
+          downloadLink.click();
+          window.URL.revokeObjectURL(url);
+          document.body.removeChild(downloadLink);
+          message.success('视频下载成功');
+        } else {
+          message.error('视频下载失败');
+        }
+        setDownloading(false);
+      };
+      
+      xhr.onerror = function() {
+        message.error('视频下载失败');
+        setDownloading(false);
+      };
+      
+      xhr.onprogress = function(event) {
+        if (event.lengthComputable) {
+          const percentComplete = (event.loaded / event.total) * 100;
+          console.log(`下载进度: ${percentComplete.toFixed(2)}%`);
+        }
+      };
+      
+      xhr.send();
+      
     } catch (error) {
-      message.error('获取下载链接失败');
-    } finally {
+      console.error('视频下载错误:', error);
+      message.error('视频下载失败');
       setDownloading(false);
     }
   };

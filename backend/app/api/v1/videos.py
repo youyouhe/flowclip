@@ -1601,3 +1601,117 @@ async def get_thumbnail_download_url(
         )
     
     return {"download_url": url, "expires_in": expiry, "object_name": thumbnail_object_name}
+
+@router.get("/{video_id}/video-download")
+async def download_video_direct(
+    video_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """直接下载视频文件，通过后端代理避免MinIO直链问题"""
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    logger.info(f"=== 视频下载请求开始 ===")
+    logger.info(f"用户ID: {current_user.id}, 视频ID: {video_id}")
+    
+    try:
+        # 验证视频属于当前用户
+        stmt = select(Video).join(Project).where(
+            Video.id == video_id,
+            Project.user_id == current_user.id
+        )
+        result = await db.execute(stmt)
+        video = result.scalar_one_or_none()
+        
+        if not video:
+            logger.error(f"视频未找到: video_id={video_id}, user_id={current_user.id}")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Video not found"
+            )
+        
+        logger.info(f"找到视频: {video.title} (ID: {video.id})")
+        
+        # 检查视频文件是否存在
+        if not video.file_path:
+            logger.error(f"视频文件路径为空: video_id={video_id}")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Video file not available"
+            )
+        
+        # 从MinIO获取文件流
+        file_stream = await minio_service.get_file_stream(video.file_path)
+        if not file_stream:
+            logger.error(f"无法从MinIO获取文件流: {video.file_path}")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Video file not found in storage"
+            )
+        
+        # 获取文件信息
+        file_stat = await minio_service.get_file_stat(video.file_path)
+        if not file_stat:
+            logger.error(f"无法获取文件统计信息: {video.file_path}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to get file information"
+            )
+        
+        logger.info(f"开始下载视频文件: {video.file_path}, 大小: {file_stat.size} bytes")
+        
+        # 返回文件流响应
+        from fastapi.responses import StreamingResponse
+        import io
+        
+        # 创建文件流生成器
+        async def file_stream_generator():
+            try:
+                # 分块读取文件
+                chunk_size = 8192  # 8KB chunks
+                while True:
+                    chunk = await file_stream.read(chunk_size)
+                    if not chunk:
+                        break
+                    yield chunk
+            finally:
+                await file_stream.close()
+        
+        # 确定内容类型
+        content_type = "video/mp4"  # 默认
+        if video.filename:
+            if video.filename.endswith('.webm'):
+                content_type = "video/webm"
+            elif video.filename.endswith('.mkv'):
+                content_type = "video/x-matroska"
+            elif video.filename.endswith('.avi'):
+                content_type = "video/x-msvideo"
+            elif video.filename.endswith('.mov'):
+                content_type = "video/quicktime"
+        
+        # 设置下载文件名
+        download_filename = video.filename or f"{video.title}.mp4"
+        
+        logger.info(f"返回视频文件流: {download_filename}, 内容类型: {content_type}")
+        
+        return StreamingResponse(
+            file_stream_generator(),
+            media_type=content_type,
+            headers={
+                "Content-Disposition": f"attachment; filename*=UTF-8''{download_filename}",
+                "Content-Length": str(file_stat.size),
+                "Cache-Control": "no-cache, no-store, must-revalidate",
+                "Pragma": "no-cache",
+                "Expires": "0"
+            }
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"视频下载失败: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Video download failed: {str(e)}"
+        )
