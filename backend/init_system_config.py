@@ -7,7 +7,7 @@
 import os
 import sys
 import logging
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.exc import SQLAlchemyError, OperationalError
 
@@ -42,7 +42,7 @@ def init_system_config():
         db = SessionLocal()
         
         # 测试数据库连接
-        db.execute("SELECT 1")
+        db.execute(text("SELECT 1"))
         logger.info("Database connection successful")
         
         # 确保system_configs表存在
