@@ -119,7 +119,7 @@ export const videoAPI = {
       },
     }),
   getVideoDownloadUrl: (id: number, expiry: number = 3600) =>
-    api.get(`/videos/${id}/download-url/?expiry=${expiry}`),
+    api.get(`/videos/${id}/download-url?expiry=${expiry}`),
   
     extractAudio: (videoId: number) =>
     api.post(`/videos/${videoId}/extract-audio/`),
@@ -128,13 +128,13 @@ export const videoAPI = {
   getTaskStatus: (videoId: number, taskId: string) =>
     api.get(`/videos/${videoId}/task-status/${taskId}/`),
   getAudioDownloadUrl: (videoId: number, expiry: number = 3600) =>
-    api.get(`/videos/${videoId}/audio-download-url/?expiry=${expiry}`),
+    api.get(`/videos/${videoId}/audio-download-url?expiry=${expiry}`),
   getSrtDownloadUrl: (videoId: number, expiry: number = 3600) =>
-    api.get(`/videos/${videoId}/srt-download-url/?expiry=${expiry}`),
+    api.get(`/videos/${videoId}/srt-download-url?expiry=${expiry}`),
   getSrtContent: (videoId: number) =>
     api.get(`/videos/${videoId}/srt-content/`),
   getThumbnailDownloadUrl: (videoId: number, expiry: number = 3600) =>
-    api.get(`/videos/${videoId}/thumbnail-download-url/?expiry=${expiry}`),
+    api.get(`/videos/${videoId}/thumbnail-download-url?expiry=${expiry}`),
   
   // 新增：根据路径获取缩略图URL
   getThumbnailUrlByPath: (path: string) =>
