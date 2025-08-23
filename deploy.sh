@@ -183,7 +183,7 @@ REDIS_URL=redis://redis:6379
 
 # MinIO Configuration
 MINIO_ENDPOINT=minio:9000
-MINIO_PUBLIC_ENDPOINT=/minio
+MINIO_PUBLIC_ENDPOINT=minio:9000
 MINIO_ACCESS_KEY=minioadmin
 MINIO_SECRET_KEY=minioadmin
 MINIO_BUCKET_NAME=youtube-videos
