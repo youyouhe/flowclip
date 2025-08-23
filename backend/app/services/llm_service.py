@@ -8,6 +8,8 @@ import subprocess
 import logging
 from typing import Dict, Any, Optional, List
 from app.core.config import settings
+from app.services.system_config_service import SystemConfigService
+from app.core.database import get_sync_db_context
 
 # 设置日志
 logger = logging.getLogger(__name__)
@@ -16,17 +18,12 @@ class LLMService:
     """LLM服务类"""
     
     def __init__(self):
-        self.api_key = settings.openrouter_api_key
         self.base_url = "https://openrouter.ai/api/v1"
         #self.model = "google/gemini-2.5-flash-lite"
         self.model = "google/gemini-2.5-flash"
         self.default_system_prompt = settings.llm_system_prompt
         
-        logger.info(f"初始化LLM服务 - API Key存在: {bool(self.api_key)}, 模型: {self.model}")
-        
-        if not self.api_key or self.api_key == "your-key-here":
-            logger.warning("OPENROUTER_API_KEY environment variable is not set or is placeholder - LLM服务将不可用")
-            self.api_key = None
+        logger.info(f"初始化LLM服务 - 模型: {self.model}")
     
     async def chat_completion(
         self,
@@ -47,10 +44,20 @@ class LLMService:
         Returns:
             LLM响应结果
         """
+        # 动态获取最新的API密钥
+        with get_sync_db_context() as db:
+            await SystemConfigService.update_settings_from_db(db)
+        
+        api_key = settings.openrouter_api_key
         logger.info(f"开始LLM对话请求 - 消息数量: {len(messages)}, 模型: {self.model}")
         
+        # 检查API密钥
+        if not api_key or api_key == "your-key-here":
+            logger.warning("OPENROUTER_API_KEY未设置或为占位符 - LLM服务不可用")
+            raise Exception("OPENROUTER_API_KEY未设置或为占位符 - LLM服务不可用")
+        
         headers = {
-            "Authorization": f"Bearer {self.api_key}",
+            "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
             "HTTP-Referer": "https://youtube-slicer.local",  # 你的应用域名
             "X-Title": "video slice tools",  # 你的应用名称
