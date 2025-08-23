@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# YouTube Slicer 部署脚本
+# EchoClip 部署脚本
 # 使用方法: ./deploy.sh <public-ip> [private-ip]
 
 set -e
@@ -138,7 +138,7 @@ fi
 
 ENV_FILE=".env"
 
-log_info "🚀 开始部署 YouTube Slicer"
+log_info "🚀 开始部署 EchoClip"
 log_info "📡 Public IP: $PUBLIC_IP (用户访问)"
 log_info "🔒 Private IP: $PRIVATE_IP (内部服务通信)"
 
@@ -266,6 +266,65 @@ fi
 
 log_success "Docker 环境检查通过"
 
+# 检查依赖服务可用性
+log_info "🔍 检查依赖服务可用性..."
+
+# 检查是否在Docker环境中运行
+if [ -f /.dockerenv ] || grep -q docker /proc/1/cgroup 2>/dev/null; then
+    # 在Docker容器内运行，使用Docker服务名
+    log_info "在Docker环境中运行，使用服务名检测"
+    
+    # 检查MySQL服务
+    if docker-compose exec mysql mysqladmin ping -h localhost -u youtube_user -pyoutube_password &> /dev/null; then
+        log_success "✅ MySQL 服务可用"
+    else
+        log_warning "⚠️  MySQL 服务不可用，将在容器启动后自动初始化"
+    fi
+    
+    # 检查Redis服务
+    if docker-compose exec redis redis-cli ping &> /dev/null; then
+        log_success "✅ Redis 服务可用"
+    else
+        log_warning "⚠️  Redis 服务不可用，将在容器启动后自动初始化"
+    fi
+    
+    # 检查MinIO服务
+    if docker-compose exec minio curl -f http://localhost:9000/minio/health/live &> /dev/null; then
+        log_success "✅ MinIO 服务可用"
+    else
+        log_warning "⚠️  MinIO 服务不可用，将在容器启动后自动初始化"
+    fi
+else
+    # 在宿主机上运行，使用本地端口检测
+    log_info "在宿主机上运行，使用端口检测"
+    
+    # 检查nc命令是否可用
+    if ! command -v nc &> /dev/null && ! command -v telnet &> /dev/null; then
+        log_warning "nc 和 telnet 命令都不可用，跳过端口检测"
+    else
+        # 检查MySQL服务 (端口 3307)
+        if nc -z 127.0.0.1 3307 2>/dev/null || telnet 127.0.0.1 3307 2>&1 | grep -q Connected; then
+            log_success "✅ MySQL 服务可用 (127.0.0.1:3307)"
+        else
+            log_warning "⚠️  MySQL 服务不可用 (127.0.0.1:3307)，将在容器启动后自动初始化"
+        fi
+        
+        # 检查Redis服务 (端口 6379)
+        if nc -z 127.0.0.1 6379 2>/dev/null || telnet 127.0.0.1 6379 2>&1 | grep -q Connected; then
+            log_success "✅ Redis 服务可用 (127.0.0.1:6379)"
+        else
+            log_warning "⚠️  Redis 服务不可用 (127.0.0.1:6379)，将在容器启动后自动初始化"
+        fi
+        
+        # 检查MinIO服务 (端口 9000)
+        if nc -z 127.0.0.1 9000 2>/dev/null || telnet 127.0.0.1 9000 2>&1 | grep -q Connected; then
+            log_success "✅ MinIO 服务可用 (127.0.0.1:9000)"
+        else
+            log_warning "⚠️  MinIO 服务不可用 (127.0.0.1:9000)，将在容器启动后自动初始化"
+        fi
+    fi
+fi
+
 # 询问是否要重建容器
 log_warning "是否要重新构建并启动容器？(y/N)"
 read -r rebuild_response
@@ -280,6 +339,22 @@ if [[ "$rebuild_response" =~ ^([yY][eE][sS]|[yY])$ ]]; then
     log_success "容器重新构建完成"
 else
     log_info "跳过容器重建，仅生成配置文件"
+fi
+
+# 初始化数据库配置
+log_info "💾 初始化数据库配置..."
+# 设置数据库连接环境变量
+export MYSQL_HOST="127.0.0.1"
+export MYSQL_PORT="3307"
+export MYSQL_USER="youtube_user"
+export MYSQL_PASSWORD="youtube_password"
+export MYSQL_DATABASE="youtube_slicer"
+
+if python3 init_system_config.py; then
+    log_success "数据库配置初始化成功"
+else
+    log_error "数据库配置初始化失败"
+    exit 1
 fi
 
 log_success "🎉 部署完成！"
@@ -303,6 +378,7 @@ echo "   ✅ WebSocket 实时进度更新"
 echo "   ✅ Docker 内部服务发现"
 echo "   ✅ 配置文件自动备份"
 echo "   ✅ 环境预检查和验证"
+echo "   ✅ 数据库配置初始化"
 echo ""
 log_info "📋 管理命令:"
 echo "   查看日志: docker-compose logs -f"

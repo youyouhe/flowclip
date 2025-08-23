@@ -20,7 +20,7 @@ def check_alembic_status():
     """检查alembic状态"""
     
     # 创建alembic配置
-    alembic_cfg = Config("/home/cat/yt-slicer/backend/alembic.ini")
+    alembic_cfg = Config("/home/cat/echoclip/backend/alembic.ini")
     
     # 设置数据库URL
     settings = Settings()

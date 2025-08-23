@@ -12,9 +12,9 @@ RUN npm ci
 COPY . .
 
 # Build the app with environment variables
-ARG REACT_APP_API_URL
-ENV REACT_APP_API_URL=$REACT_APP_API_URL
-RUN echo "Building with API URL: $REACT_APP_API_URL" && npm run build
+ARG VITE_API_URL
+ENV VITE_API_URL=$VITE_API_URL
+RUN echo "Building with API URL: $VITE_API_URL" && npm run build
 
 # Production stage
 FROM node:18-alpine
