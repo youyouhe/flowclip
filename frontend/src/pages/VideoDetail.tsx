@@ -481,8 +481,10 @@ const VideoDetail: React.FC = () => {
       }
       
       // 使用新的流式传输端点，避免CORS和403问题
-      const apiBaseUrl = import.meta.env.VITE_API_URL || 'http://192.168.8.107:8001';
-      const streamUrl = `${apiBaseUrl}/api/v1/videos/${id}/stream?token=${token}`;
+      const apiBaseUrl = import.meta.env.VITE_API_URL || '/api';
+      const streamUrl = apiBaseUrl.startsWith('/') 
+        ? `${apiBaseUrl}/v1/videos/${id}/stream?token=${token}`
+        : `${apiBaseUrl}/api/v1/videos/${id}/stream?token=${token}`;
       
       console.log('设置流式播放URL:', streamUrl);
       setVideoUrl(streamUrl);
@@ -727,7 +729,7 @@ const VideoDetail: React.FC = () => {
     
     try {
       // 直接使用新的后端代理端点下载SRT，避免MinIO编码问题
-      const apiBaseUrl = import.meta.env.VITE_API_URL || 'http://192.168.8.107:8001';
+      const apiBaseUrl = import.meta.env.VITE_API_URL || '/api';
       const token = localStorage.getItem('token');
       
       if (!token) {
@@ -736,7 +738,9 @@ const VideoDetail: React.FC = () => {
       }
       
       // 构建直接下载URL
-      const downloadUrl = `${apiBaseUrl}/api/v1/videos/${video.id}/srt-download`;
+      const downloadUrl = apiBaseUrl.startsWith('/') 
+        ? `${apiBaseUrl}/v1/videos/${video.id}/srt-download`
+        : `${apiBaseUrl}/api/v1/videos/${video.id}/srt-download`;
       
       // 创建带认证头的下载链接
       const link = document.createElement('a');
