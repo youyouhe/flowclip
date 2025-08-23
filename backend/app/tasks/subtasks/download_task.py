@@ -20,7 +20,12 @@ from app.models import Video, ProcessingTask
 # 创建logger
 logger = logging.getLogger(__name__)
 
-@shared_task(bind=True, name='app.tasks.video_tasks.download_video')
+@shared_task(
+    bind=True, 
+    name='app.tasks.video_tasks.download_video',
+    soft_time_limit=60 * 60,  # 60分钟软时间限制
+    time_limit=70 * 60  # 70分钟硬时间限制
+)
 def download_video(self, video_url: str, project_id: int, user_id: int, quality: str = 'best', cookies_path: str = None, video_id: int = None) -> Dict[str, Any]:
     """Download video from YouTube using yt-dlp"""
     
