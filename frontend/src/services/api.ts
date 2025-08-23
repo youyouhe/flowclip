@@ -85,15 +85,15 @@ export const projectAPI = {
   getProjects: (params?: any) =>
     api.get('/projects/', { params }),
   getProject: (id: number) =>
-    api.get(`/projects/${id}/`),
+    api.get(`/projects/${id}`),
   createProject: (data: any) =>
     api.post('/projects/', data),
   updateProject: (id: number, data: any) =>
-    api.put(`/projects/${id}/`, data),
+    api.put(`/projects/${id}`, data),
   deleteProject: (id: number) =>
     api.delete(`/projects/${id}`),
   getProjectVideos: (projectId: number) =>
-    api.get(`/projects/${projectId}/videos/`),
+    api.get(`/projects/${projectId}/videos`),
 };
 
 // 视频相关API
@@ -107,7 +107,7 @@ export const videoAPI = {
   createVideo: (data: any) =>
     api.post('/videos/', data),
   updateVideo: (id: number, data: any) =>
-    api.put(`/videos/${id}/`, data),
+    api.put(`/videos/${id}`, data),
   deleteVideo: (id: number) =>
     api.delete(`/videos/${id}`),
   downloadVideo: (url: string, projectId: number, quality: string) =>
@@ -122,17 +122,17 @@ export const videoAPI = {
     api.get(`/videos/${id}/download-url?expiry=${expiry}`),
   
     extractAudio: (videoId: number) =>
-    api.post(`/videos/${videoId}/extract-audio/`),
+    api.post(`/videos/${videoId}/extract-audio`),
     generateSrt: (videoId: number) =>
-    api.post(`/videos/${videoId}/generate-srt/`),
+    api.post(`/videos/${videoId}/generate-srt`),
   getTaskStatus: (videoId: number, taskId: string) =>
-    api.get(`/videos/${videoId}/task-status/${taskId}/`),
+    api.get(`/videos/${videoId}/task-status/${taskId}`),
   getAudioDownloadUrl: (videoId: number, expiry: number = 3600) =>
     api.get(`/videos/${videoId}/audio-download-url?expiry=${expiry}`),
   getSrtDownloadUrl: (videoId: number, expiry: number = 3600) =>
     api.get(`/videos/${videoId}/srt-download-url?expiry=${expiry}`),
   getSrtContent: (videoId: number) =>
-    api.get(`/videos/${videoId}/srt-content/`),
+    api.get(`/videos/${videoId}/srt-content`),
   getThumbnailDownloadUrl: (videoId: number, expiry: number = 3600) =>
     api.get(`/videos/${videoId}/thumbnail-download-url?expiry=${expiry}`),
   
