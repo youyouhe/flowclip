@@ -1671,7 +1671,7 @@ async def download_video_direct(
                 # 分块读取文件
                 chunk_size = 8192  # 8KB chunks
                 while True:
-                    chunk = await file_stream.read(chunk_size)
+                    chunk = file_stream.read(chunk_size)
                     if not chunk:
                         break
                     yield chunk
