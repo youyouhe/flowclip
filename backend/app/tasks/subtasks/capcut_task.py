@@ -212,15 +212,12 @@ def export_slice_to_capcut(self, slice_id: int, draft_folder: str, user_id: int 
                             max_retries=3
                         ))
                         
-                        # 添加子切片标题文本（与水波纹特效同步显示，带年月信息）
+                        # 添加子切片标题文本（与水波纹特效同步显示，不带年月信息）
                         if sub_slice.cover_title:
-                            from datetime import datetime
-                            current_date = datetime.now().strftime("%Y-%m-%d")
-                            sub_title_with_date = f"{sub_slice.cover_title}({current_date})"
-                            print(f"DEBUG: 添加子切片标题 - 文本: {sub_title_with_date}, 时间轴起始: {current_time}秒, 时间轴结束: {current_time + 3}秒")
+                            print(f"DEBUG: 添加子切片标题 - 文本: {sub_slice.cover_title}, 时间轴起始: {current_time}秒, 时间轴结束: {current_time + 3}秒")
                             text_result = asyncio.run(capcut_service.add_text(
                                 draft_id=draft_id,
-                                text=sub_title_with_date,
+                                text=sub_slice.cover_title,
                                 start=current_time,
                                 end=current_time + 3,
                                 font="挥墨体",
