@@ -54,10 +54,6 @@ const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => 
 
   const login = async (username: string, password: string) => {
     try {
-      const formData = new URLSearchParams();
-      formData.append('username', username);
-      formData.append('password', password);
-      
       const response = await authAPI.login(username, password);
       
       const { access_token } = response.data;
