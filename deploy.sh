@@ -343,14 +343,9 @@ fi
 
 # 初始化数据库配置
 log_info "💾 初始化数据库配置..."
-# 设置数据库连接环境变量
-export MYSQL_HOST="127.0.0.1"
-export MYSQL_PORT="3307"
-export MYSQL_USER="youtube_user"
-export MYSQL_PASSWORD="youtube_password"
-export MYSQL_DATABASE="youtube_slicer"
-
-if python3 init_system_config.py; then
+# 在Docker容器内运行数据库初始化脚本
+docker-compose exec -T backend python init_system_config.py
+if [ $? -eq 0 ]; then
     log_success "数据库配置初始化成功"
 else
     log_error "数据库配置初始化失败"
