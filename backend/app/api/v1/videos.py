@@ -1676,7 +1676,7 @@ async def download_video_direct(
                         break
                     yield chunk
             finally:
-                await file_stream.close()
+                file_stream.close()
         
         # 确定内容类型
         content_type = "video/mp4"  # 默认
