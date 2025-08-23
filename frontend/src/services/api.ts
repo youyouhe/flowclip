@@ -7,8 +7,8 @@ const getBaseURL = () => {
   console.log('🔍 Debug - API_BASE_URL:', API_BASE_URL);
   
   if (API_BASE_URL.startsWith('/')) {
-    // 相对路径，代理会处理 /api 前缀，所以使用空字符串作为baseURL
-    const baseURL = '';
+    // 相对路径，需要完整的 /api/v1 前缀
+    const baseURL = '/api/v1';
     console.log('🔍 Debug - Using relative baseURL:', baseURL);
     return baseURL;
   } else {
