@@ -384,6 +384,6 @@ echo ""
 log_info "🔧 配置文件:"
 echo "   .env: 环境变量配置"
 echo "   docker-compose.yml: Docker 服务配置"
-if [ -d "backup_"* ]; then
+if ls backup_* 1>/dev/null 2>&1; then
     echo "   backup_*/: 配置文件备份目录"
 fi
