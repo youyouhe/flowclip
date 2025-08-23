@@ -103,7 +103,7 @@ export const videoAPI = {
   getActiveVideos: () =>
     api.get('/videos/active/'),
   getVideo: (id: number) =>
-    api.get(`/videos/${id}/`),
+    api.get(`/videos/${id}`),
   createVideo: (data: any) =>
     api.post('/videos/', data),
   updateVideo: (id: number, data: any) =>
