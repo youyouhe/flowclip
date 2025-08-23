@@ -83,17 +83,17 @@ export const authAPI = {
 // 项目相关API
 export const projectAPI = {
   getProjects: (params?: any) =>
-    api.get('/projects', { params }),
+    api.get('/projects/', { params }),
   getProject: (id: number) =>
-    api.get(`/projects/${id}`),
+    api.get(`/projects/${id}/`),
   createProject: (data: any) =>
-    api.post('/projects', data),
+    api.post('/projects/', data),
   updateProject: (id: number, data: any) =>
-    api.put(`/projects/${id}`, data),
+    api.put(`/projects/${id}/`, data),
   deleteProject: (id: number) =>
-    api.delete(`/projects/${id}`),
+    api.delete(`/projects/${id}/`),
   getProjectVideos: (projectId: number) =>
-    api.get(`/projects/${projectId}/videos`),
+    api.get(`/projects/${projectId}/videos/`),
 };
 
 // 视频相关API
