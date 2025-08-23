@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { Spin, message } from 'antd';
-import axios from 'axios';
+import { authAPI } from '../services/api';
 import { User } from '../types';
 
 interface AuthContextType {
@@ -26,21 +26,30 @@ const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => 
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Check for stored token
+    // Check for stored token and get user info
     const token = localStorage.getItem('token');
     if (token) {
-      // TODO: Validate token and get user info
-      // For now, we'll just set a mock user
-      setUser({
-        id: 1,
-        email: 'user@example.com',
-        username: 'user',
-        fullName: 'User',
-        isActive: true,
-        createdAt: new Date().toISOString(),
-      });
+      authAPI.getCurrentUser()
+        .then(response => {
+          setUser({
+            id: response.data.id,
+            email: response.data.email,
+            username: response.data.username,
+            fullName: response.data.full_name,
+            isActive: response.data.is_active,
+            createdAt: response.data.created_at,
+          });
+        })
+        .catch(error => {
+          console.error('Failed to get user info:', error);
+          localStorage.removeItem('token');
+        })
+        .finally(() => {
+          setLoading(false);
+        });
+    } else {
+      setLoading(false);
     }
-    setLoading(false);
   }, []);
 
   const login = async (username: string, password: string) => {
@@ -49,21 +58,13 @@ const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => 
       formData.append('username', username);
       formData.append('password', password);
       
-      const response = await axios.post(`${API_BASE_URL}/api/v1/auth/login`, formData, {
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-      });
+      const response = await authAPI.login(username, password);
       
       const { access_token } = response.data;
       localStorage.setItem('token', access_token);
       
       // 获取用户信息
-      const userResponse = await axios.get(`${API_BASE_URL}/api/v1/auth/me`, {
-        headers: {
-          'Authorization': `Bearer ${access_token}`,
-        },
-      });
+      const userResponse = await authAPI.getCurrentUser();
       
       setUser({
         id: userResponse.data.id,
@@ -83,13 +84,11 @@ const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => 
     localStorage.removeItem('token');
   };
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://192.168.8.107:8001';
-
-  const register = async (userData: any) => {
+const register = async (userData: any) => {
     try {
       console.log('Registering with:', userData);
-      console.log('API URL:', API_BASE_URL);
-      const response = await axios.post(`${API_BASE_URL}/api/v1/auth/register`, userData);
+      console.log('API URL:', import.meta.env.VITE_API_URL);
+      const response = await authAPI.register(userData);
       console.log('Registration response:', response.data);
       const { access_token } = response.data;
       localStorage.setItem('token', access_token);
