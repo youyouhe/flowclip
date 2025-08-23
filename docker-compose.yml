@@ -44,9 +44,7 @@ services:
   minio:
     image: minio/minio:latest
     container_name: echoclip-minio
-    ports:
-      - "9000:9000"
-      - "9001:9001"
+    # 移除端口暴露，通过前端代理访问
     environment:
       MINIO_ROOT_USER: minioadmin
       MINIO_ROOT_PASSWORD: minioadmin
@@ -72,7 +70,7 @@ services:
       - DATABASE_URL=mysql+aiomysql://youtube_user:youtube_password@mysql:3306/youtube_slicer?charset=utf8mb4
       - REDIS_URL=redis://redis:6379
       - MINIO_ENDPOINT=minio:9000
-      - MINIO_PUBLIC_ENDPOINT=http://192.168.8.107:9000
+      - MINIO_PUBLIC_ENDPOINT=/minio
       - MINIO_ACCESS_KEY=minioadmin
       - MINIO_SECRET_KEY=minioadmin
       - MINIO_BUCKET_NAME=youtube-videos
@@ -102,7 +100,7 @@ services:
       - DATABASE_URL=mysql+aiomysql://youtube_user:youtube_password@mysql:3306/youtube_slicer?charset=utf8mb4
       - REDIS_URL=redis://redis:6379
       - MINIO_ENDPOINT=minio:9000
-      - MINIO_PUBLIC_ENDPOINT=http://192.168.8.107:9000
+      - MINIO_PUBLIC_ENDPOINT=/minio
       - MINIO_ACCESS_KEY=minioadmin
       - MINIO_SECRET_KEY=minioadmin
       - MINIO_BUCKET_NAME=youtube-videos
@@ -131,7 +129,7 @@ services:
       - DATABASE_URL=mysql+aiomysql://youtube_user:youtube_password@mysql:3306/youtube_slicer?charset=utf8mb4
       - REDIS_URL=redis://redis:6379
       - MINIO_ENDPOINT=minio:9000
-      - MINIO_PUBLIC_ENDPOINT=http://192.168.8.107:9000
+      - MINIO_PUBLIC_ENDPOINT=/minio
       - MINIO_ACCESS_KEY=minioadmin
       - MINIO_SECRET_KEY=minioadmin
       - MINIO_BUCKET_NAME=youtube-videos
