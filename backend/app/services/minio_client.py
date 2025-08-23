@@ -287,6 +287,34 @@ class MinioService:
         return await asyncio.get_event_loop().run_in_executor(
             self.executor, _test
         )
+    
+    async def get_file_stream(self, object_name: str):
+        """获取文件流对象"""
+        def _get_stream():
+            try:
+                response = self.internal_client.get_object(self.bucket_name, object_name)
+                return response
+            except S3Error as e:
+                print(f"✗ 获取文件流失败: {e}")
+                return None
+        
+        return await asyncio.get_event_loop().run_in_executor(
+            self.executor, _get_stream
+        )
+    
+    async def get_file_stat(self, object_name: str):
+        """获取文件统计信息"""
+        def _get_stat():
+            try:
+                stat = self.internal_client.stat_object(self.bucket_name, object_name)
+                return stat
+            except S3Error as e:
+                print(f"✗ 获取文件统计信息失败: {e}")
+                return None
+        
+        return await asyncio.get_event_loop().run_in_executor(
+            self.executor, _get_stat
+        )
 
 # 全局实例
 minio_service = MinioService()
