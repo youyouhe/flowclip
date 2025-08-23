@@ -111,9 +111,9 @@ export const videoAPI = {
   deleteVideo: (id: number) =>
     api.delete(`/videos/${id}/`),
   downloadVideo: (url: string, projectId: number, quality: string) =>
-    api.post(`/videos/download/?quality=${quality}`, { url, project_id: projectId }),
+    api.post(`/videos/download?quality=${quality}`, { url, project_id: projectId }),
   downloadVideoWithCookies: (formData: FormData, quality: string = 'best') =>
-    api.post(`/videos/download/?quality=${quality}`, formData, {
+    api.post(`/videos/download?quality=${quality}`, formData, {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
