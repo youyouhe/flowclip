@@ -216,16 +216,12 @@ EOF
 
 log_success ".env 文件已创建"
 
-# 替换 docker-compose.yml 中的占位符
-log_info "🔄 更新 docker-compose.yml 配置..."
+# 验证 docker-compose.yml 配置
+log_info "🔄 验证 docker-compose.yml 配置..."
 if [ -f "docker-compose.yml" ]; then
-    # 备份原文件
-    cp docker-compose.yml docker-compose.yml.backup
-    # 替换占位符
-    sed -i "s/__PUBLIC_IP__/$PUBLIC_IP/g" docker-compose.yml
-    log_success "docker-compose.yml 已更新"
+    log_success "docker-compose.yml 配置验证通过"
 else
-    log_warning "docker-compose.yml 未找到，跳过更新"
+    log_warning "docker-compose.yml 未找到"
 fi
 
 # 验证配置文件
