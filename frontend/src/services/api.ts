@@ -270,25 +270,25 @@ export const resourceAPI = {
   getResources: (params: any) =>
     api.get('/resources/', { params }),
   getResource: (id: number) =>
-    api.get(`/resources/${id}/`),
+    api.get(`/resources/${id}`),
   createResource: (data: any) =>
     api.post('/resources', data),
   updateResource: (id: number, data: any) =>
-    api.put(`/resources/${id}/`, data),
+    api.put(`/resources/${id}`, data),
   deleteResource: (id: number) =>
-    api.delete(`/resources/${id}/`),
+    api.delete(`/resources/${id}`),
   uploadResource: (formData: FormData) =>
-    api.post('/resources/upload/', formData),
+    api.post('/resources/upload', formData),
   toggleResourceActiveStatus: (id: number, isActive: boolean) =>
-    api.put(`/resources/${id}/activate/`, { is_active: isActive }),
+    api.put(`/resources/${id}/activate`, { is_active: isActive }),
   getResourceDownloadUrl: (id: number) =>
-    api.get(`/resources/${id}/download-url/`),
+    api.get(`/resources/${id}/download-url`),
   getResourceViewUrl: (id: number) =>
-    api.get(`/resources/${id}/view-url/`),
+    api.get(`/resources/${id}/view-url`),
   
   // 标签管理
   getResourceTags: (params?: any) =>
-    api.get('/resources/tags/', { params }),
+    api.get('/resources/tags', { params }),
   createResourceTag: (name: string, tagType: string, description?: string) => {
     const formData = new FormData();
     formData.append('name', name);
@@ -303,7 +303,7 @@ export const resourceAPI = {
     });
   },
   deleteResourceTag: (id: number) =>
-    api.delete(`/resources/tags/${id}/`),
+    api.delete(`/resources/tags/${id}`),
 };
 
 // Dashboard相关API
