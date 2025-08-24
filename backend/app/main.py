@@ -139,8 +139,8 @@ async def startup_event():
     from app.core.database import get_sync_db
     try:
         db = get_sync_db()
-        import asyncio
-        asyncio.run(SystemConfigService.update_settings_from_db(db))
+        # 使用同步版本的函数，避免在异步上下文中使用asyncio.run()
+        SystemConfigService.update_settings_from_db_sync(db)
         db.close()
         logging.info("System configurations loaded from database")
     except Exception as e:
