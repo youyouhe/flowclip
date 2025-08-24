@@ -334,4 +334,7 @@ class MinioService:
         )
 
 # 全局实例
+from app.core.config import settings
+print(f"DEBUG: MinIO服务初始化时的minio_public_endpoint: {settings.minio_public_endpoint}")
 minio_service = MinioService()
+print(f"DEBUG: MinIO服务初始化完成，public_client endpoint: {minio_service.public_client._base_url.host}")
