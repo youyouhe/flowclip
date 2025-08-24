@@ -1,9 +1,7 @@
 from sqlalchemy import Column, Integer, String, DateTime, func, Float, Boolean, ForeignKey, Table
-from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 from datetime import datetime
-
-Base = declarative_base()
+from app.core.database import Base
 
 # 多对多关系表：资源-标签
 resource_tags_mapping = Table(
@@ -55,19 +53,6 @@ class Resource(Base):
     
     def __repr__(self):
         return f"<Resource(id={self.id}, filename='{self.filename}', type='{self.file_type}')>"
-
-class ResourceTagRelation(Base):
-    """资源标签关系表（多对多）"""
-    __tablename__ = "resource_tag_relations"
-    
-    id = Column(Integer, primary_key=True, index=True)
-    resource_id = Column(Integer, ForeignKey('resources.id', ondelete='CASCADE'), nullable=False)
-    tag_id = Column(Integer, ForeignKey('resource_tags.id', ondelete='CASCADE'), nullable=False)
-    created_at = Column(DateTime, default=func.now(), nullable=False)
-    
-    __table_args__ = (
-        {'extend_existing': True}
-    )
 
 # 为ResourceTag添加反向关系
 ResourceTag.resources = relationship("Resource", secondary=resource_tags_mapping, back_populates="tags")
