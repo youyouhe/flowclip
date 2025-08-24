@@ -582,8 +582,19 @@ async def export_slice_to_capcut(
 async def get_capcut_status():
     """获取CapCut服务状态"""
     try:
+        # 从数据库获取最新的配置
+        from app.core.database import get_db
+        from app.services.system_config_service import SystemConfigService
+        from app.core.config import settings
+        
+        # 获取数据库会话
+        async for db in get_db():
+            db_configs = await SystemConfigService.get_all_configs(db)
+            capcut_api_url = db_configs.get("capcut_api_url", settings.capcut_api_url)
+            break
+        
         # 使用专门的健康检查端点
-        response = requests.get(f"{CAPCUT_API_BASE_URL}/health", timeout=5)
+        response = requests.get(f"{capcut_api_url}/health", timeout=5)
         if response.status_code == 200:
             health_data = response.json()
             if health_data.get("status") == "healthy":
