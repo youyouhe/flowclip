@@ -164,8 +164,8 @@ def export_slice_to_capcut(self, slice_id: int, draft_folder: str, user_id: int 
                     print(f"标签 '{tag_name}' 下未找到资源")
                     return None
                 
-                # 返回资源URL
-                return f"{settings.minio_public_endpoint}/{settings.minio_bucket_name}/{resource.file_path}"
+                # 使用_get_proxy_url函数生成可访问的URL
+                return _get_proxy_url(resource.file_path)
         except Exception as e:
             print(f"从数据库获取资源失败: {e}")
             return None
