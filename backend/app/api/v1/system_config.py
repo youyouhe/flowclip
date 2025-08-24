@@ -124,6 +124,29 @@ class ServiceStatus(BaseModel):
     status: str  # "online", "offline", "checking"
     message: str = ""
 
+@router.post("/system-config/reload-configs")
+async def reload_system_configs(
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_active_user)
+):
+    """触发所有Celery worker重新加载系统配置"""
+    try:
+        # 更新当前settings
+        await SystemConfigService.update_settings_from_db(db)
+        
+        # 触发所有Celery worker重新加载配置
+        from app.core.celery import reload_system_configs
+        # 在所有worker上执行任务
+        result = reload_system_configs.apply_async()
+        
+        return {
+            "status": "success", 
+            "message": "系统配置重新加载任务已发送到所有Celery worker",
+            "task_id": result.id
+        }
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
 @router.get("/system-config/service-status/{service_name}", response_model=ServiceStatus)
 async def check_service_status(
     service_name: str,

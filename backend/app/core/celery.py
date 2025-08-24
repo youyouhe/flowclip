@@ -105,5 +105,24 @@ print(f"Broker URL: {celery_app.conf.broker_url}")
 print(f"Broker Transport: {celery_app.conf.broker_transport}")
 print(f"Broker Transport Options: {celery_app.conf.broker_transport_options}")
 
+# 定义重新加载系统配置的任务
+@celery_app.task
+def reload_system_configs():
+    """重新加载系统配置的任务"""
+    try:
+        from app.services.system_config_service import SystemConfigService
+        from app.core.database import get_sync_db
+        
+        # 获取数据库会话并加载配置
+        db = get_sync_db()
+        SystemConfigService.update_settings_from_db_sync(db)
+        db.close()
+        
+        print("系统配置已重新加载")
+        return {"status": "success", "message": "系统配置已重新加载"}
+    except Exception as e:
+        print(f"重新加载系统配置失败: {e}")
+        return {"status": "error", "message": str(e)}
+
 if __name__ == "__main__":
     celery_app.start()
