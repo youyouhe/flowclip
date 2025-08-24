@@ -135,6 +135,7 @@ class SystemConfigService:
     def update_settings_from_db_sync(db: Session):
         """从数据库更新settings配置的同步版本"""
         db_configs = SystemConfigService.get_all_configs_sync(db)
+        print(f"DEBUG: 从数据库获取的配置: {db_configs}")
         
         # 更新数据库URL
         if "mysql_host" in db_configs and "mysql_port" in db_configs:
@@ -148,7 +149,10 @@ class SystemConfigService:
         # 更新其他配置项
         for db_key, settings_attr in SystemConfigService.CONFIG_MAPPING.items():
             if db_key in db_configs:
+                print(f"DEBUG: 更新配置项 {db_key} 从 '{getattr(settings, settings_attr, None)}' 到 '{db_configs[db_key]}'")
                 setattr(settings, settings_attr, db_configs[db_key])
+        
+        print(f"DEBUG: 更新后settings.minio_public_endpoint: {settings.minio_public_endpoint}")
     
     @staticmethod
     def get_configurable_items() -> List[Dict[str, str]]:
