@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Body
+from fastapi.responses import RedirectResponse, Response
 from typing import List, Dict, Any, Optional
 import os
 import requests
@@ -577,6 +578,48 @@ async def export_slice_to_capcut(
         logger.error(f"CapCut导出任务启动失败 - 异常详情: {repr(e)}")
         await db.rollback()
         raise HTTPException(status_code=500, detail=f"启动导出任务失败: {str(e)}")
+
+@router.get("/proxy-resource/{resource_path:path}")
+async def proxy_minio_resource(resource_path: str):
+    """为CapCut服务器提供可访问的MinIO资源代理"""
+    try:
+        logger.info(f"代理MinIO资源请求: {resource_path}")
+        
+        # 从MinIO获取资源内容并直接返回
+        from app.services.minio_client import minio_service
+        from fastapi import Response
+        import mimetypes
+        
+        # 获取文件内容
+        response = minio_service.internal_client.get_object(
+            settings.minio_bucket_name, 
+            resource_path
+        )
+        
+        # 读取内容
+        content = response.read()
+        response.close()
+        response.release_conn()
+        
+        # 确定内容类型
+        content_type, _ = mimetypes.guess_type(resource_path)
+        if content_type is None:
+            content_type = "application/octet-stream"
+        
+        logger.info(f"成功代理资源 {resource_path}, 大小: {len(content)} 字节")
+        
+        return Response(
+            content=content,
+            media_type=content_type,
+            headers={
+                "Content-Length": str(len(content)),
+                "Cache-Control": "public, max-age=3600"  # 1小时缓存
+            }
+        )
+    except Exception as e:
+        logger.error(f"代理MinIO资源失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"代理资源失败: {str(e)}")
+
 
 @router.get("/status")
 async def get_capcut_status():

@@ -20,6 +20,11 @@ from app.models import VideoSlice, VideoSubSlice, Transcript, ProcessingTask, Re
 # 创建logger
 logger = logging.getLogger(__name__)
 
+def _get_proxy_url(resource_path: str) -> str:
+    """生成资源的代理URL，供CapCut服务器访问"""
+    # 使用localhost确保在同一台机器上部署的CapCut服务可以访问
+    return f"http://127.0.0.1:8001/api/v1/capcut/proxy-resource/{resource_path}"
+
 @shared_task(bind=True, name='app.tasks.video_tasks.export_slice_to_capcut')
 def export_slice_to_capcut(self, slice_id: int, draft_folder: str, user_id: int = None) -> Dict[str, Any]:
     """导出切片到CapCut的Celery任务"""
@@ -196,14 +201,23 @@ def export_slice_to_capcut(self, slice_id: int, draft_folder: str, user_id: int 
                         
                         # 获取水波纹音频资源
                         audio_url = _get_resource_by_tag_from_db("水波纹", "audio")
-                        if not audio_url:
+                        if audio_url:
+                            # 如果是从数据库获取的URL，提取资源路径并生成代理URL
+                            from urllib.parse import urlparse
+                            parsed_url = urlparse(audio_url)
+                            resource_path = parsed_url.path.lstrip('/')
+                            # 移除bucket名称前缀
+                            if resource_path.startswith(settings.minio_bucket_name + '/'):
+                                resource_path = resource_path[len(settings.minio_bucket_name) + 1:]
+                            proxy_audio_url = _get_proxy_url(resource_path)
+                        else:
                             # 如果获取失败，使用默认音频
-                            audio_url = "http://tmpfiles.org/dl/9816523/mixkit-liquid-bubble-3000.wav"
+                            proxy_audio_url = "http://tmpfiles.org/dl/9816523/mixkit-liquid-bubble-3000.wav"
                         
-                        print(f"DEBUG: 添加水波纹音频 - URL: {audio_url}, 时间轴起始: {current_time}秒, 时间轴结束: {current_time + 3}秒")
+                        print(f"DEBUG: 添加水波纹音频 - URL: {proxy_audio_url}, 时间轴起始: {current_time}秒, 时间轴结束: {current_time + 3}秒")
                         audio_result = asyncio.run(capcut_service.add_audio(
                             draft_id=draft_id,
-                            audio_url=audio_url,
+                            audio_url=proxy_audio_url,
                             start=0,
                             end=3,
                             track_name=f"bubble_audio_track_{i+1}",
@@ -237,11 +251,11 @@ def export_slice_to_capcut(self, slice_id: int, draft_folder: str, user_id: int 
                             ))
                         
                         # 添加视频
-                        video_url = f"{settings.minio_public_endpoint}/{settings.minio_bucket_name}/{sub_slice.sliced_file_path}"
-                        print(f"DEBUG: 添加子切片视频 - URL: {video_url}, 长度: {sub_slice.duration}秒, 时间轴起始: {current_time}秒, 时间轴结束: {current_time + sub_slice.duration}秒")
+                        proxy_video_url = _get_proxy_url(sub_slice.sliced_file_path)
+                        print(f"DEBUG: 添加子切片视频 - URL: {proxy_video_url}, 长度: {sub_slice.duration}秒, 时间轴起始: {current_time}秒, 时间轴结束: {current_time + sub_slice.duration}秒")
                         video_result = asyncio.run(capcut_service.add_video(
                             draft_id=draft_id,
-                            video_url=video_url,
+                            video_url=proxy_video_url,
                             start=0,
                             end=sub_slice.duration,
                             track_name=f"video_track_{i+1}",
@@ -362,14 +376,23 @@ def export_slice_to_capcut(self, slice_id: int, draft_folder: str, user_id: int 
                     
                     # 获取水波纹音频资源
                     audio_url = _get_resource_by_tag_from_db("水波纹", "audio")
-                    if not audio_url:
+                    if audio_url:
+                        # 如果是从数据库获取的URL，提取资源路径并生成代理URL
+                        from urllib.parse import urlparse
+                        parsed_url = urlparse(audio_url)
+                        resource_path = parsed_url.path.lstrip('/')
+                        # 移除bucket名称前缀
+                        if resource_path.startswith(settings.minio_bucket_name + '/'):
+                            resource_path = resource_path[len(settings.minio_bucket_name) + 1:]
+                        proxy_audio_url = _get_proxy_url(resource_path)
+                    else:
                         # 如果获取失败，使用默认音频
-                        audio_url = "http://tmpfiles.org/dl/9816523/mixkit-liquid-bubble-3000.wav"
+                        proxy_audio_url = "http://tmpfiles.org/dl/9816523/mixkit-liquid-bubble-3000.wav"
                     
-                    print(f"DEBUG: 添加水波纹音频 - URL: {audio_url}, 时间轴起始: 0秒, 时间轴结束: 3秒")
+                    print(f"DEBUG: 添加水波纹音频 - URL: {proxy_audio_url}, 时间轴起始: 0秒, 时间轴结束: 3秒")
                     audio_result = asyncio.run(capcut_service.add_audio(
                         draft_id=draft_id,
-                        audio_url=audio_url,
+                        audio_url=proxy_audio_url,
                         start=0,
                         end=3,
                         track_name="bubble_audio_track_main",
@@ -379,11 +402,11 @@ def export_slice_to_capcut(self, slice_id: int, draft_folder: str, user_id: int 
                     ))
                     
                     # 添加完整切片视频
-                    video_url = f"{settings.minio_public_endpoint}/{settings.minio_bucket_name}/{slice_obj.sliced_file_path}"
-                    print(f"DEBUG: 添加完整切片视频 - URL: {video_url}, 长度: {slice_obj.duration}秒, 时间轴起始: 0秒, 时间轴结束: {slice_obj.duration}秒")
+                    proxy_video_url = _get_proxy_url(slice_obj.sliced_file_path)
+                    print(f"DEBUG: 添加完整切片视频 - URL: {proxy_video_url}, 长度: {slice_obj.duration}秒, 时间轴起始: 0秒, 时间轴结束: {slice_obj.duration}秒")
                     video_result = asyncio.run(capcut_service.add_video(
                         draft_id=draft_id,
-                        video_url=video_url,
+                        video_url=proxy_video_url,
                         start=0,
                         end=slice_obj.duration,
                         track_name="video_track_main",
