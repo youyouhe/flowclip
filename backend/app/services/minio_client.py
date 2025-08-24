@@ -21,7 +21,10 @@ class MinioService:
         """重新加载配置并创建客户端"""
         from app.core.config import settings
         
-        print(f"DEBUG: _reload_config 开始，当前settings.minio_public_endpoint: {settings.minio_public_endpoint}")
+        print(f"DEBUG: _reload_config 开始")
+        print(f"DEBUG: 当前settings对象ID: {id(settings)}")
+        print(f"DEBUG: 当前settings.minio_public_endpoint: {settings.minio_public_endpoint}")
+        print(f"DEBUG: 当前settings.minio_public_endpoint ID: {id(settings.minio_public_endpoint)}")
         
         # 初始化两个客户端：
         # 1. 内部客户端 - 用于文件操作
@@ -47,6 +50,7 @@ class MinioService:
         if settings.minio_public_endpoint:
             public_endpoint = settings.minio_public_endpoint
             print(f"DEBUG: 使用配置的minio_public_endpoint: {public_endpoint}")
+            print(f"DEBUG: 使用配置的minio_public_endpoint类型: {type(public_endpoint)}")
             # 移除协议前缀，但保留主机名和端口
             if public_endpoint.startswith('http://'):
                 public_endpoint = public_endpoint[7:]  # Remove 'http://'
