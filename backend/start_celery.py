@@ -26,27 +26,32 @@ logger = logging.getLogger(__name__)
 reload_thread = None
 reload_stop_event = threading.Event()
 
-def load_system_configs():
-    """从数据库加载系统配置"""
-    try:
-        # 显式加载环境变量
-        dotenv_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.env')
-        load_dotenv(dotenv_path)
-        
-        # 导入必要的模块
-        from app.core.database import get_sync_db
-        from app.services.system_config_service import SystemConfigService
-        
-        # 获取数据库会话并加载配置
-        db = get_sync_db()
-        SystemConfigService.update_settings_from_db_sync(db)
-        db.close()
-        
-        logger.info("系统配置从数据库加载成功")
-        return True
-    except Exception as e:
-        logger.error(f"从数据库加载系统配置失败: {e}")
-        return False
+def load_system_configs(max_retries=10, retry_interval=3):
+    """从数据库加载系统配置，带重试机制"""
+    for attempt in range(max_retries):
+        try:
+            # 显式加载环境变量
+            dotenv_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.env')
+            load_dotenv(dotenv_path)
+            
+            # 导入必要的模块
+            from app.core.database import get_sync_db
+            from app.services.system_config_service import SystemConfigService
+            
+            # 获取数据库会话并加载配置
+            db = get_sync_db()
+            SystemConfigService.update_settings_from_db_sync(db)
+            db.close()
+            
+            logger.info("系统配置从数据库加载成功")
+            return True
+        except Exception as e:
+            logger.warning(f"从数据库加载系统配置失败 (尝试 {attempt + 1}/{max_retries}): {e}")
+            if attempt < max_retries - 1:
+                time.sleep(retry_interval)
+            else:
+                logger.error(f"从数据库加载系统配置失败，已重试 {max_retries} 次")
+                return False
 
 def reload_configs_periodically(interval=60):
     """定期重新加载系统配置"""
@@ -89,7 +94,8 @@ if __name__ == "__main__":
         from app.core.celery import celery_app
         # 移除第一个参数(service_type)，保留其余参数
         sys.argv = [sys.argv[0]] + sys.argv[2:]
-        celery_app.worker_main()
+        # 使用start方法启动worker
+        celery_app.start()
     elif service_type == "beat":
         # 启动 Celery Beat
         from app.core.celery import celery_app
