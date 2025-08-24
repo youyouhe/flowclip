@@ -14,6 +14,13 @@ class MinioService:
     """MinIO文件存储服务"""
     
     def __init__(self):
+        self.executor = ThreadPoolExecutor(max_workers=4)
+        self._reload_config()
+    
+    def _reload_config(self):
+        """重新加载配置并创建客户端"""
+        from app.core.config import settings
+        
         # 初始化两个客户端：
         # 1. 内部客户端 - 用于文件操作
         # 2. 公共客户端 - 用于生成预签名URL
@@ -56,7 +63,10 @@ class MinioService:
         )
         
         self.bucket_name = settings.minio_bucket_name
-        self.executor = ThreadPoolExecutor(max_workers=4)
+    
+    def reload_config(self):
+        """公共方法：重新加载配置"""
+        self._reload_config()
         
     async def ensure_bucket_exists(self) -> bool:
         """确保桶存在并设置正确的权限"""

@@ -112,11 +112,15 @@ def reload_system_configs():
     try:
         from app.services.system_config_service import SystemConfigService
         from app.core.database import get_sync_db
+        from app.services.minio_client import minio_service
         
         # 获取数据库会话并加载配置
         db = get_sync_db()
         SystemConfigService.update_settings_from_db_sync(db)
         db.close()
+        
+        # 重新加载MinIO客户端配置
+        minio_service.reload_config()
         
         print("系统配置已重新加载")
         return {"status": "success", "message": "系统配置已重新加载"}

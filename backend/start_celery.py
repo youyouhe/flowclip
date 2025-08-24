@@ -38,6 +38,7 @@ def load_system_configs(max_retries=10, retry_interval=3):
             from app.core.database import get_sync_db
             from app.services.system_config_service import SystemConfigService
             from app.core.config import settings
+            from app.services.minio_client import minio_service
             
             # 打印加载前的配置
             logger.info(f"加载前的minio_public_endpoint: {settings.minio_public_endpoint}")
@@ -46,6 +47,9 @@ def load_system_configs(max_retries=10, retry_interval=3):
             db = get_sync_db()
             SystemConfigService.update_settings_from_db_sync(db)
             db.close()
+            
+            # 重新加载MinIO客户端配置
+            minio_service.reload_config()
             
             # 打印加载后的配置
             logger.info(f"加载后的minio_public_endpoint: {settings.minio_public_endpoint}")
