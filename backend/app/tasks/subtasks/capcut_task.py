@@ -28,6 +28,10 @@ def _get_proxy_url(resource_path: str) -> str:
     import asyncio
     from urllib.parse import urlparse
     
+    # 打印当前的配置信息
+    print(f"DEBUG: 当前settings.minio_public_endpoint: {settings.minio_public_endpoint}")
+    print(f"DEBUG: 当前minio_service.public_client._endpoint_url: {minio_service.public_client._base_url.host}")
+    
     # 异步获取签名URL
     async def get_signed_url():
         try:
