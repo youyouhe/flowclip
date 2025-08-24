@@ -4,7 +4,7 @@ from sqlalchemy import select, delete, update, func, and_, insert
 from sqlalchemy.orm import selectinload
 from typing import List, Optional
 from app.core.database import get_db
-from app.models.resource import Resource, ResourceTag, ResourceTagRelation, resource_tags_mapping
+from app.models.resource import Resource, ResourceTag, resource_tags_mapping
 from app.schemas.resource import Resource as ResourceSchema, ResourceCreate, ResourceUpdate, ResourceQuery, ResourceSearchResult
 from fastapi import Depends
 from app.core.security import get_current_user, oauth2_scheme
@@ -175,8 +175,8 @@ async def get_resources(
     if tag_id:
         conditions.append(
             Resource.id.in_(
-                select(ResourceTagRelation.resource_id).where(
-                    ResourceTagRelation.tag_id == tag_id
+                select(resource_tags_mapping.c.resource_id).where(
+                    resource_tags_mapping.c.tag_id == tag_id
                 )
             )
         )
@@ -195,8 +195,8 @@ async def get_resources(
         for tag_name in tag_names:
             conditions.append(
                 Resource.id.in_(
-                    select(ResourceTagRelation.resource_id).join(
-                        ResourceTag, ResourceTagRelation.tag_id == ResourceTag.id
+                    select(resource_tags_mapping.c.resource_id).join(
+                        ResourceTag, resource_tags_mapping.c.tag_id == ResourceTag.id
                     ).where(
                         and_(
                             ResourceTag.name.ilike(f"%{tag_name}%"),
