@@ -31,10 +31,13 @@ def _get_proxy_url(resource_path: str) -> str:
     # 异步获取签名URL
     async def get_signed_url():
         try:
+            print(f"DEBUG: _get_proxy_url 开始处理资源路径: {resource_path}")
+            print(f"DEBUG: 当前minio_public_endpoint配置: {settings.minio_public_endpoint}")
             # 首先尝试使用minio_service的公共客户端生成URL
             # 这会使用配置的minio_public_endpoint
             url = await minio_service.get_file_url(resource_path, expiry=3600)  # 1小时有效期
             if url:
+                print(f"DEBUG: 公共客户端生成的URL: {url}")
                 return url
         except Exception as e:
             print(f"使用公共客户端生成签名URL失败: {e}")
@@ -47,6 +50,7 @@ def _get_proxy_url(resource_path: str) -> str:
                 object_name=resource_path,
                 expires=3600  # 1小时有效期
             )
+            print(f"DEBUG: 内部客户端生成的URL: {internal_url}")
             
             # 如果配置了minio_public_endpoint，则替换URL中的端点
             if settings.minio_public_endpoint:
@@ -65,7 +69,7 @@ def _get_proxy_url(resource_path: str) -> str:
                 if parsed_internal.query:
                     final_url = f"{final_url}?{parsed_internal.query}"
                 
-                print(f"将内部URL {internal_url} 替换为公共URL {final_url}")
+                print(f"DEBUG: 将内部URL {internal_url} 替换为公共URL {final_url}")
                 return final_url
             else:
                 # 如果没有配置公共端点，直接返回内部URL
@@ -76,10 +80,13 @@ def _get_proxy_url(resource_path: str) -> str:
         # 最后的备用方案：使用minio_public_endpoint构造URL
         if settings.minio_public_endpoint:
             endpoint = settings.minio_public_endpoint
+            print(f"DEBUG: 使用备用方案，当前endpoint: {endpoint}")
             if not endpoint.startswith(('http://', 'https://')):
                 endpoint = f"http://{endpoint}"
             endpoint = endpoint.rstrip('/')
-            return f"{endpoint}/{settings.minio_bucket_name}/{resource_path}"
+            final_url = f"{endpoint}/{settings.minio_bucket_name}/{resource_path}"
+            print(f"DEBUG: 备用方案生成的URL: {final_url}")
+            return final_url
         else:
             # 如果完全没有配置，使用默认值
             return f"http://localhost:9000/{settings.minio_bucket_name}/{resource_path}"
@@ -93,7 +100,9 @@ def _get_proxy_url(resource_path: str) -> str:
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
     
-    return loop.run_until_complete(get_signed_url())
+    result = loop.run_until_complete(get_signed_url())
+    print(f"DEBUG: _get_proxy_url 最终返回的URL: {result}")
+    return result
 
 @shared_task(bind=True, name='app.tasks.video_tasks.export_slice_to_capcut')
 def export_slice_to_capcut(self, slice_id: int, draft_folder: str, user_id: int = None) -> Dict[str, Any]:
@@ -165,7 +174,9 @@ def export_slice_to_capcut(self, slice_id: int, draft_folder: str, user_id: int 
                     return None
                 
                 # 使用_get_proxy_url函数生成可访问的URL
-                return _get_proxy_url(resource.file_path)
+                proxy_url = _get_proxy_url(resource.file_path)
+                print(f"DEBUG: 生成的资源代理URL: {proxy_url}")
+                return proxy_url
         except Exception as e:
             print(f"从数据库获取资源失败: {e}")
             return None
@@ -271,6 +282,7 @@ def export_slice_to_capcut(self, slice_id: int, draft_folder: str, user_id: int 
                         
                         # 获取水波纹音频资源
                         audio_url = _get_resource_by_tag_from_db("水波纹", "audio")
+                        print(f"DEBUG: 从数据库获取的水波纹音频URL: {audio_url}")
                         if audio_url:
                             # 如果是从数据库获取的URL，提取资源路径并生成代理URL
                             from urllib.parse import urlparse
@@ -280,9 +292,11 @@ def export_slice_to_capcut(self, slice_id: int, draft_folder: str, user_id: int 
                             if resource_path.startswith(settings.minio_bucket_name + '/'):
                                 resource_path = resource_path[len(settings.minio_bucket_name) + 1:]
                             proxy_audio_url = _get_proxy_url(resource_path)
+                            print(f"DEBUG: 处理后的水波纹音频代理URL: {proxy_audio_url}")
                         else:
                             # 如果获取失败，使用默认音频
                             proxy_audio_url = "http://tmpfiles.org/dl/9816523/mixkit-liquid-bubble-3000.wav"
+                            print(f"DEBUG: 使用默认水波纹音频URL: {proxy_audio_url}")
                         
                         print(f"DEBUG: 添加水波纹音频 - URL: {proxy_audio_url}, 时间轴起始: {current_time}秒, 时间轴结束: {current_time + 3}秒")
                         audio_result = asyncio.run(capcut_service.add_audio(
@@ -321,6 +335,7 @@ def export_slice_to_capcut(self, slice_id: int, draft_folder: str, user_id: int 
                             ))
                         
                         # 添加视频
+                        print(f"DEBUG: 子切片文件路径: {sub_slice.sliced_file_path}")
                         proxy_video_url = _get_proxy_url(sub_slice.sliced_file_path)
                         print(f"DEBUG: 添加子切片视频 - URL: {proxy_video_url}, 长度: {sub_slice.duration}秒, 时间轴起始: {current_time}秒, 时间轴结束: {current_time + sub_slice.duration}秒")
                         video_result = asyncio.run(capcut_service.add_video(
@@ -472,6 +487,7 @@ def export_slice_to_capcut(self, slice_id: int, draft_folder: str, user_id: int 
                     ))
                     
                     # 添加完整切片视频
+                    print(f"DEBUG: 完整切片文件路径: {slice_obj.sliced_file_path}")
                     proxy_video_url = _get_proxy_url(slice_obj.sliced_file_path)
                     print(f"DEBUG: 添加完整切片视频 - URL: {proxy_video_url}, 长度: {slice_obj.duration}秒, 时间轴起始: 0秒, 时间轴结束: {slice_obj.duration}秒")
                     video_result = asyncio.run(capcut_service.add_video(
