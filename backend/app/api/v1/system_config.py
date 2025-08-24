@@ -276,6 +276,11 @@ async def check_service_status(
         elif service_name.lower() == "asr":
             # ASR服务健康检查
             asr_service_url = get_config("asr_service_url", settings.asr_service_url)
+            
+            # 确保URL格式正确
+            if not asr_service_url.startswith(('http://', 'https://')):
+                asr_service_url = f"http://{asr_service_url}"
+            
             base_url = asr_service_url.rstrip('/')
             health_check_url = f"{base_url}/health"
             
