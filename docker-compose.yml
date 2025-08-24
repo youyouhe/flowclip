@@ -44,7 +44,9 @@ services:
   minio:
     image: minio/minio:latest
     container_name: echoclip-minio
-    # 移除端口暴露，通过前端代理访问
+    ports:
+      - "9000:9000"  # Expose MinIO API port
+      - "9001:9001"  # Expose MinIO Console port
     environment:
       MINIO_ROOT_USER: minioadmin
       MINIO_ROOT_PASSWORD: minioadmin
@@ -65,18 +67,20 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     container_name: echoclip-backend
-    # 移除端口暴露，仅通过前端代理访问
+    ports:
+      - "8001:8001"  # Expose backend API port for CapCut access
     environment:
       - DATABASE_URL=mysql+aiomysql://youtube_user:youtube_password@mysql:3306/youtube_slicer?charset=utf8mb4
       - REDIS_URL=redis://redis:6379
       - MINIO_ENDPOINT=minio:9000
-      - MINIO_PUBLIC_ENDPOINT=minio:9000
+      - MINIO_PUBLIC_ENDPOINT=127.0.0.1:9000  # Use public endpoint for signed URLs
       - MINIO_ACCESS_KEY=minioadmin
       - MINIO_SECRET_KEY=minioadmin
       - MINIO_BUCKET_NAME=youtube-videos
       - SECRET_KEY=your-secret-key-change-in-production
       - DEBUG=true
       - FRONTEND_URL=http://frontend:3000
+      - BACKEND_PUBLIC_URL=http://127.0.0.1:8001  # Public URL for CapCut access
     depends_on:
       - mysql
       - redis

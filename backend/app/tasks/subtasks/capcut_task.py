@@ -21,9 +21,25 @@ from app.models import VideoSlice, VideoSubSlice, Transcript, ProcessingTask, Re
 logger = logging.getLogger(__name__)
 
 def _get_proxy_url(resource_path: str) -> str:
-    """生成资源的代理URL，供CapCut服务器访问"""
-    # 使用localhost确保在同一台机器上部署的CapCut服务可以访问
-    return f"http://127.0.0.1:8001/api/v1/capcut/proxy-resource/{resource_path}"
+    """生成资源的签名URL，供CapCut服务器访问"""
+    # 使用MinIO的签名URL机制
+    from app.services.minio_client import minio_service
+    import asyncio
+    
+    # 异步获取签名URL
+    async def get_signed_url():
+        return await minio_service.get_file_url(resource_path, expiry=3600)  # 1小时有效期
+    
+    # 在事件循环中运行异步函数
+    try:
+        # 尝试获取当前事件循环
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        # 如果没有运行中的事件循环，创建一个新的
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+    
+    return loop.run_until_complete(get_signed_url())
 
 @shared_task(bind=True, name='app.tasks.video_tasks.export_slice_to_capcut')
 def export_slice_to_capcut(self, slice_id: int, draft_folder: str, user_id: int = None) -> Dict[str, Any]:
