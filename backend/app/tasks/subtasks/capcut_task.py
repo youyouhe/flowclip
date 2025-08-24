@@ -22,34 +22,67 @@ logger = logging.getLogger(__name__)
 
 def _get_proxy_url(resource_path: str) -> str:
     """生成资源的签名URL，供CapCut服务器访问"""
-    # 直接使用MinIO内部端点，避免代理问题
+    # 使用配置的minio_public_endpoint生成可访问的URL
     from app.services.minio_client import minio_service
     from app.core.config import settings
     import asyncio
+    from urllib.parse import urlparse
     
-    # 异步获取签名URL，但使用内部端点
+    # 异步获取签名URL
     async def get_signed_url():
         try:
-            # 使用minio_service的内部客户端直接生成URL
-            url = minio_service.internal_client.get_presigned_url(
+            # 首先尝试使用minio_service的公共客户端生成URL
+            # 这会使用配置的minio_public_endpoint
+            url = await minio_service.get_file_url(resource_path, expiry=3600)  # 1小时有效期
+            if url:
+                return url
+        except Exception as e:
+            print(f"使用公共客户端生成签名URL失败: {e}")
+        
+        try:
+            # 如果公共客户端失败，使用内部客户端生成URL，然后替换端点
+            internal_url = minio_service.internal_client.get_presigned_url(
                 method='GET',
                 bucket_name=settings.minio_bucket_name,
                 object_name=resource_path,
                 expires=3600  # 1小时有效期
             )
-            # 如果生成的URL是容器内部地址，替换为宿主机地址
-            if 'minio:9000' in url:
-                url = url.replace('minio:9000', 'localhost:9000')
-            return url
+            
+            # 如果配置了minio_public_endpoint，则替换URL中的端点
+            if settings.minio_public_endpoint:
+                # 解析内部URL，提取路径和查询参数
+                parsed_internal = urlparse(internal_url)
+                # 构造新的URL，使用公共端点
+                public_endpoint = settings.minio_public_endpoint
+                if not public_endpoint.startswith(('http://', 'https://')):
+                    public_endpoint = f"http://{public_endpoint}"
+                
+                # 移除末尾的斜杠
+                public_endpoint = public_endpoint.rstrip('/')
+                
+                # 构造最终URL
+                final_url = f"{public_endpoint}{parsed_internal.path}"
+                if parsed_internal.query:
+                    final_url = f"{final_url}?{parsed_internal.query}"
+                
+                print(f"将内部URL {internal_url} 替换为公共URL {final_url}")
+                return final_url
+            else:
+                # 如果没有配置公共端点，直接返回内部URL
+                return internal_url
         except Exception as e:
-            print(f"生成签名URL失败: {e}")
-            # 如果失败，尝试使用公共端点
-            try:
-                return await minio_service.get_file_url(resource_path, expiry=3600)
-            except Exception as e2:
-                print(f"使用公共端点也失败: {e2}")
-                # 最后的备用方案：直接构造URL
-                return f"http://localhost:9000/{settings.minio_bucket_name}/{resource_path}"
+            print(f"使用内部客户端生成签名URL失败: {e}")
+        
+        # 最后的备用方案：使用minio_public_endpoint构造URL
+        if settings.minio_public_endpoint:
+            endpoint = settings.minio_public_endpoint
+            if not endpoint.startswith(('http://', 'https://')):
+                endpoint = f"http://{endpoint}"
+            endpoint = endpoint.rstrip('/')
+            return f"{endpoint}/{settings.minio_bucket_name}/{resource_path}"
+        else:
+            # 如果完全没有配置，使用默认值
+            return f"http://localhost:9000/{settings.minio_bucket_name}/{resource_path}"
     
     # 在事件循环中运行异步函数
     try:
