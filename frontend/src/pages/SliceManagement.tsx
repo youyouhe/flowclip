@@ -4,7 +4,7 @@ import { PlayCircleOutlined, ScissorOutlined, UploadOutlined, EyeOutlined, EditO
 import { llmAPI } from '../services/api';
 import { videoAPI } from '../services/api';
 import { videoSliceAPI } from '../services/api';
-import { asrAPI } from '../services/api';
+import { asrAPI, systemConfigAPI } from '../services/api';
 import { wsService, startHeartbeat, stopHeartbeat } from '../services/websocket';
 
 const { Title, Text, Paragraph } = Typography;
@@ -192,7 +192,7 @@ const SliceManagement: React.FC = () => {
 
   const checkAsrStatus = async () => {
     try {
-      const response = await asrAPI.getStatus();
+      const response = await systemConfigAPI.checkServiceStatus('asr');
       setAsrStatus(response.data.status === 'online' ? 'online' : 'offline');
     } catch (error) {
       setAsrStatus('offline');
