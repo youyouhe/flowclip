@@ -77,6 +77,7 @@ class MinioService:
     
     def reload_config(self):
         """公共方法：重新加载配置"""
+        print(f"DEBUG: reload_config 方法被调用")
         self._reload_config()
         
     async def ensure_bucket_exists(self) -> bool:
