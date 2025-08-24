@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Card, Row, Col, Form, Input, Button, Spin, Alert, Typography, Divider, Collapse, Tag } from 'antd';
-import { systemConfigAPI } from '../services/api';
+import { systemConfigAPI, capcutAPI } from '../services/api';
 import { useAuth } from '../components/AuthProvider';
 
 const { Title, Text } = Typography;
@@ -79,11 +79,25 @@ const SystemConfig: React.FC = () => {
         }
       }));
       
-      const response = await systemConfigAPI.checkServiceStatus(serviceName);
-      setServiceStatus(prev => ({
-        ...prev,
-        [serviceName]: response.data
-      }));
+      // 对于CapCut服务，使用专门的API检查
+      let response;
+      if (serviceName === 'capcut') {
+        response = await capcutAPI.getStatus();
+        setServiceStatus(prev => ({
+          ...prev,
+          [serviceName]: {
+            service: serviceName,
+            status: response.data.status === 'online' ? 'online' : 'offline',
+            message: response.data.status === 'online' ? 'CapCut服务正常' : 'CapCut服务离线'
+          }
+        }));
+      } else {
+        response = await systemConfigAPI.checkServiceStatus(serviceName);
+        setServiceStatus(prev => ({
+          ...prev,
+          [serviceName]: response.data
+        }));
+      }
     } catch (err: any) {
       console.error(`${serviceName}服务检查失败:`, err);
       setServiceStatus(prev => ({
