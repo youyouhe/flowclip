@@ -37,16 +37,24 @@ def load_system_configs(max_retries=10, retry_interval=3):
             # 导入必要的模块
             from app.core.database import get_sync_db
             from app.services.system_config_service import SystemConfigService
+            from app.core.config import settings
+            
+            # 打印加载前的配置
+            logger.info(f"加载前的minio_public_endpoint: {settings.minio_public_endpoint}")
             
             # 获取数据库会话并加载配置
             db = get_sync_db()
             SystemConfigService.update_settings_from_db_sync(db)
             db.close()
             
+            # 打印加载后的配置
+            logger.info(f"加载后的minio_public_endpoint: {settings.minio_public_endpoint}")
             logger.info("系统配置从数据库加载成功")
             return True
         except Exception as e:
             logger.warning(f"从数据库加载系统配置失败 (尝试 {attempt + 1}/{max_retries}): {e}")
+            import traceback
+            logger.warning(f"详细错误信息: {traceback.format_exc()}")
             if attempt < max_retries - 1:
                 time.sleep(retry_interval)
             else:
