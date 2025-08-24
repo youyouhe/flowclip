@@ -91,18 +91,20 @@ if __name__ == "__main__":
     
     if service_type == "worker":
         # 启动 Celery Worker
-        from app.core.celery import celery_app
-        # 直接使用worker命令
-        sys.argv[0] = "celery"  # 将程序名改为celery
-        sys.argv[1] = "worker"  # 设置命令为worker
-        celery_app.start()
+        import subprocess
+        import sys
+        # 构造celery worker命令
+        cmd = ["celery", "-A", "app.core.celery", "worker"] + sys.argv[2:]
+        # 执行命令
+        subprocess.run(cmd)
     elif service_type == "beat":
         # 启动 Celery Beat
-        from app.core.celery import celery_app
-        # 直接使用beat命令
-        sys.argv[0] = "celery"  # 将程序名改为celery
-        sys.argv[1] = "beat"    # 设置命令为beat
-        celery_app.start()
+        import subprocess
+        import sys
+        # 构造celery beat命令
+        cmd = ["celery", "-A", "app.core.celery", "beat"] + sys.argv[2:]
+        # 执行命令
+        subprocess.run(cmd)
     else:
         logger.error(f"不支持的服务类型: {service_type}，请使用 worker 或 beat")
         sys.exit(1)
