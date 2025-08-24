@@ -74,7 +74,6 @@ if __name__ == "__main__":
         logger.warning("系统配置加载失败，将继续使用环境变量配置")
     
     # 启动定期重载配置的线程
-    global reload_thread
     reload_thread = threading.Thread(target=reload_configs_periodically, args=(60,), daemon=True)
     reload_thread.start()
     
