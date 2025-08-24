@@ -22,13 +22,34 @@ logger = logging.getLogger(__name__)
 
 def _get_proxy_url(resource_path: str) -> str:
     """生成资源的签名URL，供CapCut服务器访问"""
-    # 使用MinIO的签名URL机制
+    # 直接使用MinIO内部端点，避免代理问题
     from app.services.minio_client import minio_service
+    from app.core.config import settings
     import asyncio
     
-    # 异步获取签名URL
+    # 异步获取签名URL，但使用内部端点
     async def get_signed_url():
-        return await minio_service.get_file_url(resource_path, expiry=3600)  # 1小时有效期
+        try:
+            # 使用minio_service的内部客户端直接生成URL
+            url = minio_service.internal_client.get_presigned_url(
+                method='GET',
+                bucket_name=settings.minio_bucket_name,
+                object_name=resource_path,
+                expires=3600  # 1小时有效期
+            )
+            # 如果生成的URL是容器内部地址，替换为宿主机地址
+            if 'minio:9000' in url:
+                url = url.replace('minio:9000', 'localhost:9000')
+            return url
+        except Exception as e:
+            print(f"生成签名URL失败: {e}")
+            # 如果失败，尝试使用公共端点
+            try:
+                return await minio_service.get_file_url(resource_path, expiry=3600)
+            except Exception as e2:
+                print(f"使用公共端点也失败: {e2}")
+                # 最后的备用方案：直接构造URL
+                return f"http://localhost:9000/{settings.minio_bucket_name}/{resource_path}"
     
     # 在事件循环中运行异步函数
     try:

@@ -115,6 +115,16 @@ async def update_system_configs(
         # 更新当前settings
         await SystemConfigService.update_settings_from_db(db)
         
+        # 如果更新了MinIO相关配置，重载MinIO客户端
+        minio_updated = any(config.key.startswith('minio_') for config in configs)
+        if minio_updated:
+            try:
+                from app.services.minio_client import minio_service
+                minio_service.reload_config()
+                logger.info("MinIO客户端配置已重载")
+            except Exception as e:
+                logger.error(f"重载MinIO客户端配置失败: {e}")
+        
         return updated_configs
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
