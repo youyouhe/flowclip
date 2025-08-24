@@ -12,7 +12,23 @@ from typing import Dict, Any, Optional
 logger = logging.getLogger(__name__)
 
 class CapCutService:
-    def __init__(self, api_base_url: str = "http://192.168.8.107:9002"):
+    def __init__(self, api_base_url: str = None):
+        if api_base_url is None:
+            # 从数据库获取最新的配置
+            try:
+                from app.core.database import get_sync_db
+                from app.services.system_config_service import SystemConfigService
+                from app.core.config import settings
+                
+                with get_sync_db() as db:
+                    db_configs = SystemConfigService.get_all_configs_sync(db)
+                    api_base_url = db_configs.get("capcut_api_url", settings.capcut_api_url)
+            except Exception as e:
+                # 如果无法从数据库获取配置，使用默认值
+                from app.core.config import settings
+                api_base_url = settings.capcut_api_url
+                logger.warning(f"无法从数据库获取CapCut配置，使用默认配置: {e}")
+        
         self.base_url = api_base_url
     
     async def create_draft(self, width: int = 1080, height: int = 1920, max_retries: int = 3) -> Dict[str, Any]:
