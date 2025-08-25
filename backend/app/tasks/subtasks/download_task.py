@@ -121,6 +121,24 @@ def download_video(self, video_url: str, project_id: int, user_id: int, quality:
             except Exception as e:
                 print(f"Progress callback error: {e}")
         
+        # 在执行下载前重新加载MinIO配置，确保使用最新的访问密钥
+        try:
+            from app.services.system_config_service import SystemConfigService
+            from app.core.database import get_sync_db
+            from app.services.minio_client import minio_service
+            
+            # 重新加载系统配置
+            db = get_sync_db()
+            SystemConfigService.update_settings_from_db_sync(db)
+            db.close()
+            
+            # 重新加载MinIO客户端配置
+            minio_service.reload_config()
+            
+            print("已重新加载MinIO配置")
+        except Exception as config_error:
+            print(f"重新加载MinIO配置失败: {config_error}")
+        
         # 运行异步下载器
         import asyncio
         result = asyncio.run(
