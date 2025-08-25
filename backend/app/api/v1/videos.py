@@ -1657,6 +1657,24 @@ async def download_video_direct(
     import logging
     logger = logging.getLogger(__name__)
     
+    # 在执行下载前重新加载MinIO配置，确保使用最新的访问密钥
+    try:
+        from app.services.system_config_service import SystemConfigService
+        from app.core.database import get_sync_db
+        from app.services.minio_client import minio_service
+        
+        # 重新加载系统配置
+        db_sync = get_sync_db()
+        SystemConfigService.update_settings_from_db_sync(db_sync)
+        db_sync.close()
+        
+        # 重新加载MinIO客户端配置
+        minio_service.reload_config()
+        
+        logger.info("已重新加载MinIO配置")
+    except Exception as config_error:
+        logger.error(f"重新加载MinIO配置失败: {config_error}")
+    
     logger.info(f"=== 视频下载请求开始 ===")
     logger.info(f"用户ID: {current_user.id}, 视频ID: {video_id}")
     
