@@ -14,7 +14,7 @@ class Settings(BaseSettings):
     
     # MySQL Configuration
     mysql_host: str = "mysql"
-    mysql_port: int = 3307
+    mysql_port: int = 3306
     mysql_user: str = "youtube_user"
     mysql_password: str = "youtube_password"
     mysql_database: str = "youtube_slicer"
