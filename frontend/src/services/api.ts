@@ -121,7 +121,19 @@ export const videoAPI = {
   getVideoDownloadUrl: (id: number, expiry: number = 3600) =>
     api.get(`/videos/${id}/download-url?expiry=${expiry}`),
   
-    extractAudio: (videoId: number) =>
+  // 视频流端点 - 用于播放视频
+  getVideoStreamUrl: (id: number, token: string) =>
+    api.get(`/videos/${id}/stream?token=${token}`),
+  
+  // 获取视频流的预签名URL
+  getVideoStreamSignedUrl: (id: number, expiry: number = 3600) =>
+    api.get(`/videos/${id}/stream-url?expiry=${expiry}`),
+  
+  // 通用MinIO资源URL获取
+  getMinioResourceUrl: (objectPath: string, expiry: number = 3600) =>
+    api.get(`/minio/minio-url?object_path=${encodeURIComponent(objectPath)}&expiry=${expiry}`),
+  
+  extractAudio: (videoId: number) =>
     api.post(`/videos/${videoId}/extract-audio`),
     generateSrt: (videoId: number) =>
     api.post(`/videos/${videoId}/generate-srt`),

@@ -689,6 +689,51 @@ async def get_video_download_url(
     
     return {"download_url": url, "expires_in": expiry, "object_name": object_name}
 
+@router.get("/{video_id}/stream-url")
+async def get_video_stream_url(
+    video_id: int,
+    expiry: int = 3600,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """获取视频文件的预签名流式播放URL"""
+    stmt = select(Video).join(Project).where(
+        Video.id == video_id,
+        Project.user_id == current_user.id
+    )
+    result = await db.execute(stmt)
+    video = result.scalar_one_or_none()
+    if not video:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Video not found"
+        )
+    
+    if not video.file_path:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Video file not uploaded"
+        )
+    
+    # 从minio_path中提取对象名称
+    # 移除bucket名称前缀
+    bucket_prefix = f"{settings.minio_bucket_name}/"
+    if video.file_path.startswith(bucket_prefix):
+        object_name = video.file_path[len(bucket_prefix):]
+    else:
+        object_name = video.file_path
+    
+    # 使用公共客户端生成预签名URL用于流式播放
+    url = await minio_service.get_file_url(object_name, expiry)
+    
+    if not url:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to generate stream URL"
+        )
+    
+    return {"stream_url": url, "expires_in": expiry, "object_name": object_name}
+
 @router.get("/{video_id}/stream")
 async def stream_video(
     video_id: int,

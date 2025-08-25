@@ -480,11 +480,18 @@ const VideoDetail: React.FC = () => {
         return;
       }
       
-      // 使用新的流式传输端点，避免CORS和403问题
-      const apiBaseUrl = import.meta.env.VITE_API_URL || '/api';
-      const streamUrl = apiBaseUrl.startsWith('/') 
-        ? `${apiBaseUrl}/v1/videos/${id}/stream?token=${token}`
-        : `${apiBaseUrl}/api/v1/videos/${id}/stream?token=${token}`;
+      // 首先获取视频详情以获取文件路径
+      const videoResponse = await videoAPI.getVideo(parseInt(id!));
+      const video = videoResponse.data;
+      
+      if (!video.file_path) {
+        message.error('视频文件路径不存在');
+        return;
+      }
+      
+      // 使用通用MinIO资源URL获取方法获取视频流URL
+      const streamResponse = await videoAPI.getMinioResourceUrl(video.file_path);
+      const streamUrl = streamResponse.data.resource_url;
       
       console.log('设置流式播放URL:', streamUrl);
       setVideoUrl(streamUrl);
