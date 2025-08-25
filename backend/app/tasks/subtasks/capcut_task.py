@@ -28,11 +28,25 @@ def _get_proxy_url(resource_path: str) -> str:
     import asyncio
     from urllib.parse import urlparse
     
-    # 打印当前的配置信息
+    # 确保使用最新的配置
     print(f"DEBUG: _get_proxy_url函数中的settings对象ID: {id(settings)}")
     print(f"DEBUG: 当前settings.minio_public_endpoint: {settings.minio_public_endpoint}")
     print(f"DEBUG: 当前settings.minio_public_endpoint ID: {id(settings.minio_public_endpoint)}")
     print(f"DEBUG: 当前minio_service.public_client._endpoint_url: {minio_service.public_client._base_url.host}")
+    
+    # 强制重新加载配置以确保使用最新的值
+    try:
+        from app.services.system_config_service import SystemConfigService
+        from app.core.database import get_sync_db
+        db = get_sync_db()
+        SystemConfigService.update_settings_from_db_sync(db)
+        db.close()
+        # 重新加载MinIO配置
+        minio_service.reload_config()
+        print(f"DEBUG: 重新加载配置后settings.minio_public_endpoint: {settings.minio_public_endpoint}")
+        print(f"DEBUG: 重新加载配置后minio_service.public_client._endpoint_url: {minio_service.public_client._base_url.host}")
+    except Exception as e:
+        print(f"DEBUG: 重新加载配置时出错: {e}")
     
     # 异步获取签名URL
     async def get_signed_url():
