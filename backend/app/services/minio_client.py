@@ -25,6 +25,10 @@ class MinioService:
         print(f"DEBUG: 当前settings对象ID: {id(settings)}")
         print(f"DEBUG: 当前settings.minio_public_endpoint: {settings.minio_public_endpoint}")
         print(f"DEBUG: 当前settings.minio_public_endpoint ID: {id(settings.minio_public_endpoint)}")
+        print(f"DEBUG: 当前settings.minio_endpoint: {settings.minio_endpoint}")
+        print(f"DEBUG: 当前settings.minio_access_key: {settings.minio_access_key}")
+        print(f"DEBUG: 当前settings.minio_secret_key: {settings.minio_secret_key}")
+        print(f"DEBUG: 当前settings.minio_bucket_name: {settings.minio_bucket_name}")
         
         # 初始化两个客户端：
         # 1. 内部客户端 - 用于文件操作
@@ -36,6 +40,8 @@ class MinioService:
             internal_endpoint = internal_endpoint[7:]  # Remove 'http://'
         elif internal_endpoint.startswith('https://'):
             internal_endpoint = internal_endpoint[8:]  # Remove 'https://'
+        
+        print(f"DEBUG: 内部客户端配置 - endpoint: {internal_endpoint}, access_key: {settings.minio_access_key}")
         
         self.internal_client = Minio(
             internal_endpoint,
@@ -62,6 +68,8 @@ class MinioService:
             print(f"DEBUG: 未配置minio_public_endpoint，使用internal_endpoint: {internal_endpoint}")
             public_endpoint = internal_endpoint
             
+        print(f"DEBUG: 公共客户端配置 - endpoint: {public_endpoint}, access_key: {settings.minio_access_key}")
+        
         self.public_client = Minio(
             public_endpoint,
             access_key=settings.minio_access_key,
@@ -72,6 +80,7 @@ class MinioService:
         print(f"DEBUG: _reload_config 完成，public_client endpoint: {self.public_client._base_url.host}")
         
         self.bucket_name = settings.minio_bucket_name
+        print(f"DEBUG: 使用的存储桶名称: {self.bucket_name}")
     
     def reload_config(self):
         """公共方法：重新加载配置"""
@@ -192,6 +201,10 @@ class MinioService:
     
     async def get_file_url(self, object_name: str, expiry: int = 3600) -> Optional[str]:
         """获取文件的预签名URL"""
+        print(f"DEBUG: get_file_url 调用 - object_name: {object_name}, expiry: {expiry}")
+        print(f"DEBUG: 当前public_client endpoint: {self.public_client._base_url.host}")
+        print(f"DEBUG: 当前bucket_name: {self.bucket_name}")
+        
         def _get_url():
             try:
                 # 使用公共客户端生成预签名URL
@@ -201,6 +214,7 @@ class MinioService:
                     expires=timedelta(seconds=expiry)
                 )
                 
+                print(f"DEBUG: 生成的预签名URL: {url}")
                 # 直接返回预签名URL，不进行验证
                 # 因为验证可能因为请求头等问题失败，但URL本身是有效的
                 return url
