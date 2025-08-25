@@ -41,8 +41,7 @@ class MinioService:
             internal_endpoint,
             access_key=settings.minio_access_key,
             secret_key=settings.minio_secret_key,
-            secure=settings.minio_secure,
-            region="us-east-1"  # 添加区域配置，避免签名问题
+            secure=settings.minio_secure
         )
         
         # 公共客户端用于生成预签名URL
@@ -67,8 +66,7 @@ class MinioService:
             public_endpoint,
             access_key=settings.minio_access_key,
             secret_key=settings.minio_secret_key,
-            secure=settings.minio_secure,
-            region="us-east-1"
+            secure=settings.minio_secure
         )
         
         print(f"DEBUG: _reload_config 完成，public_client endpoint: {self.public_client._base_url.host}")
