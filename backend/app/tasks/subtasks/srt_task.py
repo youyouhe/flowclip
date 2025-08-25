@@ -26,6 +26,24 @@ logger = logging.getLogger(__name__)
 def generate_srt(self, video_id: str, project_id: int, user_id: int, split_files: list = None, slice_id: int = None, sub_slice_id: int = None, create_processing_task: bool = True) -> Dict[str, Any]:
     """Generate SRT subtitles from audio using ASR"""
     
+    # 在执行任务前重新加载MinIO配置，确保使用最新的访问密钥
+    try:
+        from app.services.system_config_service import SystemConfigService
+        from app.core.database import get_sync_db
+        from app.services.minio_client import minio_service
+        
+        # 重新加载系统配置
+        db = get_sync_db()
+        SystemConfigService.update_settings_from_db_sync(db)
+        db.close()
+        
+        # 重新加载MinIO客户端配置
+        minio_service.reload_config()
+        
+        print("已重新加载MinIO配置")
+    except Exception as config_error:
+        print(f"重新加载MinIO配置失败: {config_error}")
+    
     def _ensure_processing_task_exists(celery_task_id: str, video_id: int) -> bool:
         """确保处理任务记录存在"""
         try:

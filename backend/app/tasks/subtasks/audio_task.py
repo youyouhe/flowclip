@@ -25,6 +25,24 @@ logger = logging.getLogger(__name__)
 def extract_audio(self, video_id: str, project_id: int, user_id: int, video_minio_path: str, create_processing_task: bool = True, slice_id: int = None, trigger_srt_after_audio: bool = False) -> Dict[str, Any]:
     """Extract audio from video using ffmpeg"""
     
+    # 在执行任务前重新加载MinIO配置，确保使用最新的访问密钥
+    try:
+        from app.services.system_config_service import SystemConfigService
+        from app.core.database import get_sync_db
+        from app.services.minio_client import minio_service
+        
+        # 重新加载系统配置
+        db = get_sync_db()
+        SystemConfigService.update_settings_from_db_sync(db)
+        db.close()
+        
+        # 重新加载MinIO客户端配置
+        minio_service.reload_config()
+        
+        print("已重新加载MinIO配置")
+    except Exception as config_error:
+        print(f"重新加载MinIO配置失败: {config_error}")
+    
     def _ensure_processing_task_exists(celery_task_id: str, video_id: int) -> bool:
         """确保处理任务记录存在"""
         try:
