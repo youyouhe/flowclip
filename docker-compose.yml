@@ -99,7 +99,7 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     container_name: echoclip-celery
-    command: python start_celery.py worker --loglevel=info --concurrency=1
+    command: python start_celery.py worker --loglevel=info --concurrency=4
     environment:
       - DATABASE_URL=mysql+aiomysql://youtube_user:youtube_password@mysql:3306/youtube_slicer?charset=utf8mb4
       - REDIS_URL=redis://redis:6379

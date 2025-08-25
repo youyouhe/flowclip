@@ -26,6 +26,8 @@ logger = logging.getLogger(__name__)
 def generate_srt(self, video_id: str, project_id: int, user_id: int, split_files: list = None, slice_id: int = None, sub_slice_id: int = None, create_processing_task: bool = True) -> Dict[str, Any]:
     """Generate SRT subtitles from audio using ASR"""
     
+    print(f"DEBUG: SRT任务开始执行 - video_id: {video_id}, project_id: {project_id}, user_id: {user_id}")
+    
     # 在执行任务前重新加载MinIO配置，确保使用最新的访问密钥
     try:
         from app.services.system_config_service import SystemConfigService
@@ -212,6 +214,7 @@ def generate_srt(self, video_id: str, project_id: int, user_id: int, split_files
         if not celery_task_id:
             celery_task_id = "unknown"
             
+        print(f"DEBUG: 获取到Celery任务ID: {celery_task_id}")
         
         # 动态获取最新的ASR服务URL
         with get_sync_db() as db:
@@ -222,6 +225,8 @@ def generate_srt(self, video_id: str, project_id: int, user_id: int, split_files
         
         _update_task_status(celery_task_id, ProcessingTaskStatus.RUNNING, 10, "开始生成字幕")
         self.update_state(state='PROGRESS', meta={'progress': 10, 'stage': ProcessingStage.GENERATE_SRT, 'message': '开始生成字幕'})
+        
+        print(f"DEBUG: 任务状态已更新为运行中")
         
         
         # 获取音频文件信息

@@ -912,9 +912,11 @@ async def generate_srt_endpoint(
     logger.info(f"找到视频 - video_id: {video_id}, title: {video.title}")
     
     # 启动SRT生成任务（不再需要split_files参数）
+    logger.info(f"准备发送Celery任务 - video_id: {video.id}, project_id: {video.project_id}, user_id: {current_user.id}")
     task = celery_app.send_task('app.tasks.video_tasks.generate_srt', 
         args=[str(video.id), video.project_id, current_user.id]  # 移除split_files参数
     )
+    logger.info(f"Celery任务已发送 - task_id: {task.id}")
     
     # 创建处理任务记录，使用实际的Celery任务ID
     state_manager = get_state_manager(db)
