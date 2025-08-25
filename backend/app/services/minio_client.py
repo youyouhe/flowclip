@@ -231,16 +231,21 @@ class MinioService:
     
     async def file_exists(self, object_name: str) -> bool:
         """检查文件是否存在"""
+        print(f"DEBUG: 检查文件是否存在 - 对象名称: {object_name}, 存储桶: {self.bucket_name}")
         def _exists():
             try:
-                self.internal_client.stat_object(self.bucket_name, object_name)
+                stat = self.internal_client.stat_object(self.bucket_name, object_name)
+                print(f"DEBUG: 文件存在 - 对象名称: {object_name}, 大小: {stat.size}")
                 return True
-            except S3Error:
+            except S3Error as e:
+                print(f"DEBUG: 文件不存在或访问失败 - 对象名称: {object_name}, 错误: {e}")
                 return False
         
-        return await asyncio.get_event_loop().run_in_executor(
+        result = await asyncio.get_event_loop().run_in_executor(
             self.executor, _exists
         )
+        print(f"DEBUG: 文件存在性检查结果 - 对象名称: {object_name}, 结果: {result}")
+        return result
     
     def generate_object_name(self, user_id: int, project_id: int, filename: str) -> str:
         """生成MinIO对象名称"""
