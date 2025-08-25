@@ -13,7 +13,7 @@ class Settings(BaseSettings):
     database_url: str = "mysql+aiomysql://youtube_user:youtube_password@mysql:3306/youtube_slicer?charset=utf8mb4"
     
     # MySQL Configuration
-    mysql_host: str = "localhost"
+    mysql_host: str = "mysql"
     mysql_port: int = 3307
     mysql_user: str = "youtube_user"
     mysql_password: str = "youtube_password"
