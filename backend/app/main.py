@@ -146,6 +146,11 @@ async def startup_event():
     except Exception as e:
         logging.warning(f"Failed to load system configurations from database: {e}")
     
+    # 重新加载MinIO配置以应用数据库中的设置
+    from app.services.minio_client import minio_service
+    minio_service.reload_config()
+    logging.info("MinIO configuration reloaded from database")
+    
     # 初始化MinIO桶
     await minio_service.ensure_bucket_exists()
     
