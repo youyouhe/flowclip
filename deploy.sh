@@ -183,7 +183,7 @@ REDIS_URL=redis://redis:6379
 
 # MinIO Configuration
 MINIO_ENDPOINT=minio:9000
-MINIO_PUBLIC_ENDPOINT=minio:9000
+MINIO_PUBLIC_ENDPOINT=$PUBLIC_IP:9000
 MINIO_ACCESS_KEY=minioadmin
 MINIO_SECRET_KEY=minioadmin
 MINIO_BUCKET_NAME=youtube-videos
@@ -352,8 +352,8 @@ log_success "🎉 部署完成！"
 echo ""
 log_info "🌐 外部访问地址 (Public IP):"
 echo "   前端: http://$PUBLIC_IP:3000"
-echo "   MinIO 文件访问: http://$PUBLIC_IP:3000/minio"
-echo "   MinIO 控制台: http://$PUBLIC_IP:3000/minio-console"
+echo "   MinIO 文件访问: http://$PUBLIC_IP:9000"
+echo "   MinIO 控制台: http://$PUBLIC_IP:9001"
 echo ""
 log_info "🔒 内部服务通信 (Docker 网络):"
 echo "   Frontend: http://frontend:3000"
