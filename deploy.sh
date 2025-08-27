@@ -164,6 +164,17 @@ fi
 
 # 创建 .env 文件
 log_info "📝 创建 .env 文件..."
+
+# 从 docker-compose.yml 动态读取 MinIO 配置
+if [ -f "docker-compose.yml" ]; then
+    MINIO_ACCESS_KEY=$(grep -A 10 "minio:" docker-compose.yml | grep "MINIO_ROOT_USER" | cut -d ':' -f 2 | cut -d '#' -f 1 | xargs)
+    MINIO_SECRET_KEY=$(grep -A 10 "minio:" docker-compose.yml | grep "MINIO_ROOT_PASSWORD" | cut -d ':' -f 2 | cut -d '#' -f 1 | xargs)
+else
+    log_warning "docker-compose.yml 未找到，使用默认 MinIO 凭证"
+    MINIO_ACCESS_KEY="minioadmin"
+    MINIO_SECRET_KEY="minioadmin"
+fi
+
 cat > "$ENV_FILE" << EOF
 # Server Configuration
 PUBLIC_IP=$PUBLIC_IP
@@ -184,8 +195,8 @@ REDIS_URL=redis://redis:6379
 # MinIO Configuration
 MINIO_ENDPOINT=minio:9000
 MINIO_PUBLIC_ENDPOINT=$PUBLIC_IP:9000
-MINIO_ACCESS_KEY=minioadmin
-MINIO_SECRET_KEY=minioadmin
+MINIO_ACCESS_KEY=$MINIO_ACCESS_KEY
+MINIO_SECRET_KEY=$MINIO_SECRET_KEY
 MINIO_BUCKET_NAME=youtube-videos
 
 # Security
@@ -337,14 +348,47 @@ else
     log_info "跳过容器重建，仅生成配置文件"
 fi
 
+# 等待数据库服务准备就绪
+log_info "⏳ 等待数据库服务准备就绪..."
+MAX_ATTEMPTS=30
+ATTEMPT=1
+while [ $ATTEMPT -le $MAX_ATTEMPTS ]; do
+    if docker-compose exec mysql mysqladmin ping -h localhost -u youtube_user -pyoutube_password &> /dev/null; then
+        log_success "数据库服务已准备就绪"
+        break
+    fi
+    log_info "等待数据库服务... (尝试 $ATTEMPT/$MAX_ATTEMPTS)"
+    sleep 2
+    ATTEMPT=$((ATTEMPT + 1))
+done
+
+if [ $ATTEMPT -gt $MAX_ATTEMPTS ]; then
+    log_error "数据库服务未能在规定时间内准备就绪"
+    exit 1
+fi
+
+# 等待一段时间确保数据库初始化完成
+log_info "⏳ 等待数据库初始化完成..."
+sleep 10
+
 # 初始化数据库配置
 log_info "💾 初始化数据库配置..."
-# 在Docker容器内运行数据库初始化脚本
-docker-compose exec -T backend python init_system_config.py
-if [ $? -eq 0 ]; then
-    log_success "数据库配置初始化成功"
-else
-    log_error "数据库配置初始化失败"
+# 在Docker容器内运行数据库初始化脚本，增加重试机制
+INIT_MAX_ATTEMPTS=5
+INIT_ATTEMPT=1
+while [ $INIT_ATTEMPT -le $INIT_MAX_ATTEMPTS ]; do
+    if docker-compose exec -T backend python init_system_config.py; then
+        log_success "数据库配置初始化成功"
+        break
+    else
+        log_warning "数据库配置初始化失败，$((INIT_ATTEMPT * 5))秒后进行第 $((INIT_ATTEMPT + 1)) 次重试..."
+        sleep $((INIT_ATTEMPT * 5))
+        INIT_ATTEMPT=$((INIT_ATTEMPT + 1))
+    fi
+done
+
+if [ $INIT_ATTEMPT -gt $INIT_MAX_ATTEMPTS ]; then
+    log_error "数据库配置初始化失败，已达到最大重试次数"
     exit 1
 fi
 

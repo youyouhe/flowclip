@@ -278,24 +278,24 @@ def export_slice_to_capcut(self, slice_id: int, draft_folder: str, user_id: int 
                         _update_task_status(celery_task_id, ProcessingTaskStatus.RUNNING, progress, message)
                         self.update_state(state='PROGRESS', meta={'progress': progress, 'stage': ProcessingStage.CAPCUT_EXPORT, 'message': message})
                         
-                        # 添加水波纹特效 (前3秒)
-                        print(f"DEBUG: 添加水波纹特效 - 时间轴起始: {current_time}秒, 时间轴结束: {current_time + 3}秒")
-                        effect_result = asyncio.run(capcut_service.add_effect(
+                        # 添加水平打开特效 (前3秒)
+                        print(f"DEBUG: 添加水平打开特效 - 时间轴起始: {current_time}秒, 时间轴结束: {current_time + 3}秒")
+                        open_effect_result = asyncio.run(capcut_service.add_effect(
                             draft_id=draft_id,
-                            effect_type="水波纹",
+                            effect_type="Horizontal_Open",
                             start=current_time,
                             end=current_time + 3,
-                            track_name=f"effect_track_{i+1}",
+                            track_name=f"open_effect_track_{i+1}",
                             max_retries=3
                         ))
                         
-                        # 添加电视彩虹屏特效 (从水波纹结束后持续到子切片结束)
-                        print(f"DEBUG: 添加电视彩虹屏特效 - 时间轴起始: {current_time + 3}秒, 时间轴结束: {current_time + sub_slice.duration}秒")
+                        # 添加电视彩虹屏特效 (从水平打开特效结束后持续到子切片结束前3秒)
+                        print(f"DEBUG: 添加电视彩虹屏特效 - 时间轴起始: {current_time + 3}秒, 时间轴结束: {current_time + sub_slice.duration - 3}秒")
                         rainbow_effect_result = asyncio.run(capcut_service.add_effect(
                             draft_id=draft_id,
                             effect_type="电视彩虹屏",
                             start=current_time + 3,
-                            end=current_time + sub_slice.duration,
+                            end=current_time + sub_slice.duration - 3,
                             track_name=f"rainbow_effect_track_{i+1}",
                             max_retries=3
                         ))
@@ -330,6 +330,18 @@ def export_slice_to_capcut(self, slice_id: int, draft_folder: str, user_id: int 
                             max_retries=3
                         ))
                         
+                        # 添加水平关闭特效 (结束前3秒)
+                        close_effect_start = current_time + sub_slice.duration - 3
+                        print(f"DEBUG: 添加水平关闭特效 - 时间轴起始: {close_effect_start}秒, 时间轴结束: {current_time + sub_slice.duration}秒")
+                        close_effect_result = asyncio.run(capcut_service.add_effect(
+                            draft_id=draft_id,
+                            effect_type="Horizontal_Close",
+                            start=close_effect_start,
+                            end=current_time + sub_slice.duration,
+                            track_name=f"close_effect_track_{i+1}",
+                            max_retries=3
+                        ))
+                        
                         # 添加子切片标题文本（与水波纹特效同步显示，不带年月信息）
                         if sub_slice.cover_title:
                             print(f"DEBUG: 添加子切片标题 - 文本: {sub_slice.cover_title}, 时间轴起始: {current_time}秒, 时间轴结束: {current_time + 3}秒")
@@ -350,7 +362,7 @@ def export_slice_to_capcut(self, slice_id: int, draft_folder: str, user_id: int 
                                 border_width=15.0,
                                 width=1080,
                                 height=1920,
-                                intro_animation="收拢",
+                                intro_animation="Squeeze",
                                 max_retries=3
                             ))
                         
@@ -457,25 +469,37 @@ def export_slice_to_capcut(self, slice_id: int, draft_folder: str, user_id: int 
                     _update_task_status(celery_task_id, ProcessingTaskStatus.RUNNING, progress, message)
                     self.update_state(state='PROGRESS', meta={'progress': progress, 'stage': ProcessingStage.CAPCUT_EXPORT, 'message': message})
                     
-                    # 添加水波纹特效 (前3秒)
-                    print(f"DEBUG: 添加水波纹特效 - 时间轴起始: 0秒, 时间轴结束: 3秒")
-                    effect_result = asyncio.run(capcut_service.add_effect(
+                    # 添加水平打开特效 (前3秒)
+                    print(f"DEBUG: 添加水平打开特效 - 时间轴起始: 0秒, 时间轴结束: 3秒")
+                    open_effect_result = asyncio.run(capcut_service.add_effect(
                         draft_id=draft_id,
-                        effect_type="水波纹",
+                        effect_type="Horizontal_Open",
                         start=0,
                         end=3,
-                        track_name="effect_track_main",
+                        track_name="open_effect_track_main",
                         max_retries=3
                     ))
                     
-                    # 添加电视彩虹屏特效 (从水波纹结束后持续到视频结束)
-                    print(f"DEBUG: 添加电视彩虹屏特效 - 时间轴起始: 3秒, 时间轴结束: {slice_obj.duration}秒")
+                    # 添加电视彩虹屏特效 (从水平打开特效结束后持续到视频结束前3秒)
+                    print(f"DEBUG: 添加电视彩虹屏特效 - 时间轴起始: 3秒, 时间轴结束: {slice_obj.duration - 3}秒")
                     rainbow_effect_result = asyncio.run(capcut_service.add_effect(
                         draft_id=draft_id,
                         effect_type="电视彩虹屏",
                         start=3,
-                        end=slice_obj.duration,
+                        end=slice_obj.duration - 3,
                         track_name="rainbow_effect_track_main",
+                        max_retries=3
+                    ))
+                    
+                    # 添加水平关闭特效 (结束前3秒)
+                    close_effect_start = slice_obj.duration - 3
+                    print(f"DEBUG: 添加水平关闭特效 - 时间轴起始: {close_effect_start}秒, 时间轴结束: {slice_obj.duration}秒")
+                    close_effect_result = asyncio.run(capcut_service.add_effect(
+                        draft_id=draft_id,
+                        effect_type="Horizontal_Close",
+                        start=close_effect_start,
+                        end=slice_obj.duration,
+                        track_name="close_effect_track_main",
                         max_retries=3
                     ))
                     
