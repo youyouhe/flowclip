@@ -74,8 +74,8 @@ services:
       - REDIS_URL=redis://redis:6379
       - MINIO_ENDPOINT=minio:9000
       - MINIO_PUBLIC_ENDPOINT=127.0.0.1:9000  # Use public endpoint for signed URLs
-      - MINIO_ACCESS_KEY=minioadmin
-      - MINIO_SECRET_KEY=minioadmin
+      - MINIO_ACCESS_KEY=i4W5jAG1j9w2MheEQ7GmYEotBrkAaIPSmLRQa6Iruc0=
+      - MINIO_SECRET_KEY=TcFA+qUwvCnikxANs7k/HX7oZz2zEjLo3RakL1kZt5k=
       - MINIO_BUCKET_NAME=youtube-videos
       - SECRET_KEY=your-secret-key-change-in-production
       - DEBUG=true
@@ -105,8 +105,8 @@ services:
       - REDIS_URL=redis://redis:6379
       - MINIO_ENDPOINT=minio:9000
       - MINIO_PUBLIC_ENDPOINT=localhost:9000
-      - MINIO_ACCESS_KEY=minioadmin
-      - MINIO_SECRET_KEY=minioadmin
+      - MINIO_ACCESS_KEY=i4W5jAG1j9w2MheEQ7GmYEotBrkAaIPSmLRQa6Iruc0=
+      - MINIO_SECRET_KEY=TcFA+qUwvCnikxANs7k/HX7oZz2zEjLo3RakL1kZt5k=
       - MINIO_BUCKET_NAME=youtube-videos
       - SECRET_KEY=your-secret-key-change-in-production
     depends_on:
@@ -134,8 +134,8 @@ services:
       - REDIS_URL=redis://redis:6379
       - MINIO_ENDPOINT=minio:9000
       - MINIO_PUBLIC_ENDPOINT=localhost:9000
-      - MINIO_ACCESS_KEY=minioadmin
-      - MINIO_SECRET_KEY=minioadmin
+      - MINIO_ACCESS_KEY=i4W5jAG1j9w2MheEQ7GmYEotBrkAaIPSmLRQa6Iruc0=
+      - MINIO_SECRET_KEY=TcFA+qUwvCnikxANs7k/HX7oZz2zEjLo3RakL1kZt5k=
       - MINIO_BUCKET_NAME=youtube-videos
       - SECRET_KEY=your-secret-key-change-in-production
     depends_on:
