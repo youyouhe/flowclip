@@ -95,10 +95,15 @@ def process_audio_file(file_path, api_url, index, lang="auto", retry_count=3, re
                 
                 response = requests.post(api_url, files=files, data=data, timeout=7200)
                 response.raise_for_status()
-                # 新的API直接返回SRT文本，而不是JSON格式
-                srt_text = response.text
+                # 新的API返回JSON格式，需要解析data字段
+                result = response.json()
+                
+                # 检查API返回是否成功
+                if result['code'] != 0:
+                    raise Exception(f"API返回错误: {result['msg']}")
                 
                 # 解析返回的SRT文本
+                srt_text = result['data']
                 segments = parse_srt_text(srt_text)
                 
                 # 获取wav文件的实际时长
