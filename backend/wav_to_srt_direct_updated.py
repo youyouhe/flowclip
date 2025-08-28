@@ -60,7 +60,7 @@ def get_wav_duration(file_path):
         print(f"获取文件 {file_path} 时长失败: {e}")
         return None
 
-def process_audio_file(file_path, api_url, index, lang="zh", retry_count=3, retry_delay=2):
+def process_audio_file(file_path, api_url, index, lang="auto", retry_count=3, retry_delay=2):
     """处理单个音频文件，调用ASR API获取识别结果"""
     print(f"处理文件 {index}: {file_path}")
     start_time = time.time()
@@ -86,20 +86,19 @@ def process_audio_file(file_path, api_url, index, lang="zh", retry_count=3, retr
     for attempt in range(retry_count):
         try:
             with open(file_path, 'rb') as audio_file:
-                # 注意这里使用的是 "file" 而不是 "files"，与成功的Python请求保持一致
+                # 根据新的API要求，使用multipart/form-data格式
                 files = {"file": audio_file}
-                data = {"lang": lang}
+                data = {
+                    "response_format": "srt",
+                    "language": lang
+                }
                 
                 response = requests.post(api_url, files=files, data=data, timeout=7200)
                 response.raise_for_status()
-                result = response.json()
-                
-                # 检查API返回是否成功
-                if result['code'] != 0:
-                    raise Exception(f"API返回错误: {result['msg']}")
+                # 新的API直接返回SRT文本，而不是JSON格式
+                srt_text = response.text
                 
                 # 解析返回的SRT文本
-                srt_text = result['data']
                 segments = parse_srt_text(srt_text)
                 
                 # 获取wav文件的实际时长
@@ -132,7 +131,7 @@ def process_audio_file(file_path, api_url, index, lang="zh", retry_count=3, retr
                     'error': str(e)
                 }
 
-def process_directory(directory, api_url, lang="zh", max_workers=5):
+def process_directory(directory, api_url, lang="auto", max_workers=5):
     """处理目录中的所有WAV文件"""
     # 获取所有WAV文件并按段落顺序排序
     wav_files = [f for f in os.listdir(directory) if f.endswith('.wav')]
@@ -264,7 +263,7 @@ def main():
     parser = argparse.ArgumentParser(description='处理WAV文件并生成SRT字幕')
     parser.add_argument('directory', help='包含WAV文件的目录')
     parser.add_argument('--api-url', default='http://192.168.8.107:5001/asr', help='ASR API URL')
-    parser.add_argument('--lang', default='zh', help='语言代码，默认为中文(zh)')
+    parser.add_argument('--lang', default='auto', help='语言代码，默认为自动检测(auto)')
     parser.add_argument('--workers', type=int, default=5, help='并行处理的线程数')
     parser.add_argument('--output', help='输出SRT文件路径')
     parser.add_argument('--log', help='日志文件路径')

@@ -472,7 +472,7 @@ class AudioProcessor:
         project_id: int,
         user_id: int,
         api_url: str = None,
-        lang: str = "zh",
+        lang: str = "auto",
         max_workers: int = 5,
         custom_filename: str = None,
         start_time: float = None,
@@ -485,14 +485,27 @@ class AudioProcessor:
         
         # 优先使用传入的asr_service_url，其次是api_url，最后是默认配置
         if asr_service_url:
-            final_api_url = f"{asr_service_url.rstrip('/')}/asr"
+            # 检查是否已经包含 /inference 路径
+            if "/inference" in asr_service_url:
+                final_api_url = asr_service_url
+            else:
+                final_api_url = f"{asr_service_url.rstrip('/')}/inference"
             logger.info(f"使用动态传入的ASR服务URL: {final_api_url}")
         elif api_url:
-            final_api_url = api_url
+            # 检查是否已经包含 /inference 路径
+            if "/inference" in api_url:
+                final_api_url = api_url
+            else:
+                final_api_url = api_url.rstrip('/') + "/inference" if not api_url.endswith("/inference") else api_url
             logger.info(f"使用api_url参数指定的ASR服务URL: {final_api_url}")
         else:
             from app.core.config import settings
-            final_api_url = f"{settings.asr_service_url}/asr"
+            base_url = settings.asr_service_url.rstrip('/')
+            # 检查是否已经包含 /inference 路径
+            if "/inference" in base_url:
+                final_api_url = base_url
+            else:
+                final_api_url = f"{base_url}/inference"
             logger.info(f"使用默认配置的ASR服务URL: {final_api_url}")
         
         
@@ -578,7 +591,7 @@ class AudioProcessor:
                             # 使用原有的目录处理方法
                             results = process_directory(
                                 directory=process_dir,
-                                api_url=api_url,
+                                api_url=final_api_url,
                                 lang=lang,
                                 max_workers=max_workers
                             )
@@ -589,7 +602,7 @@ class AudioProcessor:
                                 file_path = os.path.join(process_dir, wav_file)
                                 result = process_audio_file(
                                     file_path=file_path,
-                                    api_url=api_url,
+                                    api_url=final_api_url,
                                     index=idx,
                                     lang=lang
                                 )
