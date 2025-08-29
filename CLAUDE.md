@@ -122,7 +122,6 @@ docker-compose logs -f celery-worker
 ### Videos
 - `POST /api/v1/videos/download` - Download YouTube video
 - `GET /api/v1/videos` - List videos
-- `GET /api/v1/videos/{id}/progress` - Get download progress
 - `GET /api/v1/videos/{id}/download-url` - Get MinIO download URL
 
 ### Processing

@@ -125,9 +125,6 @@ export const videoAPI = {
   getVideoStreamUrl: (id: number, token: string) =>
     api.get(`/videos/${id}/stream?token=${token}`),
   
-  // 获取视频流的预签名URL
-  getVideoStreamSignedUrl: (id: number, expiry: number = 3600) =>
-    api.get(`/videos/${id}/stream-url?expiry=${expiry}`),
   
   // 通用MinIO资源URL获取
   getMinioResourceUrl: (objectPath: string, expiry: number = 3600) =>

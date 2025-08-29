@@ -21,8 +21,6 @@ from app.services.state_manager import get_state_manager
 from app.core.constants import ProcessingTaskType
 from app.tasks.video_tasks import extract_audio, generate_srt
 
-# 简单的内存缓存，用于减少数据库查询
-progress_cache = {}
 CACHE_DURATION = 5  # 5秒缓存
 from app.core.celery import celery_app
 
@@ -689,126 +687,7 @@ async def get_video_download_url(
     
     return {"download_url": url, "expires_in": expiry, "object_name": object_name}
 
-@router.get("/{video_id}/stream-url")
-async def get_video_stream_url(
-    video_id: int,
-    expiry: int = 3600,
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
-):
-    """获取视频文件的预签名流式播放URL"""
-    stmt = select(Video).join(Project).where(
-        Video.id == video_id,
-        Project.user_id == current_user.id
-    )
-    result = await db.execute(stmt)
-    video = result.scalar_one_or_none()
-    if not video:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Video not found"
-        )
-    
-    if not video.file_path:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Video file not uploaded"
-        )
-    
-    # 从minio_path中提取对象名称
-    # 移除bucket名称前缀
-    bucket_prefix = f"{settings.minio_bucket_name}/"
-    if video.file_path.startswith(bucket_prefix):
-        object_name = video.file_path[len(bucket_prefix):]
-    else:
-        object_name = video.file_path
-    
-    # 使用公共客户端生成预签名URL用于流式播放
-    url = await minio_service.get_file_url(object_name, expiry)
-    
-    if not url:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to generate stream URL"
-        )
-    
-    return {"stream_url": url, "expires_in": expiry, "object_name": object_name}
 
-@router.get("/{video_id}/stream")
-async def stream_video(
-    video_id: int,
-    token: str = None,
-    db: AsyncSession = Depends(get_db)
-):
-    """流式传输视频内容（避免CORS问题）"""
-    # 如果提供了token参数，使用token验证
-    if token:
-        current_user = await get_current_user_from_token(token=token, db=db)
-    else:
-        # 否则使用标准的Authorization头验证
-        current_user = await get_current_user(db=db)
-    
-    stmt = select(Video).join(Project).where(
-        Video.id == video_id,
-        Project.user_id == current_user.id
-    )
-    result = await db.execute(stmt)
-    video = result.scalar_one_or_none()
-    if not video:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Video not found"
-        )
-    
-    if not video.file_path:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Video file not uploaded"
-        )
-    
-    # 从minio_path中提取对象名称
-    # 移除bucket名称前缀
-    bucket_prefix = f"{settings.minio_bucket_name}/"
-    if video.file_path.startswith(bucket_prefix):
-        object_name = video.file_path[len(bucket_prefix):]
-    else:
-        object_name = video.file_path
-    
-    # 获取文件流
-    try:
-        def _get_file_stream():
-            try:
-                response = minio_service.internal_client.get_object(
-                    settings.minio_bucket_name, 
-                    object_name
-                )
-                return response
-            except Exception as e:
-                print(f"获取文件流失败: {e}")
-                raise
-        
-        # 获取文件信息
-        stat = minio_service.internal_client.stat_object(settings.minio_bucket_name, object_name)
-        
-        # 创建文件流响应
-        from fastapi.responses import StreamingResponse
-        
-        file_stream = _get_file_stream()
-        
-        return StreamingResponse(
-            file_stream,
-            media_type=f"video/{object_name.split('.')[-1]}",
-            headers={
-                "Content-Disposition": f"inline; filename=\"{video.filename or 'video'}\"",
-                "Accept-Ranges": "bytes",
-                "Access-Control-Allow-Origin": "*",
-            }
-        )
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"无法获取视频文件: {str(e)}"
-        )
 
 
 @router.post("/{video_id}/extract-audio")
@@ -1067,66 +946,6 @@ async def get_audio_download_url(
         "content_type": "audio/wav"
     }
 
-@router.get("/{video_id}/audio-download")
-async def download_audio_direct(
-    video_id: int,
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
-):
-    """直接下载音频文件，确保正确的文件头和编码"""
-    
-    # 验证视频属于当前用户
-    stmt = select(Video).join(Project).where(
-        Video.id == video_id,
-        Project.user_id == current_user.id
-    )
-    result = await db.execute(stmt)
-    video = result.scalar_one_or_none()
-    if not video:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Video not found"
-        )
-    
-    # 构建音频文件对象名称
-    audio_object_name = f"users/{current_user.id}/projects/{video.project_id}/audio/{video.id}.wav"
-    
-    # 检查文件是否存在
-    file_exists = await minio_service.file_exists(audio_object_name)
-    if not file_exists:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Audio file not found"
-        )
-    
-    # 获取文件内容
-    try:
-        response = minio_service.internal_client.get_object(
-            settings.minio_bucket_name, 
-            audio_object_name
-        )
-        content = response.read()
-        response.close()
-        response.release_conn()
-        
-        # 直接返回音频文件
-        from fastapi.responses import StreamingResponse
-        import io
-        
-        return StreamingResponse(
-            io.BytesIO(content),
-            media_type="audio/wav",
-            headers={
-                "Content-Disposition": f"attachment; filename*=UTF-8''{video.title}_audio.wav",
-                "Content-Type": "audio/wav",
-            }
-        )
-        
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to read audio content: {str(e)}"
-        )
 
 @router.get("/{video_id}/srt-download-url")
 async def get_srt_download_url(
@@ -1170,12 +989,8 @@ async def get_srt_download_url(
             detail="Failed to generate SRT download URL"
         )
     
-    # 对于SRT文件，返回直接下载接口而不是预签名URL
-    # 确保通过我们自己的接口下载，避免MinIO编码问题
-    from app.core.config import settings
-    base_url = settings.api_base_url or "http://localhost:8001"
     return {
-        "download_url": f"{base_url}/api/v1/videos/{video_id}/srt-download", 
+        "download_url": url, 
         "expires_in": expiry, 
         "object_name": srt_object_name,
         "content_type": "text/plain; charset=utf-8"
@@ -1405,89 +1220,6 @@ async def get_srt_content(
             detail=f"Failed to read SRT content: {str(e)}"
         )
 
-@router.get("/{video_id}/progress")
-async def get_video_progress(
-    video_id: int,
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
-):
-    """获取视频下载和处理进度"""
-    
-    # 检查缓存
-    cache_key = f"{current_user.id}_{video_id}"
-    current_time = time.time()
-    
-    if cache_key in progress_cache:
-        cached_data, cache_time = progress_cache[cache_key]
-        if current_time - cache_time < CACHE_DURATION:
-            # 返回缓存数据
-            from fastapi.responses import JSONResponse
-            response = JSONResponse(content=cached_data)
-            response.headers["Cache-Control"] = "public, max-age=5"
-            return response
-    
-    # 验证视频属于当前用户
-    stmt = select(Video, Project.name.label('project_name')).join(Project).where(
-        Video.id == video_id,
-        Project.user_id == current_user.id
-    )
-    result = await db.execute(stmt)
-    video_with_project = result.first()
-    if not video_with_project:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Video not found"
-        )
-    
-    video, project_name = video_with_project
-    
-    # 获取相关的处理任务
-    stmt = select(ProcessingTask).where(
-        ProcessingTask.video_id == video_id
-    ).order_by(ProcessingTask.created_at.desc())
-    result = await db.execute(stmt)
-    processing_tasks = result.scalars().all()
-    
-    # 构建进度信息
-    progress_info = {
-        'video_id': video.id,
-        'title': video.title,
-        'status': video.status,
-        'download_progress': video.download_progress,
-        'processing_progress': video.processing_progress,
-        'processing_stage': video.processing_stage,
-        'processing_message': video.processing_message,
-        'processing_error': video.processing_error,
-        'file_size': video.file_size,
-        'duration': video.duration,
-        'created_at': video.created_at,
-        'updated_at': video.updated_at,
-        'project_name': project_name,
-        'processing_tasks': [
-            {
-                'id': task.id,
-                'task_type': task.task_type,
-                'status': task.status,
-                'progress': task.progress,
-                'stage': task.stage,
-                'message': task.message,
-                'error_message': task.error_message,
-                'created_at': task.created_at,
-                'updated_at': task.updated_at,
-                'is_completed': task.is_completed
-            }
-            for task in processing_tasks
-        ]
-    }
-    
-    # 添加到缓存
-    progress_cache[cache_key] = (progress_info, current_time)
-    
-    # 添加缓存头，减少频繁查询
-    from fastapi.responses import JSONResponse
-    response = JSONResponse(content=progress_info)
-    response.headers["Cache-Control"] = "public, max-age=5"  # 5秒缓存
-    return response
 
 @router.get("/{video_id}/processing-status")
 async def get_video_processing_status(

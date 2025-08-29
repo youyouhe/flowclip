@@ -203,18 +203,44 @@ async def get_available_models():
     """获取可用的模型列表"""
     
     try:
+        # 从OpenRouter API动态获取Google模型列表
+        openrouter_models = await llm_service.get_available_models(filter_provider="google")
+        
+        # 如果无法获取模型列表，返回默认模型
+        if not openrouter_models:
+            logger.warning("无法从OpenRouter获取模型列表，返回默认模型")
+            return {
+                "models": [
+                    {
+                        "id": "google/gemini-2.5-flash",
+                        "name": "Gemini 2.5 Flash",
+                        "description": "默认使用的Gemini模型"
+                    }
+                ]
+            }
+        
+        # 转换模型格式
+        models = []
+        for model in openrouter_models:
+            models.append({
+                "id": model.get("id"),
+                "name": model.get("name", model.get("id")),
+                "description": model.get("description", "")
+            })
+        
         return {
-            "models": [
-                {
-                    "id": "google/gemini-2.5-flash-lite",
-                    "name": "Gemini 2.5 Flash Lite",
-                    "description": "快速、轻量级的Gemini模型，适合对话和分析任务"
-                }
-            ]
+            "models": models
         }
         
     except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"获取模型列表失败: {str(e)}"
-        )
+        logger.error(f"获取模型列表失败: {type(e).__name__}: {str(e)}")
+        # 出错时返回默认模型列表
+        return {
+            "models": [
+                {
+                    "id": "google/gemini-2.5-flash",
+                    "name": "Gemini 2.5 Flash",
+                    "description": "默认使用的Gemini模型"
+                }
+            ]
+        }
