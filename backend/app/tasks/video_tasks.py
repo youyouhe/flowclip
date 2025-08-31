@@ -3,6 +3,7 @@
 # 从子模块导入所有Celery任务
 from .subtasks.simple_task import add
 from .subtasks.download_task import download_video
+from .subtasks.upload_task import upload_video
 from .subtasks.audio_task import extract_audio
 from .subtasks.video_audio_task import extract_video_audio
 from .subtasks.slice_audio_task import extract_slice_audio
@@ -19,7 +20,8 @@ _wait_for_task_sync = task_utils._wait_for_task_sync
 
 __all__ = [
     'add',
-    'download_video', 
+    'download_video',
+    'upload_video',
     'extract_audio',
     'extract_video_audio',
     'extract_slice_audio',

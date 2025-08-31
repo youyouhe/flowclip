@@ -152,6 +152,56 @@ class AudioProcessor:
             logger.error(f"获取音频信息失败: {str(e)}")
             return {}
     
+    async def convert_audio_sample_rate(self, audio_path: str, target_sample_rate: int = 16000) -> str:
+        """转换音频文件的采样率到目标采样率（默认16000Hz）"""
+        try:
+            logger.info(f"检查音频采样率: {audio_path}")
+            
+            # 获取音频信息
+            audio_info = await self._get_audio_info(audio_path)
+            current_sample_rate = audio_info.get('sample_rate', 16000)
+            
+            # 如果已经是目标采样率，直接返回原路径
+            if current_sample_rate == target_sample_rate:
+                logger.info(f"音频采样率已经是 {target_sample_rate}Hz，无需转换")
+                return audio_path
+            
+            logger.info(f"音频采样率 {current_sample_rate}Hz 需要转换为 {target_sample_rate}Hz")
+            
+            # 创建临时输出文件路径
+            from pathlib import Path
+            audio_path_obj = Path(audio_path)
+            converted_path = audio_path_obj.parent / f"{audio_path_obj.stem}_converted{audio_path_obj.suffix}"
+            
+            # 使用ffmpeg转换采样率
+            cmd = [
+                'ffmpeg',
+                '-i', audio_path,
+                '-ar', str(target_sample_rate),
+                '-ac', '1',  # 单声道
+                '-acodec', 'pcm_s16le',  # 16-bit PCM
+                '-y',  # 覆盖输出文件
+                str(converted_path)
+            ]
+            
+            logger.info(f"执行采样率转换命令: {' '.join(cmd)}")
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            
+            if result.returncode != 0:
+                logger.error(f"ffmpeg采样率转换失败: {result.stderr}")
+                raise Exception(f"音频采样率转换失败: {result.stderr}")
+            
+            # 检查输出文件
+            if not converted_path.exists():
+                raise Exception("采样率转换后的音频文件未生成")
+            
+            logger.info(f"采样率转换完成: {converted_path}")
+            return str(converted_path)
+            
+        except Exception as e:
+            logger.error(f"音频采样率转换失败: {str(e)}")
+            raise Exception(f"音频采样率转换失败: {str(e)}")
+    
     # DEPRECATED: 此方法已弃用，系统不再支持音频分割功能
     # 保留在这里仅为了向后兼容，建议使用generate_srt_from_audio直接处理完整音频文件
     async def split_audio_file(

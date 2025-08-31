@@ -118,6 +118,20 @@ export const videoAPI = {
         'Content-Type': 'multipart/form-data',
       },
     }),
+  uploadVideo: (formData: FormData) =>
+    api.post('/videos/upload', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+      timeout: 300000, // 5分钟超时
+    }),
+  uploadChunk: (formData: FormData) =>
+    api.post('/videos/upload-chunk', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+      timeout: 300000, // 5分钟超时
+    }),
   getVideoDownloadUrl: (id: number, expiry: number = 3600) =>
     api.get(`/videos/${id}/download-url?expiry=${expiry}`),
   

@@ -282,7 +282,8 @@ def export_slice_to_capcut(self, slice_id: int, draft_folder: str, user_id: int 
                         print(f"DEBUG: 添加水平打开特效 - 时间轴起始: {current_time}秒, 时间轴结束: {current_time + 3}秒")
                         open_effect_result = asyncio.run(capcut_service.add_effect(
                             draft_id=draft_id,
-                            effect_type="Horizontal_Open",
+                            effect_type="Explosion",
+                            params=[50,20],
                             start=current_time,
                             end=current_time + 3,
                             track_name=f"open_effect_track_{i+1}",
@@ -293,10 +294,11 @@ def export_slice_to_capcut(self, slice_id: int, draft_folder: str, user_id: int 
                         print(f"DEBUG: 添加电视彩虹屏特效 - 时间轴起始: {current_time + 3}秒, 时间轴结束: {current_time + sub_slice.duration - 3}秒")
                         rainbow_effect_result = asyncio.run(capcut_service.add_effect(
                             draft_id=draft_id,
-                            effect_type="电视彩虹屏",
+                            effect_type="TV_Colored_Lines",
                             start=current_time + 3,
                             end=current_time + sub_slice.duration - 3,
                             track_name=f"rainbow_effect_track_{i+1}",
+                            params=[50,5],
                             max_retries=3
                         ))
                         
@@ -473,7 +475,8 @@ def export_slice_to_capcut(self, slice_id: int, draft_folder: str, user_id: int 
                     print(f"DEBUG: 添加水平打开特效 - 时间轴起始: 0秒, 时间轴结束: 3秒")
                     open_effect_result = asyncio.run(capcut_service.add_effect(
                         draft_id=draft_id,
-                        effect_type="Horizontal_Open",
+                        effect_type="Explosion",
+                        params=[50,20],
                         start=0,
                         end=3,
                         track_name="open_effect_track_main",

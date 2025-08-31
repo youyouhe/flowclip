@@ -6,7 +6,7 @@ import requests
 import json
 import time
 import logging
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 
 # 创建logger
 logger = logging.getLogger(__name__)
@@ -77,22 +77,30 @@ class CapCutService:
                     raise Exception(f"创建草稿失败: {str(e)}")
     
     async def add_effect(self, draft_id: str, effect_type: str, start: float, end: float, 
-                        track_name: str, width: int = 1080, height: int = 1920, max_retries: int = 3) -> Dict[str, Any]:
+                        track_name: str, params: List[float] = None, width: int = 1080, height: int = 1920, max_retries: int = 3) -> Dict[str, Any]:
         """添加特效"""
         for attempt in range(max_retries):
             try:
                 logger.info(f"尝试添加特效 '{effect_type}' 到草稿 {draft_id} (尝试 {attempt + 1}/{max_retries})")
+                
+                # 构造请求数据
+                payload = {
+                    "draft_id": draft_id,
+                    "effect_type": effect_type,
+                    "start": start,
+                    "end": end,
+                    "track_name": track_name,
+                    "width": width,
+                    "height": height
+                }
+                
+                # 如果提供了params参数，则添加到请求数据中
+                if params is not None:
+                    payload["params"] = params
+                
                 response = requests.post(
                     f"{self.base_url}/add_effect",
-                    json={
-                        "draft_id": draft_id,
-                        "effect_type": effect_type,
-                        "start": start,
-                        "end": end,
-                        "track_name": track_name,
-                        "width": width,
-                        "height": height
-                    },
+                    json=payload,
                     timeout=30
                 )
                 response.raise_for_status()

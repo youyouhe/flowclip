@@ -28,6 +28,7 @@ import {
 import { videoAPI } from '../services/api';
 import { videoSliceAPI } from '../services/api';
 import { capcutAPI } from '../services/api';
+import { systemConfigAPI } from '../services/api';
 
 const { Title, Text } = Typography;
 const { Option } = Select;
@@ -223,9 +224,29 @@ const [capcutProgress, setCapcutProgress] = useState({
 
   const handleCapCutExport = async (slice: VideoSlice) => {
     setSelectedSlice(slice);
-    // 从环境变量获取默认的draft folder
-    const defaultDraftFolder = import.meta.env.VITE_CAPCUT_DRAFT_FOLDER || '';
-    setDraftFolder(defaultDraftFolder);
+    
+    // 首先尝试从系统配置获取草稿文件夹路径
+    try {
+      const response = await systemConfigAPI.getSystemConfigs();
+      const configs = response.data;
+      const draftFolderConfig = configs.find((config: any) => config.key === 'capcut_draft_folder');
+      let defaultDraftFolder = '';
+      
+      if (draftFolderConfig && draftFolderConfig.value) {
+        defaultDraftFolder = draftFolderConfig.value;
+      } else {
+        // 如果系统配置中没有设置，则使用环境变量
+        defaultDraftFolder = import.meta.env.VITE_CAPCUT_DRAFT_FOLDER || '';
+      }
+      
+      setDraftFolder(defaultDraftFolder);
+    } catch (error) {
+      // 如果获取系统配置失败，使用环境变量作为备选
+      const defaultDraftFolder = import.meta.env.VITE_CAPCUT_DRAFT_FOLDER || '';
+      setDraftFolder(defaultDraftFolder);
+      console.error('获取系统配置失败:', error);
+    }
+    
     setCapcutModalVisible(true);
   };
 

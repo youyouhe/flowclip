@@ -32,10 +32,11 @@ import {
   ReloadOutlined,
   PictureOutlined 
 } from '@ant-design/icons';
-import { videoAPI, projectAPI } from '../services/api';
+import { videoAPI, projectAPI, resourceAPI } from '../services/api';
 import { useNavigate } from 'react-router-dom';
 import { wsService, startHeartbeat, stopHeartbeat } from '../services/websocket';
 import { useThumbnail } from '../hooks/useThumbnail';
+import VideoUploadModal from '../components/VideoUploadModal';
 import dayjs from 'dayjs';
 
 interface Video {
@@ -144,6 +145,7 @@ const Videos: React.FC = () => {
   const [modalVisible, setModalVisible] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [thumbnailUrls, setThumbnailUrls] = useState<{[key: number]: string}>({});
+  const [uploadModalVisible, setUploadModalVisible] = useState(false);
   const [form] = Form.useForm();
   const navigate = useNavigate();
   
@@ -517,6 +519,16 @@ const Videos: React.FC = () => {
     setModalVisible(true);
   };
 
+  const showUploadModal = () => {
+    setUploadModalVisible(true);
+  };
+
+  const handleUploadSuccess = (video: Video) => {
+    // 上传成功后刷新视频列表
+    fetchVideos();
+    message.success(`视频 "${video.title}" 上传成功`);
+  };
+
   const formatDuration = (seconds?: number) => {
     if (!seconds) return '00:00';
     const mins = Math.floor(seconds / 60);
@@ -682,14 +694,24 @@ const Videos: React.FC = () => {
     <div>
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold">视频管理</h1>
-        <Button 
-          type="primary" 
-          icon={<DownloadOutlined />} 
-          onClick={showDownloadModal}
-          disabled={projects.length === 0}
-        >
-          下载视频
-        </Button>
+        <Space>
+          <Button 
+            type="default" 
+            icon={<UploadOutlined />} 
+            onClick={showUploadModal}
+            disabled={projects.length === 0}
+          >
+            上传视频
+          </Button>
+          <Button 
+            type="primary" 
+            icon={<DownloadOutlined />} 
+            onClick={showDownloadModal}
+            disabled={projects.length === 0}
+          >
+            下载视频
+          </Button>
+        </Space>
       </div>
 
       {/* 筛选器 */}
@@ -923,6 +945,13 @@ const Videos: React.FC = () => {
           </Form.Item>
         </Form>
       </Modal>
+
+      {/* 上传视频模态框 */}
+      <VideoUploadModal
+        visible={uploadModalVisible}
+        onCancel={() => setUploadModalVisible(false)}
+        onSuccess={handleUploadSuccess}
+      />
     </div>
   );
 };

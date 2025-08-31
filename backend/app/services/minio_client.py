@@ -199,6 +199,20 @@ class MinioService:
             self.executor, _upload
         )
     
+    def get_file_url_sync(self, object_name: str, expiry: int = 3600) -> Optional[str]:
+        """同步获取文件的预签名URL"""
+        try:
+            # 使用公共客户端生成预签名URL
+            url = self.public_client.presigned_get_object(
+                self.bucket_name, 
+                object_name, 
+                expires=timedelta(seconds=expiry)
+            )
+            return url
+        except S3Error as e:
+            print(f"✗ 获取URL失败: {e}")
+            return None
+
     async def get_file_url(self, object_name: str, expiry: int = 3600) -> Optional[str]:
         """获取文件的预签名URL"""
         print(f"DEBUG: get_file_url 调用 - object_name: {object_name}, expiry: {expiry}")

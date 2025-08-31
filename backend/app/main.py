@@ -183,5 +183,14 @@ if __name__ == "__main__":
         "app.main:app",
         host=settings.host,
         port=settings.port,
-        reload=settings.reload
+        reload=settings.reload,
+        timeout_keep_alive=300,  # 5分钟保持连接
+        timeout_graceful_shutdown=120,  # 2分钟优雅关闭
+        limit_concurrency=1000,  # 增加并发限制
+        limit_max_requests=10000,  # 增加最大请求数
+        backlog=2048,  # 增加连接队列
+        # 增加大文件上传相关配置
+        http='h11',  # 使用h11作为HTTP解析器，更适合大文件上传
+        ws_ping_interval=20,  # WebSocket ping间隔
+        ws_ping_timeout=20,  # WebSocket ping超时
     )

@@ -33,6 +33,7 @@ class SystemConfigService:
         "asr_service_url": "asr_service_url",
         "openrouter_api_key": "openrouter_api_key",
         "capcut_api_url": "capcut_api_url",
+        "capcut_draft_folder": "capcut_draft_folder",
     }
     
     @staticmethod
@@ -183,4 +184,5 @@ class SystemConfigService:
             {"key": "asr_service_url", "label": "ASR服务URL", "category": "其他服务配置", "default": settings.asr_service_url},
             {"key": "openrouter_api_key", "label": "OpenRouter API密钥", "category": "其他服务配置", "default": settings.openrouter_api_key or "", "sensitive": True},
             {"key": "capcut_api_url", "label": "CapCut API URL", "category": "其他服务配置", "default": settings.capcut_api_url},
+            {"key": "capcut_draft_folder", "label": "CapCut草稿文件夹路径", "category": "其他服务配置", "default": settings.capcut_draft_folder or "", "description": "CapCut草稿文件夹的完整路径"},
         ]

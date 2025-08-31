@@ -207,6 +207,40 @@ def extract_audio(self, video_id: str, project_id: int, user_id: int, video_mini
             
             if result.get('success'):
                 try:
+                    # 音频文件已经在临时目录中，直接检查本地文件
+                    audio_filename = result['audio_filename']
+                    audio_temp_path = temp_path / audio_filename
+                    
+                    # 检查并转换采样率
+                    converted_audio_path = run_async(
+                        audio_processor.convert_audio_sample_rate(str(audio_temp_path), 16000)
+                    )
+                    
+                    # 如果采样率被转换，需要重新上传文件
+                    if converted_audio_path != str(audio_temp_path):
+                        # 重新上传转换后的音频文件
+                        audio_url = run_async(
+                            minio_service.upload_file(
+                                converted_audio_path,
+                                result['object_name'],
+                                f"audio/{result['audio_format']}"
+                            )
+                        )
+                        
+                        if audio_url:
+                            # 更新结果中的音频路径和文件大小
+                            result['minio_path'] = audio_url
+                            result['file_size'] = Path(converted_audio_path).stat().st_size
+                            print(f"音频采样率已转换并重新上传: {audio_url}")
+                        else:
+                            print("转换后的音频文件上传失败")
+                            raise Exception("转换后的音频文件上传失败")
+                except Exception as e:
+                    print(f"音频采样率检查/转换失败: {str(e)}")
+                    # 不中断整个流程，继续使用原始音频
+            
+            if result.get('success'):
+                try:
                     # 更新处理任务的output_data
                     with get_sync_db() as db:
                         state_manager = get_state_manager(db)
