@@ -22,6 +22,11 @@ services:
       timeout: 20s
       retries: 10
       interval: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "2"
 
   # Redis for caching and task queue
   redis:
@@ -39,6 +44,11 @@ services:
       timeout: 5s
       retries: 5
       interval: 5s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "2"
 
   # MinIO for file storage
   minio:
@@ -60,6 +70,11 @@ services:
       timeout: 5s
       retries: 5
       interval: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "2"
 
   # Backend API
   backend:
@@ -93,6 +108,11 @@ services:
       - /tmp:/tmp
     networks:
       - flowclip-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "2"
 
   # Celery Worker
   celery-worker:
@@ -123,6 +143,11 @@ services:
       - /tmp:/tmp
     networks:
       - flowclip-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "2"
 
   # Celery Beat (for scheduled tasks)
   celery-beat:
@@ -150,6 +175,11 @@ services:
       - ./.env:/app/.env:ro
     networks:
       - flowclip-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "2"
 
   # Frontend
   frontend:
@@ -169,6 +199,11 @@ services:
       - /app/node_modules
     networks:
       - flowclip-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "2"
 
 volumes:
   redis_data:
