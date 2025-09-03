@@ -13,6 +13,18 @@ FlowClip is a comprehensive video processing platform that automatically downloa
 - **Real-time Progress Tracking**: Real-time processing progress updates via WebSocket
 - **Project Management**: Organize and manage multiple video projects
 
+## Screenshots
+
+<div align="center">
+  <img src="images/home.png" alt="Home Page" width="45%" />
+  <img src="images/video-manager.png" alt="Video Management" width="45%" />
+  
+  <img src="images/video-slice.png" alt="Video Slicing" width="45%" />
+  <img src="images/video-capcut.png" alt="Video Auto Composition" width="45%" />
+  
+  <img src="images/capcut.png" alt="CapCut Fine-tuning" width="45%" />
+</div>
+
 ## Technical Architecture
 
 ### Backend Stack

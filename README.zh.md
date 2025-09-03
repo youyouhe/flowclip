@@ -13,6 +13,18 @@ FlowClip 是一个完整的视频处理平台，可自动下载 YouTube 视频�
 - **实时进度跟踪**：通过 WebSocket 提供处理进度实时更新
 - **项目管理**：组织和管理多个视频项目
 
+## 界面截图
+
+<div align="center">
+  <img src="images/home.png" alt="首页" width="45%" />
+  <img src="images/video-manager.png" alt="视频管理" width="45%" />
+  
+  <img src="images/video-slice.png" alt="视频切片" width="45%" />
+  <img src="images/video-capcut.png" alt="视频自动合成" width="45%" />
+  
+  <img src="images/capcut.png" alt="剪映微调" width="45%" />
+</div>
+
 ## 技术架构
 
 ### 后端技术栈
