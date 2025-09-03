@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# EchoClip 部署脚本
+# FlowClip 部署脚本
 # 使用方法: ./deploy.sh <public-ip> [private-ip]
 
 set -e
@@ -138,7 +138,7 @@ fi
 
 ENV_FILE=".env"
 
-log_info "🚀 开始部署 EchoClip"
+log_info "🚀 开始部署 FlowClip"
 log_info "📡 Public IP: $PUBLIC_IP (用户访问)"
 log_info "🔒 Private IP: $PRIVATE_IP (内部服务通信)"
 

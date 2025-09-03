@@ -20,7 +20,10 @@ def check_alembic_status():
     """检查alembic状态"""
     
     # 创建alembic配置
-    alembic_cfg = Config("/home/cat/echoclip/backend/alembic.ini")
+    # 使用相对路径而不是硬编码绝对路径，提高移植性
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    alembic_ini_path = os.path.join(script_dir, "alembic.ini")
+    alembic_cfg = Config(alembic_ini_path)
     
     # 设置数据库URL
     settings = Settings()
