@@ -31,7 +31,33 @@ FlowClip is a comprehensive video processing platform that automatically downloa
 - **Zustand**: Lightweight state management
 - **Vite**: Fast build tool
 
-## Quick Start
+## Automated Deployment
+
+For easier deployment, FlowClip provides an automated deployment script that handles configuration and service setup.
+
+### Using the Deployment Script
+
+The `deploy.sh` script automates the deployment process:
+
+```bash
+# Make the script executable
+chmod +x deploy.sh
+
+# Run the deployment script with your server's public IP
+./deploy.sh <your-public-ip>
+
+# Or specify both public and private IPs
+./deploy.sh <public-ip> <private-ip>
+```
+
+The script will:
+- Automatically detect private IP if not provided
+- Create and validate `.env` configuration file
+- Backup existing configurations
+- Check Docker environment
+- Verify service dependencies
+- Initialize database configuration
+- Provide access URLs after deployment
 
 ### Requirements
 - Python 3.8+
@@ -41,6 +67,25 @@ FlowClip is a comprehensive video processing platform that automatically downloa
 - MinIO
 
 ### Installation Steps
+
+#### Option 1: Automated Deployment (Recommended)
+
+Use the provided deployment script for automatic setup:
+
+```bash
+# Make the script executable
+chmod +x deploy.sh
+
+# Run the deployment script with your server's public IP
+./deploy.sh <your-public-ip>
+
+# Or specify both public and private IPs
+./deploy.sh <public-ip> <private-ip>
+```
+
+The script will automatically handle environment configuration, service startup, and database initialization.
+
+#### Option 2: Manual Installation
 
 1. Clone the repository:
 ```bash

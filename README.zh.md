@@ -42,6 +42,25 @@ FlowClip 是一个完整的视频处理平台，可自动下载 YouTube 视频�
 
 ### 安装步骤
 
+#### 方式一：自动化部署（推荐）
+
+使用提供的部署脚本进行自动安装：
+
+```bash
+# 设置脚本可执行权限
+chmod +x deploy.sh
+
+# 使用服务器公网IP运行部署脚本
+./deploy.sh <你的公网IP>
+
+# 或者同时指定公网和私网IP
+./deploy.sh <公网IP> <私网IP>
+```
+
+脚本将自动处理环境配置、服务启动和数据库初始化。
+
+#### 方式二：手动安装
+
 1. 克隆仓库：
 ```bash
 git clone https://github.com/youyouhe/flowclip.git

@@ -4,7 +4,7 @@ services:
   # MySQL Database
   mysql:
     image: mysql:8.0
-    container_name: echoclip-mysql
+    container_name: flowclip-mysql
     ports:
       - "3307:3306"  # Using 3307 to avoid conflict with existing MySQL on 3306
     environment:
@@ -15,7 +15,7 @@ services:
     volumes:
       - mysql_data:/var/lib/mysql
     networks:
-      - echoclip-network
+      - flowclip-network
     command: --default-authentication-plugin=mysql_native_password
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "youtube_user", "-pyoutube_password"]
@@ -26,14 +26,14 @@ services:
   # Redis for caching and task queue
   redis:
     image: redis:7-alpine
-    container_name: echoclip-redis
+    container_name: flowclip-redis
     ports:
       - "6379:6379"
     volumes:
       - redis_data:/data
     command: redis-server --appendonly yes
     networks:
-      - echoclip-network
+      - flowclip-network
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       timeout: 5s
@@ -43,7 +43,7 @@ services:
   # MinIO for file storage
   minio:
     image: minio/minio:latest
-    container_name: echoclip-minio
+    container_name: flowclip-minio
     ports:
       - "9000:9000"  # Expose MinIO API port
       - "9001:9001"  # Expose MinIO Console port
@@ -54,7 +54,7 @@ services:
       - minio_data:/data
     command: server /data --console-address ":9001"
     networks:
-      - echoclip-network
+      - flowclip-network
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
       timeout: 5s
@@ -66,7 +66,7 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: echoclip-backend
+    container_name: flowclip-backend
     ports:
       - "8001:8001"  # Expose backend API port for CapCut access
     environment:
@@ -92,14 +92,14 @@ services:
       - /tmp/cookies:/tmp/cookies
       - /tmp:/tmp
     networks:
-      - echoclip-network
+      - flowclip-network
 
   # Celery Worker
   celery-worker:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: echoclip-celery
+    container_name: flowclip-celery
     command: python start_celery.py worker --loglevel=info --concurrency=4
     environment:
       - DATABASE_URL=mysql+aiomysql://youtube_user:youtube_password@mysql:3306/youtube_slicer?charset=utf8mb4
@@ -122,14 +122,14 @@ services:
       - /tmp/cookies:/tmp/cookies
       - /tmp:/tmp
     networks:
-      - echoclip-network
+      - flowclip-network
 
   # Celery Beat (for scheduled tasks)
   celery-beat:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: echoclip-celery-beat
+    container_name: flowclip-celery-beat
     command: python start_celery.py beat --loglevel=info
     environment:
       - DATABASE_URL=mysql+aiomysql://youtube_user:youtube_password@mysql:3306/youtube_slicer?charset=utf8mb4
@@ -149,14 +149,14 @@ services:
       - ./backend:/app
       - ./.env:/app/.env:ro
     networks:
-      - echoclip-network
+      - flowclip-network
 
   # Frontend
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile.dev
-    container_name: echoclip-frontend
+    container_name: flowclip-frontend
     ports:
       - "3000:3000"
     environment:
@@ -168,7 +168,7 @@ services:
       - ./frontend:/app
       - /app/node_modules
     networks:
-      - echoclip-network
+      - flowclip-network
 
 volumes:
   redis_data:
@@ -177,5 +177,5 @@ volumes:
   mysql_data:
 
 networks:
-  echoclip-network:
+  flowclip-network:
     driver: bridge
