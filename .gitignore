@@ -278,3 +278,6 @@ youtube_cookies.txt
 
 # Redis dump
 *.rdb
+
+# Claude Code instructions
+CLAUDE.md
