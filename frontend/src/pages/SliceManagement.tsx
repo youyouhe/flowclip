@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Card, Input, Button, Select, Space, message, Spin, Typography, Row, Col, Table, Tag, Modal, Form, Tabs, Divider, Alert, Progress } from 'antd';
-import { PlayCircleOutlined, ScissorOutlined, UploadOutlined, EyeOutlined, EditOutlined, DeleteOutlined, PlusOutlined, FileTextOutlined } from '@ant-design/icons';
+import { Card, Input, Button, Select, Space, message, Spin, Typography, Row, Col, Table, Tag, Modal, Form, Tabs, Divider, Alert, Progress, InputNumber, DatePicker } from 'antd';
+import { PlayCircleOutlined, ScissorOutlined, UploadOutlined, EyeOutlined, EditOutlined, DeleteOutlined, PlusOutlined, FileTextOutlined, SearchOutlined, ClearOutlined as ClearFiltersOutlined, ReloadOutlined } from '@ant-design/icons';
 import { llmAPI } from '../services/api';
 import { videoAPI } from '../services/api';
 import { videoSliceAPI } from '../services/api';
 import { asrAPI, systemConfigAPI } from '../services/api';
+import { projectAPI } from '../services/api';
 import { wsService, startHeartbeat, stopHeartbeat } from '../services/websocket';
 
 const { Title, Text, Paragraph } = Typography;
@@ -90,6 +91,11 @@ interface Video {
   status: string;
 }
 
+interface Project {
+  id: number;
+  name: string;
+}
+
 interface LLMAnalysis {
   id: number;
   video_id: number;
@@ -136,6 +142,7 @@ interface VideoSlice {
 
 const SliceManagement: React.FC = () => {
   const [videos, setVideos] = useState<Video[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
   const [selectedVideo, setSelectedVideo] = useState<number | null>(null);
   const [analyses, setAnalyses] = useState<LLMAnalysis[]>([]);
   const [slices, setSlices] = useState<VideoSlice[]>([]);
@@ -173,6 +180,19 @@ const SliceManagement: React.FC = () => {
   // 轮询定时器引用
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
   
+  // 筛选状态
+  const [filters, setFilters] = useState({
+    project_id: undefined as number | undefined,
+    status: undefined as string | undefined,
+    search: '',
+    start_date: undefined as string | undefined,
+    end_date: undefined as string | undefined,
+    min_duration: undefined as number | undefined,
+    max_duration: undefined as number | undefined,
+    min_file_size: undefined as number | undefined,
+    max_file_size: undefined as number | undefined,
+  });
+  
   // 定义新的切片数据接口，以匹配新的JSON格式
   interface SliceChapter {
     cover_title: string;
@@ -201,6 +221,7 @@ const SliceManagement: React.FC = () => {
 
   useEffect(() => {
     loadVideos();
+    loadProjects();
     initWebSocket();
     checkAsrStatus();
     return () => {
@@ -223,6 +244,10 @@ const SliceManagement: React.FC = () => {
       }
     }
   }, [selectedVideo]);
+  
+  useEffect(() => {
+    loadVideos();
+  }, [filters]);
 
   const initWebSocket = () => {
     const token = localStorage.getItem('token');
@@ -352,8 +377,19 @@ const SliceManagement: React.FC = () => {
   const loadVideos = async () => {
     try {
       setVideosLoading(true);
-      // 只获取SRT处理成功的视频
-      const response = await videoAPI.getVideos({ srt_processed: true });
+      // 构建查询参数
+      const params: any = { srt_processed: true };
+      if (filters.project_id) params.project_id = filters.project_id;
+      if (filters.status) params.status = filters.status;
+      if (filters.search) params.search = filters.search;
+      if (filters.start_date) params.start_date = filters.start_date;
+      if (filters.end_date) params.end_date = filters.end_date;
+      if (filters.min_duration !== undefined) params.min_duration = filters.min_duration;
+      if (filters.max_duration !== undefined) params.max_duration = filters.max_duration;
+      if (filters.min_file_size !== undefined) params.min_file_size = filters.min_file_size;
+      if (filters.max_file_size !== undefined) params.max_file_size = filters.max_file_size;
+      
+      const response = await videoAPI.getVideos(params);
       // 处理分页响应格式
       const videosData = response.data.videos || response.data;
       
@@ -363,6 +399,44 @@ const SliceManagement: React.FC = () => {
     } finally {
       setVideosLoading(false);
     }
+  };
+  
+  const loadProjects = async () => {
+    try {
+      const response = await projectAPI.getProjects();
+      setProjects(response.data);
+    } catch (error) {
+      message.error('获取项目列表失败');
+    }
+  };
+  
+  const handleFilterChange = (key: string, value: any) => {
+    setFilters(prev => ({
+      ...prev,
+      [key]: value
+    }));
+  };
+  
+  const handleDateRangeChange = (dates: any, dateStrings: [string, string]) => {
+    setFilters(prev => ({
+      ...prev,
+      start_date: dateStrings[0],
+      end_date: dateStrings[1]
+    }));
+  };
+  
+  const clearFilters = () => {
+    setFilters({
+      project_id: undefined,
+      status: undefined,
+      search: '',
+      start_date: undefined,
+      end_date: undefined,
+      min_duration: undefined,
+      max_duration: undefined,
+      min_file_size: undefined,
+      max_file_size: undefined,
+    });
   };
 
   const loadAnalyses = async () => {
@@ -881,6 +955,121 @@ const SliceManagement: React.FC = () => {
                 />
               )}
               <Row gutter={16}>
+                <Col span={24}>
+                  {/* 筛选器 */}
+                  <div style={{ marginBottom: '16px' }}>
+                    <Row gutter={[16, 16]}>
+                      <Col span={4}>
+                        <Select
+                          placeholder="选择项目"
+                          value={filters.project_id}
+                          onChange={(value) => handleFilterChange('project_id', value)}
+                          style={{ width: '100%' }}
+                          allowClear
+                        >
+                          {projects.map(project => (
+                            <Option key={project.id} value={project.id}>
+                              {project.name}
+                            </Option>
+                          ))}
+                        </Select>
+                      </Col>
+                      <Col span={4}>
+                        <Select
+                          placeholder="视频状态"
+                          value={filters.status}
+                          onChange={(value) => handleFilterChange('status', value)}
+                          style={{ width: '100%' }}
+                          allowClear
+                        >
+                          <Select.Option value="pending">等待中</Select.Option>
+                          <Select.Option value="downloading">下载中</Select.Option>
+                          <Select.Option value="downloaded">已下载</Select.Option>
+                          <Select.Option value="processing">处理中</Select.Option>
+                          <Select.Option value="completed">已完成</Select.Option>
+                          <Select.Option value="failed">失败</Select.Option>
+                        </Select>
+                      </Col>
+                      <Col span={4}>
+                        <Input.Group compact>
+                          <InputNumber
+                            style={{ width: '50%' }}
+                            placeholder="最小时长(秒)"
+                            value={filters.min_duration}
+                            onChange={(value) => handleFilterChange('min_duration', value)}
+                          />
+                          <InputNumber
+                            style={{ width: '50%' }}
+                            placeholder="最大时长(秒)"
+                            value={filters.max_duration}
+                            onChange={(value) => handleFilterChange('max_duration', value)}
+                          />
+                        </Input.Group>
+                      </Col>
+                      <Col span={4}>
+                        <Input.Group compact>
+                          <InputNumber
+                            style={{ width: '50%' }}
+                            placeholder="最小大小(MB)"
+                            value={filters.min_file_size}
+                            onChange={(value) => handleFilterChange('min_file_size', value)}
+                          />
+                          <InputNumber
+                            style={{ width: '50%' }}
+                            placeholder="最大大小(MB)"
+                            value={filters.max_file_size}
+                            onChange={(value) => handleFilterChange('max_file_size', value)}
+                          />
+                        </Input.Group>
+                      </Col>
+                      <Col span={6}>
+                        <DatePicker.RangePicker
+                          style={{ width: '100%' }}
+                          onChange={handleDateRangeChange}
+                          placeholder={['开始日期', '结束日期']}
+                        />
+                      </Col>
+                      <Col span={4}>
+                        <Input
+                          placeholder="搜索视频标题"
+                          value={filters.search}
+                          onChange={(e) => handleFilterChange('search', e.target.value)}
+                          onPressEnter={loadVideos}
+                        />
+                      </Col>
+                    </Row>
+                    <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
+                      <Col>
+                        <Space>
+                          <Button
+                            type="primary"
+                            icon={<SearchOutlined />}
+                            onClick={loadVideos}
+                            loading={videosLoading}
+                          >
+                            搜索
+                          </Button>
+                          <Button
+                            icon={<ClearFiltersOutlined />}
+                            onClick={clearFilters}
+                          >
+                            清除
+                          </Button>
+                          <Button
+                            icon={<ReloadOutlined />}
+                            onClick={loadVideos}
+                            loading={videosLoading}
+                          >
+                            刷新
+                          </Button>
+                        </Space>
+                      </Col>
+                    </Row>
+                  </div>
+                </Col>
+              </Row>
+              
+              <Row gutter={16}>
                 <Col span={8}>
                   <Text strong>选择视频：</Text>
                   <Select
@@ -939,9 +1128,52 @@ const SliceManagement: React.FC = () => {
                           
                           return (
                             <div style={{ padding: '16px' }}>
-                              <h4 style={{ marginBottom: '12px' }}>
-                                子切片列表 ({record.sub_slices.length}个)
-                              </h4>
+                              <div style={{ display: 'flex', alignItems: 'center', marginBottom: '12px' }}>
+                                <h4 style={{ margin: 0 }}>
+                                  子切片列表 ({record.sub_slices.length}个)
+                                </h4>
+                                <Button 
+                                  type="primary" 
+                                  size="small" 
+                                  style={{ marginLeft: '12px' }}
+                                  onClick={() => {
+                                    // 计算每个子切片的相对时间位置（相对于父切片的开始）
+                                    let accumulatedTime = 0;
+                                    const copyContent = record.sub_slices.map((subSlice: VideoSubSlice, index: number) => {
+                                      const timeStr = formatTime(accumulatedTime);
+                                      // 累加当前子切片的持续时间，为下一个子切片准备时间位置
+                                      accumulatedTime += subSlice.duration || 0;
+                                      return `${timeStr}：${subSlice.cover_title}`;
+                                    }).join('\n');
+                                    
+                                    // 复制到剪贴板
+                                    if (navigator.clipboard) {
+                                      navigator.clipboard.writeText(copyContent).then(() => {
+                                        message.success('已复制到剪贴板');
+                                      }).catch(err => {
+                                        message.error('复制失败');
+                                        console.error('复制失败:', err);
+                                      });
+                                    } else {
+                                      // 兼容性处理：创建临时textarea元素
+                                      const textarea = document.createElement('textarea');
+                                      textarea.value = copyContent;
+                                      document.body.appendChild(textarea);
+                                      textarea.select();
+                                      try {
+                                        document.execCommand('copy');
+                                        message.success('已复制到剪贴板');
+                                      } catch (err) {
+                                        message.error('复制失败');
+                                        console.error('复制失败:', err);
+                                      }
+                                      document.body.removeChild(textarea);
+                                    }
+                                  }}
+                                >
+                                  COPY
+                                </Button>
+                              </div>
                               <Table
                                 columns={[
                                   {

@@ -117,9 +117,9 @@ def export_slice_to_capcut(self, slice_id: int, draft_folder: str, user_id: int 
             slice_obj.capcut_error_message = None
             db.commit()
             
-            # 获取子切片
+            # 获取子切片并按开始时间排序
             sub_slices_result = db.execute(
-                select(VideoSubSlice).where(VideoSubSlice.slice_id == slice_id)
+                select(VideoSubSlice).where(VideoSubSlice.slice_id == slice_id).order_by(VideoSubSlice.start_time)
             )
             sub_slices = sub_slices_result.scalars().all()
             
