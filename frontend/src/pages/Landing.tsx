@@ -65,7 +65,7 @@ const Landing: React.FC = () => {
           {/* Main Title at Top */}
           <div className="mb-8 slide-in-up">
             <h1 className="text-4xl md:text-6xl font-bold mb-4 text-gradient hero-title">
-              Video slicing tool
+              FlowClip
             </h1>
             <p className="text-lg md:text-xl mb-6 text-blue-100 max-w-3xl mx-auto hero-subtitle">
               智能化的视频内容分析工具，支持音频提取、自动切片、字幕生成和AI对话
