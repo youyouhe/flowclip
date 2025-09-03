@@ -32,7 +32,7 @@ FlowClip is a comprehensive video processing platform that automatically downloa
 - **Celery**: Distributed task queue for background processing
 - **Redis**: Task queue and caching
 - **MinIO**: S3-compatible object storage
-- **SQLite/PostgreSQL**: Data persistence
+- **MySQL**: Data persistence with aiomysql async driver
 - **FFmpeg**: Video and audio processing
 - **yt-dlp**: YouTube video downloading
 
@@ -77,6 +77,7 @@ The script will:
 - Docker and Docker Compose
 - Redis
 - MinIO
+- MySQL
 
 ### Installation Steps
 
@@ -160,6 +161,49 @@ Main environment variables:
 - `MINIO_ENDPOINT`: MinIO service endpoint
 - `OPENAI_API_KEY`: LLM API key
 - `YOUTUBE_COOKIES_FILE`: YouTube cookies file path
+
+### ASR Service Configuration
+
+FlowClip supports two ASR (Automatic Speech Recognition) models for generating subtitles:
+
+1. **Whisper Model** (Default):
+   - URL: `http://192.168.8.107:5001`
+   - High accuracy for multiple languages
+   - Better performance on complex audio
+
+2. **SenseVoice Model**:
+   - URL: `http://192.168.8.107:5002`
+   - Optimized for Chinese language recognition
+   - Faster processing speed
+
+You can switch between these models in the System Configuration page or by setting the `asr_model_type` to either "whisper" or "sense".
+
+### CapCut Integration Configuration
+
+FlowClip can export video slices directly to CapCut for further editing:
+
+- `CAPCUT_API_URL`: CapCut service API endpoint (default: `http://192.168.8.107:9002`)
+- `CAPCUT_DRAFT_FOLDER`: Local folder path where CapCut drafts will be saved
+
+The CapCut integration allows you to:
+- Automatically create video drafts with your sliced content
+- Apply effects and audio enhancements
+- Add subtitles and text overlays
+- Export projects ready for fine-tuning in CapCut
+
+### 获取和部署ASR与CapCut服务
+
+The ASR and CapCut services are provided as separate repositories that you can download and deploy:
+
+1. **CapCut API Service**: 
+   - Repository: https://github.com/youyouhe/CapCutAPI-Docker.git
+   - Provides the API interface for creating and managing CapCut drafts
+
+2. **ASR Service (Faster Whisper)**:
+   - Repository: https://github.com/youyouhe/faster-whisper.git
+   - Provides both Whisper and SenseVoice ASR models for subtitle generation
+
+Follow the instructions in each repository's README to set up and deploy these services.
 
 ## Development
 
