@@ -5,7 +5,8 @@ import {
   Card, 
   Space, 
   Modal, 
-  Form, 
+  Form,
+  FormList, 
   Input, 
   Select, 
   message, 
@@ -147,6 +148,9 @@ const Videos: React.FC = () => {
   const [thumbnailUrls, setThumbnailUrls] = useState<{[key: number]: string}>({});
   const [uploadModalVisible, setUploadModalVisible] = useState(false);
   const [form] = Form.useForm();
+  
+  // URL输入状态
+  const [urlInputs, setUrlInputs] = useState(['']);
   const navigate = useNavigate();
   
   // 筛选状态
@@ -300,22 +304,65 @@ const Videos: React.FC = () => {
   // 移除旧的订阅逻辑，现在使用状态查询模式
   // 这个useEffect已被删除，避免重复发送WebSocket消息
 
+  // URL管理函数
+  const handleUrlChange = (index: number, value: string) => {
+    const newUrlInputs = [...urlInputs];
+    newUrlInputs[index] = value;
+    setUrlInputs(newUrlInputs);
+  };
+
+  const handleAddUrl = () => {
+    if (urlInputs.length < 5) {
+      setUrlInputs([...urlInputs, '']);
+    }
+  };
+
+  const handleRemoveUrl = (index: number) => {
+    if (urlInputs.length > 1) {
+      const newUrlInputs = [...urlInputs];
+      newUrlInputs.splice(index, 1);
+      setUrlInputs(newUrlInputs);
+    }
+  };
+
   const handleDownloadVideo = async (values: any) => {
+    console.log('🔄 [handleDownloadVideo] 开始处理下载请求，数据:', values);
+    console.log('🔄 [handleDownloadVideo] URL输入状态:', urlInputs);
     setDownloading(true);
     try {
-      const formData = new FormData();
-      formData.append('url', values.url);
-      formData.append('project_id', values.project_id);
-      formData.append('quality', values.quality);
-      
-      // 添加cookie文件（如果有）
-      if (values.cookies && values.cookies[0]) {
-        formData.append('cookies_file', values.cookies[0].originFileObj);
+      // 从状态管理获取URL数组并过滤空值
+      const validUrls = urlInputs.filter(url => 
+        url && url.trim() !== '' && /youtube\.com|youtu\.be/.test(url)
+      );
+      console.log('🔄 [handleDownloadVideo] 有效URL列表:', validUrls);
+
+      if (validUrls.length === 0) {
+        message.error('请至少输入一个有效的YouTube URL');
+        setDownloading(false);
+        return;
       }
       
-      await videoAPI.downloadVideoWithCookies(formData, values.quality);
-      message.success('视频下载任务已创建');
+      // 对每个URL分别创建下载任务
+      const downloadPromises = validUrls.map(async (url: string) => {
+        const formData = new FormData();
+        formData.append('url', url);
+        formData.append('project_id', values.project_id);
+        formData.append('quality', values.quality);
+
+        // 添加cookie文件（如果有）
+        if (values.cookies && values.cookies[0]) {
+          formData.append('cookies_file', values.cookies[0].originFileObj);
+        }
+
+        return videoAPI.downloadVideoWithCookies(formData, values.quality);
+      });
+
+      // 等待所有下载任务创建完成
+      await Promise.all(downloadPromises);
+
+      message.success(`已提交 ${validUrls.length} 个视频下载任务`);
       setModalVisible(false);
+      setUrlInputs(['']); // 重置URL输入状态
       form.resetFields();
       
       // 等待一下让后端创建视频记录，然后查询活跃视频
@@ -516,6 +563,7 @@ const Videos: React.FC = () => {
 
   const showDownloadModal = () => {
     form.resetFields();
+    setUrlInputs(['']);
     setModalVisible(true);
   };
 
@@ -871,18 +919,46 @@ const Videos: React.FC = () => {
       >
         <Form form={form} layout="vertical" onFinish={handleDownloadVideo} disabled={downloading}>
           <Form.Item
-            name="url"
             label="YouTube URL"
-            rules={[
-              { required: true, message: '请输入YouTube视频URL' },
-              { type: 'url', message: '请输入有效的URL' },
-              { pattern: /youtube\.com|youtu\.be/, message: '请输入YouTube视频URL' }
-            ]}
+            required
           >
-            <Input
-              placeholder="https://youtube.com/watch?v=..."
-              allowClear
-            />
+            {urlInputs.map((url, index) => (
+              <Form.Item 
+                key={index} 
+                style={{ marginBottom: 8 }}
+                noStyle
+              >
+                <Input.Group compact>
+                  <Input
+                    placeholder="https://youtube.com/watch?v=..."
+                    value={url}
+                    onChange={(e) => handleUrlChange(index, e.target.value)}
+                    allowClear
+                    style={{ width: 'calc(100% - 32px)' }}
+                  />
+                  {urlInputs.length > 1 && (
+                    <Button
+                      type="text"
+                      danger
+                      icon={<DeleteOutlined />}
+                      onClick={() => handleRemoveUrl(index)}
+                      style={{ width: '32px' }}
+                    />
+                  )}
+                </Input.Group>
+              </Form.Item>
+            ))}
+            {urlInputs.length < 5 && (
+              <Button
+                type="dashed"
+                onClick={handleAddUrl}
+                icon={<PlusOutlined />}
+                disabled={downloading}
+                style={{ width: '100%' }}
+              >
+                添加URL（最多支持5个）
+              </Button>
+            )}
           </Form.Item>
 
           <Form.Item
