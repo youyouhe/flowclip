@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Card, Input, Button, Select, Space, message, Spin, Typography, Row, Col, Switch, Tag, Divider, Modal, Alert } from 'antd';
-import { SendOutlined, RobotOutlined, VideoCameraOutlined, SettingOutlined, ClearOutlined, ScissorOutlined } from '@ant-design/icons';
+import { Card, Input, Button, Select, Space, message, Spin, Typography, Row, Col, Switch, Tag, Divider, Modal, Alert, InputNumber, DatePicker } from 'antd';
+import { SendOutlined, RobotOutlined, VideoCameraOutlined, SettingOutlined, ClearOutlined, ScissorOutlined, SearchOutlined, ClearOutlined as ClearFiltersOutlined, ReloadOutlined } from '@ant-design/icons';
 import { llmAPI } from '../services/api';
 import { videoAPI } from '../services/api';
+import { projectAPI } from '../services/api';
 
 const { Title, Text, Paragraph } = Typography;
 const { TextArea } = Input;
@@ -22,11 +23,17 @@ interface Video {
   status: string;
 }
 
+interface Project {
+  id: number;
+  name: string;
+}
+
 const LLMChat: React.FC = () => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputMessage, setInputMessage] = useState('');
   const [loading, setLoading] = useState(false);
   const [videos, setVideos] = useState<Video[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
   const [selectedVideo, setSelectedVideo] = useState<number | null>(null);
   const [useSrtContext, setUseSrtContext] = useState(true);
   const [customSystemPrompt, setCustomSystemPrompt] = useState('');
@@ -37,16 +44,30 @@ const LLMChat: React.FC = () => {
   const [sliceModalVisible, setSliceModalVisible] = useState(false);
   const [lastLLMResponse, setLastLLMResponse] = useState('');
   
+  // 筛选状态
+  const [filters, setFilters] = useState({
+    project_id: undefined as number | undefined,
+    status: undefined as string | undefined,
+    search: '',
+    start_date: undefined as string | undefined,
+    end_date: undefined as string | undefined,
+    min_duration: undefined as number | undefined,
+    max_duration: undefined as number | undefined,
+    min_file_size: undefined as number | undefined,
+    max_file_size: undefined as number | undefined,
+  });
+  
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     loadVideos();
+    loadProjects();
     loadCurrentSystemPrompt();
   }, []);
 
   useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
+    loadVideos();
+  }, [filters]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -55,8 +76,19 @@ const LLMChat: React.FC = () => {
   const loadVideos = async () => {
     try {
       setVideosLoading(true);
-      // 只获取SRT处理成功的视频
-      const response = await videoAPI.getVideos({ srt_processed: true });
+      // 构建查询参数
+      const params: any = { srt_processed: true };
+      if (filters.project_id) params.project_id = filters.project_id;
+      if (filters.status) params.status = filters.status;
+      if (filters.search) params.search = filters.search;
+      if (filters.start_date) params.start_date = filters.start_date;
+      if (filters.end_date) params.end_date = filters.end_date;
+      if (filters.min_duration !== undefined) params.min_duration = filters.min_duration;
+      if (filters.max_duration !== undefined) params.max_duration = filters.max_duration;
+      if (filters.min_file_size !== undefined) params.min_file_size = filters.min_file_size;
+      if (filters.max_file_size !== undefined) params.max_file_size = filters.max_file_size;
+      
+      const response = await videoAPI.getVideos(params);
       // 处理分页响应格式
       const videosData = response.data.videos || response.data;
       
@@ -66,6 +98,44 @@ const LLMChat: React.FC = () => {
     } finally {
       setVideosLoading(false);
     }
+  };
+  
+  const loadProjects = async () => {
+    try {
+      const response = await projectAPI.getProjects();
+      setProjects(response.data);
+    } catch (error) {
+      message.error('获取项目列表失败');
+    }
+  };
+  
+  const handleFilterChange = (key: string, value: any) => {
+    setFilters(prev => ({
+      ...prev,
+      [key]: value
+    }));
+  };
+  
+  const handleDateRangeChange = (dates: any, dateStrings: [string, string]) => {
+    setFilters(prev => ({
+      ...prev,
+      start_date: dateStrings[0],
+      end_date: dateStrings[1]
+    }));
+  };
+  
+  const clearFilters = () => {
+    setFilters({
+      project_id: undefined,
+      status: undefined,
+      search: '',
+      start_date: undefined,
+      end_date: undefined,
+      min_duration: undefined,
+      max_duration: undefined,
+      min_file_size: undefined,
+      max_file_size: undefined,
+    });
   };
 
   const loadCurrentSystemPrompt = async () => {
@@ -156,7 +226,7 @@ const LLMChat: React.FC = () => {
   return (
     <div className="llm-chat">
       <Row gutter={[24, 24]}>
-        <Col xs={24} lg={18}>
+        <Col xs={24} lg={16}>
           <Card 
             title={
               <Space>
@@ -219,7 +289,7 @@ const LLMChat: React.FC = () => {
                   >
                     <div
                       style={{
-                        maxWidth: '70%',
+                        maxWidth: '80%',
                         padding: '12px 16px',
                         borderRadius: '12px',
                         backgroundColor: message.role === 'user' ? '#1890ff' : '#ffffff',
@@ -280,9 +350,107 @@ const LLMChat: React.FC = () => {
           </Card>
         </Col>
 
-        <Col xs={24} lg={6}>
+        <Col xs={24} lg={8}>
           <Card title="控制面板" size="small">
             <Space direction="vertical" style={{ width: '100%' }}>
+              {/* 筛选器 */}
+              <div style={{ marginBottom: '16px' }}>
+                <Row gutter={[16, 16]}>
+                  <Col span={24}>
+                    <Select
+                      placeholder="选择项目"
+                      value={filters.project_id}
+                      onChange={(value) => handleFilterChange('project_id', value)}
+                      style={{ width: '20%', marginRight: '8px' }}
+                      allowClear
+                    >
+                      {projects.map(project => (
+                        <Option key={project.id} value={project.id}>
+                          {project.name}
+                        </Option>
+                      ))}
+                    </Select>
+                    <Select
+                      placeholder="视频状态"
+                      value={filters.status}
+                      onChange={(value) => handleFilterChange('status', value)}
+                      style={{ width: '20%', marginRight: '8px' }}
+                      allowClear
+                    >
+                      <Select.Option value="pending">等待中</Select.Option>
+                      <Select.Option value="downloading">下载中</Select.Option>
+                      <Select.Option value="downloaded">已下载</Select.Option>
+                      <Select.Option value="processing">处理中</Select.Option>
+                      <Select.Option value="completed">已完成</Select.Option>
+                      <Select.Option value="failed">失败</Select.Option>
+                    </Select>
+                    <InputNumber
+                      placeholder="最小时长(秒)"
+                      value={filters.min_duration}
+                      onChange={(value) => handleFilterChange('min_duration', value)}
+                      style={{ width: '12%', marginRight: '8px' }}
+                    />
+                    <InputNumber
+                      placeholder="最大时长(秒)"
+                      value={filters.max_duration}
+                      onChange={(value) => handleFilterChange('max_duration', value)}
+                      style={{ width: '12%', marginRight: '8px' }}
+                    />
+                    <InputNumber
+                      placeholder="最小大小(MB)"
+                      value={filters.min_file_size}
+                      onChange={(value) => handleFilterChange('min_file_size', value)}
+                      style={{ width: '12%', marginRight: '8px' }}
+                    />
+                    <InputNumber
+                      placeholder="最大大小(MB)"
+                      value={filters.max_file_size}
+                      onChange={(value) => handleFilterChange('max_file_size', value)}
+                      style={{ width: '12%', marginRight: '8px' }}
+                    />
+                  </Col>
+                </Row>
+                <Row gutter={[16, 16]} style={{ marginTop: '8px' }}>
+                  <Col span={24}>
+                    <DatePicker.RangePicker
+                      style={{ width: '40%', marginRight: '8px' }}
+                      onChange={handleDateRangeChange}
+                      placeholder={['开始日期', '结束日期']}
+                    />
+                    <Input
+                      placeholder="搜索视频标题"
+                      value={filters.search}
+                      onChange={(e) => handleFilterChange('search', e.target.value)}
+                      onPressEnter={loadVideos}
+                      style={{ width: '30%', marginRight: '8px' }}
+                    />
+                    <Button
+                      type="primary"
+                      icon={<SearchOutlined />}
+                      onClick={loadVideos}
+                      loading={videosLoading}
+                      style={{ marginRight: '8px' }}
+                    >
+                      搜索
+                    </Button>
+                    <Button
+                      icon={<ClearFiltersOutlined />}
+                      onClick={clearFilters}
+                      style={{ marginRight: '8px' }}
+                    >
+                      清除
+                    </Button>
+                    <Button
+                      icon={<ReloadOutlined />}
+                      onClick={loadVideos}
+                      loading={videosLoading}
+                    >
+                      刷新
+                    </Button>
+                  </Col>
+                </Row>
+              </div>
+
               <div>
                 <Text strong>选择视频：</Text>
                 <Select

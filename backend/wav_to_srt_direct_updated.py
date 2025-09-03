@@ -60,7 +60,7 @@ def get_wav_duration(file_path):
         print(f"获取文件 {file_path} 时长失败: {e}")
         return None
 
-def process_audio_file(file_path, api_url, index, lang="auto", retry_count=3, retry_delay=2):
+def process_audio_file(file_path, api_url, index, lang="auto", retry_count=3, retry_delay=2, model_type="whisper"):
     """处理单个音频文件，调用ASR API获取识别结果"""
     print(f"处理文件 {index}: {file_path}")
     start_time = time.time()
@@ -86,24 +86,45 @@ def process_audio_file(file_path, api_url, index, lang="auto", retry_count=3, re
     for attempt in range(retry_count):
         try:
             with open(file_path, 'rb') as audio_file:
-                # 根据新的API要求，使用multipart/form-data格式
+                # 根据模型类型构建不同的请求参数
                 files = {"file": audio_file}
-                data = {
-                    "response_format": "srt",
-                    "language": lang
-                }
                 
-                response = requests.post(api_url, files=files, data=data, timeout=7200)
+                if model_type == "whisper":
+                    # Whisper模型请求参数
+                    data = {
+                        "response_format": "srt",
+                        "language": lang
+                    }
+                    # Whisper模型使用/inference路径
+                    if not api_url.endswith("/inference"):
+                        final_api_url = api_url.rstrip('/') + "/inference"
+                    else:
+                        final_api_url = api_url
+                else:  # sense模型
+                    # Sense模型请求参数
+                    data = {
+                        "lang": lang
+                    }
+                    # Sense模型使用/asr路径
+                    if not api_url.endswith("/asr"):
+                        final_api_url = api_url.rstrip('/') + "/asr"
+                    else:
+                        final_api_url = api_url
+                
+                print(f"使用模型类型: {model_type}, 请求URL: {final_api_url}")
+                
+                response = requests.post(final_api_url, files=files, data=data, timeout=7200)
                 response.raise_for_status()
-                # 新的API返回JSON格式，需要解析data字段
-                result = response.json()
                 
+                # 处理不同模型的响应格式
+                # 两种模型都返回JSON格式，需要解析data字段
+                result = response.json()
                 # 检查API返回是否成功
                 if result['code'] != 0:
                     raise Exception(f"API返回错误: {result['msg']}")
-                
                 # 解析返回的SRT文本
                 srt_text = result['data']
+                
                 segments = parse_srt_text(srt_text)
                 
                 # 获取wav文件的实际时长

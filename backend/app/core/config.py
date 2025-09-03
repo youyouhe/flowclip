@@ -49,6 +49,7 @@ class Settings(BaseSettings):
     
     # ASR Service Configuration
     asr_service_url: str = "http://192.168.8.107:5001"
+    asr_model_type: str = "whisper"
     
     # LLM Configuration
     openrouter_api_key: Optional[str] = None

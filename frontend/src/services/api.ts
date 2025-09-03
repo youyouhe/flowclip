@@ -285,6 +285,29 @@ export const capcutAPI = {
 export const asrAPI = {
   getStatus: () =>
     api.get('/asr/status'),
+  // 测试ASR服务 (通过后端代理)
+  testAsrService: async (file: File, modelType: string = 'whisper') => {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('model_type', modelType);
+    
+    console.log('🔧 Testing ASR service through backend proxy:', { modelType });
+    
+    try {
+      const response = await api.post('/system/test-asr', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+        timeout: 300000, // 5分钟超时
+      });
+      
+      console.log('🔧 ASR service test response:', response.data);
+      return response;
+    } catch (error) {
+      console.error('🔧 ASR service test error:', error);
+      throw error;
+    }
+  },
 };
 
 // 资源管理相关API
@@ -302,39 +325,8 @@ export const resourceAPI = {
     api.delete(`/resources/${id}`),
   uploadResource: (formData: FormData) =>
     api.post('/resources/upload', formData),
-  toggleResourceActiveStatus: (id: number, isActive: boolean) =>
-    api.put(`/resources/${id}/activate`, { is_active: isActive }),
-  getResourceDownloadUrl: (id: number) =>
-    api.get(`/resources/${id}/download-url`),
-  getResourceViewUrl: (id: number) =>
-    api.get(`/resources/${id}/view-url`),
-  
-  // 标签管理
-  getResourceTags: (params?: any) =>
-    api.get('/resources/tags', { params }),
-  createResourceTag: (name: string, tagType: string, description?: string) => {
-    const formData = new FormData();
-    formData.append('name', name);
-    formData.append('tag_type', tagType);
-    if (description) {
-      formData.append('description', description);
-    }
-    return api.post('/resources/tags', formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data'
-      }
-    });
-  },
-  deleteResourceTag: (id: number) =>
-    api.delete(`/resources/tags/${id}`),
-};
-
-// Dashboard相关API
-export const dashboardAPI = {
-  getDashboardStats: () =>
-    api.get('/status/dashboard'),
-  getRunningVideoIds: () =>
-    api.get('/status/videos/running'),
+  toggleResourceActiveStatus: (id: number, IsActive: boolean) =>
+    api.put(`/resources/${id}/activate`, { is_active: IsActive }),
 };
 
 // 系统配置相关API
@@ -347,6 +339,14 @@ export const systemConfigAPI = {
     api.post('/system/system-config/batch', data),
   checkServiceStatus: (serviceName: string) =>
     api.get(`/system/system-config/service-status/${serviceName}`),
+};
+
+// 仪表板相关API
+export const dashboardAPI = {
+  getDashboardStats: () =>
+    api.get('/status/dashboard'),
+  getRunningVideoIds: () =>
+    api.get('/status/videos/running'),
 };
 
 export default api;

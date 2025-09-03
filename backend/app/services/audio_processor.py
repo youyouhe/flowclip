@@ -527,36 +527,42 @@ class AudioProcessor:
         custom_filename: str = None,
         start_time: float = None,
         end_time: float = None,
-        asr_service_url: str = None  # 添加新参数
+        asr_service_url: str = None,
+        asr_model_type: str = "whisper"  # 添加模型类型参数，默认为whisper
     ) -> Dict[str, Any]:
         """从音频文件生成SRT字幕文件 - 更新为直接处理音频文件"""
         
         logger.info(f"开始生成SRT字幕: {audio_path}")
         
         # 优先使用传入的asr_service_url，其次是api_url，最后是默认配置
+        # 根据模型类型确定正确的端点路径
         if asr_service_url:
-            # 检查是否已经包含 /inference 路径
-            if "/inference" in asr_service_url:
-                final_api_url = asr_service_url
-            else:
-                final_api_url = f"{asr_service_url.rstrip('/')}/inference"
-            logger.info(f"使用动态传入的ASR服务URL: {final_api_url}")
+            base_url = asr_service_url.rstrip('/')
         elif api_url:
-            # 检查是否已经包含 /inference 路径
-            if "/inference" in api_url:
-                final_api_url = api_url
-            else:
-                final_api_url = api_url.rstrip('/') + "/inference" if not api_url.endswith("/inference") else api_url
-            logger.info(f"使用api_url参数指定的ASR服务URL: {final_api_url}")
+            base_url = api_url.rstrip('/')
         else:
             from app.core.config import settings
             base_url = settings.asr_service_url.rstrip('/')
-            # 检查是否已经包含 /inference 路径
+        
+        # 确保URL格式正确
+        if not base_url.startswith(('http://', 'https://')):
+            base_url = f"http://{base_url}"
+        
+        # 根据模型类型确定正确的端点路径
+        if asr_model_type == "whisper":
+            # Whisper模型使用/inference路径
             if "/inference" in base_url:
                 final_api_url = base_url
             else:
                 final_api_url = f"{base_url}/inference"
-            logger.info(f"使用默认配置的ASR服务URL: {final_api_url}")
+            logger.info(f"使用Whisper模型的ASR服务URL: {final_api_url}")
+        else:
+            # Sense模型使用/asr路径
+            if "/asr" in base_url:
+                final_api_url = base_url
+            else:
+                final_api_url = f"{base_url}/asr"
+            logger.info(f"使用Sense模型的ASR服务URL: {final_api_url}")
         
         
         try:
@@ -617,6 +623,10 @@ class AudioProcessor:
                 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
                 from wav_to_srt_direct_updated import process_audio_file
                 
+                # 根据模型类型调整语言参数
+                # 对于sense模型，默认使用zh而不是auto
+                final_lang = lang if lang != "auto" or asr_model_type == "whisper" else "zh"
+                
                 # 检查process_dir是文件还是目录
                 if os.path.isfile(audio_to_process):
                     # 处理单个音频文件
@@ -625,7 +635,8 @@ class AudioProcessor:
                         file_path=audio_to_process,
                         api_url=final_api_url,
                         index=1,  # 为单个文件指定索引
-                        lang=lang
+                        lang=final_lang,
+                        model_type=asr_model_type  # 传递模型类型参数
                     )
                     results = [result] if result else []
                 else:
@@ -642,7 +653,7 @@ class AudioProcessor:
                             results = process_directory(
                                 directory=process_dir,
                                 api_url=final_api_url,
-                                lang=lang,
+                                lang=final_lang,
                                 max_workers=max_workers
                             )
                         else:
@@ -654,7 +665,8 @@ class AudioProcessor:
                                     file_path=file_path,
                                     api_url=final_api_url,
                                     index=idx,
-                                    lang=lang
+                                    lang=final_lang,
+                                    model_type=asr_model_type  # 传递模型类型参数
                                 )
                                 if result:
                                     results.append(result)

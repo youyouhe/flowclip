@@ -1,6 +1,6 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy.orm import Session
-from typing import List, Dict
+from typing import List, Dict, Optional
 from app.core.database import get_db
 from app.core.security import get_current_active_user
 from app.models.system_config import SystemConfig
@@ -12,6 +12,9 @@ import aiomysql
 import redis
 import requests
 import logging
+import aiohttp
+import json
+import asyncio
 
 router = APIRouter()
 
@@ -349,3 +352,117 @@ async def check_service_status(
             status="offline",
             message=f"健康检查失败: {str(e)}"
         )
+
+
+class AsrTestResponse(BaseModel):
+    """ASR测试响应模型"""
+    success: bool
+    result: Optional[str] = None
+    error: Optional[str] = None
+
+
+@router.post("/test-asr", response_model=AsrTestResponse)
+async def test_asr_service(
+    file: UploadFile = File(...),
+    model_type: str = Form("whisper"),
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_active_user)
+):
+    """测试ASR服务"""
+    try:
+        logger.info(f"开始测试ASR服务，模型类型: {model_type}")
+        
+        # 获取数据库中的配置
+        db_configs = await SystemConfigService.get_all_configs(db)
+        
+        # 获取ASR服务配置
+        asr_service_url = db_configs.get("asr_service_url", settings.asr_service_url)
+        asr_model_type = db_configs.get("asr_model_type", getattr(settings, "asr_model_type", "whisper"))
+        
+        logger.info(f"ASR配置: url={asr_service_url}, model_type={asr_model_type}")
+        
+        # 根据模型类型确定服务URL和端点
+        if model_type == "whisper":
+            # 确保URL指向whisper服务(5001端口)
+            if ":5002" in asr_service_url:
+                asr_service_url = asr_service_url.replace(":5002", ":5001")
+            elif ":5001" not in asr_service_url:
+                asr_service_url = "http://192.168.8.107:5001"
+            
+            # 确保URL格式正确
+            if not asr_service_url.startswith(('http://', 'https://')):
+                asr_service_url = f"http://{asr_service_url}"
+            
+            base_url = asr_service_url.rstrip('/')
+            endpoint = f"{base_url}/inference" if not base_url.endswith('/inference') else base_url
+            params = {
+                "response_format": "srt",
+                "language": "auto"
+            }
+        else:  # sense模型
+            # 确保URL指向sense服务(5002端口)
+            if ":5001" in asr_service_url:
+                asr_service_url = asr_service_url.replace(":5001", ":5002")
+            elif ":5002" not in asr_service_url:
+                asr_service_url = "http://192.168.8.107:5002"
+            
+            # 确保URL格式正确
+            if not asr_service_url.startswith(('http://', 'https://')):
+                asr_service_url = f"http://{asr_service_url}"
+            
+            base_url = asr_service_url.rstrip('/')
+            endpoint = f"{base_url}/asr" if not base_url.endswith('/asr') else base_url
+            params = {
+                "lang": "zh"
+            }
+        
+        logger.info(f"ASR请求配置: endpoint={endpoint}, params={params}")
+        
+        # 读取上传的文件内容
+        file_content = await file.read()
+        logger.info(f"文件大小: {len(file_content)} bytes")
+        
+        # 使用aiohttp发送请求
+        async with aiohttp.ClientSession() as session:
+            # 准备请求数据
+            data = aiohttp.FormData()
+            data.add_field('file', file_content, filename=file.filename, content_type=file.content_type)
+            
+            # 添加参数
+            for key, value in params.items():
+                data.add_field(key, str(value))
+            
+            try:
+                async with session.post(endpoint, data=data, timeout=aiohttp.ClientTimeout(total=300)) as response:
+                    logger.info(f"ASR服务响应状态: {response.status}")
+                    
+                    if response.status == 200:
+                        # 处理响应
+                        if model_type == "whisper":
+                            # Whisper模型返回JSON格式
+                            response_data = await response.json()
+                            if response_data.get("code") == 0:
+                                result_text = response_data.get("data", "")
+                                return AsrTestResponse(success=True, result=result_text)
+                            else:
+                                error_msg = response_data.get("msg", "ASR服务返回错误")
+                                return AsrTestResponse(success=False, error=error_msg)
+                        else:
+                            # Sense模型直接返回文本
+                            result_text = await response.text()
+                            return AsrTestResponse(success=True, result=result_text)
+                    else:
+                        error_text = await response.text()
+                        logger.error(f"ASR服务错误响应: {response.status}, {error_text}")
+                        return AsrTestResponse(success=False, error=f"ASR服务返回错误状态码: {response.status}")
+                        
+            except asyncio.TimeoutError:
+                logger.error("ASR服务请求超时")
+                return AsrTestResponse(success=False, error="ASR服务请求超时")
+            except Exception as e:
+                logger.error(f"ASR服务请求失败: {str(e)}")
+                return AsrTestResponse(success=False, error=f"ASR服务请求失败: {str(e)}")
+                
+    except Exception as e:
+        logger.error(f"ASR测试失败: {str(e)}")
+        return AsrTestResponse(success=False, error=f"ASR测试失败: {str(e)}")

@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Card, Row, Col, Form, Input, Button, Spin, Alert, Typography, Divider, Collapse, Tag } from 'antd';
-import { systemConfigAPI, capcutAPI } from '../services/api';
+import { Card, Row, Col, Form, Input, Button, Spin, Alert, Typography, Divider, Collapse, Tag, Select, Upload, message, Tabs } from 'antd';
+import { systemConfigAPI, capcutAPI, asrAPI } from '../services/api';
 import { useAuth } from '../components/AuthProvider';
+import { UploadOutlined, PlayCircleOutlined } from '@ant-design/icons';
 
 const { Title, Text } = Typography;
 const { Panel } = Collapse;
@@ -28,6 +29,9 @@ const SystemConfig: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [serviceStatus, setServiceStatus] = useState<Record<string, ServiceStatus>>({});
+  const [asrTestFile, setAsrTestFile] = useState<File | null>(null);
+  const [asrTesting, setAsrTesting] = useState(false);
+  const [asrTestResult, setAsrTestResult] = useState<string | null>(null);
   const { user } = useAuth();
 
   useEffect(() => {
@@ -64,6 +68,40 @@ const SystemConfig: React.FC = () => {
       setError(err.response?.data?.detail || '获取系统配置失败');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const testAsrService = async () => {
+    if (!asrTestFile) {
+      message.error('请先选择一个音频文件');
+      return;
+    }
+
+    try {
+      setAsrTesting(true);
+      setAsrTestResult(null);
+      
+      // 获取当前表单中的ASR模型类型配置
+      const formValues = form.getFieldsValue();
+      const asrModelType = formValues.asr_model_type || 'whisper';
+      
+      // 调用后端代理API进行测试
+      const response = await asrAPI.testAsrService(asrTestFile, asrModelType);
+      
+      // 处理响应结果
+      if (response.data.success) {
+        setAsrTestResult(response.data.result || 'ASR服务测试成功，但未返回结果');
+        message.success('ASR服务测试成功');
+      } else {
+        throw new Error(response.data.error || 'ASR服务测试失败');
+      }
+    } catch (err: any) {
+      console.error('ASR服务测试失败:', err);
+      const errorMsg = err.response?.data?.detail || err.response?.data?.error || err.message || 'ASR服务测试失败';
+      message.error(`ASR服务测试失败: ${errorMsg}`);
+      setAsrTestResult(`错误: ${errorMsg}`);
+    } finally {
+      setAsrTesting(false);
     }
   };
 
@@ -314,6 +352,94 @@ return (
                 } 
                 key={category}
               >
+                {category === '其他服务配置' && (
+                  <div style={{ marginBottom: '24px', padding: '16px', backgroundColor: '#f0f2f5', borderRadius: '8px' }}>
+                    <Title level={4} style={{ marginTop: 0, marginBottom: '16px' }}>
+                      <PlayCircleOutlined /> ASR服务测试
+                    </Title>
+                    <Row gutter={[16, 16]}>
+                      <Col span={24}>
+                        <Text strong>上传音频文件进行测试:</Text>
+                      </Col>
+                      <Col span={12}>
+                        <Upload
+                          accept=".wav,.mp3,.flac,.aac,.ogg,.webm,.m4a,.opus,audio/*"
+                          beforeUpload={(file) => {
+                            const allowedTypes = [
+                              'audio/wav',
+                              'audio/x-wav',
+                              'audio/mp3',
+                              'audio/mpeg',
+                              'audio/flac',
+                              'audio/aac',
+                              'audio/ogg',
+                              'audio/webm',
+                              'audio/mp4',
+                              'audio/x-m4a',
+                              'audio/opus'
+                            ];
+                            
+                            const isAllowedType = allowedTypes.includes(file.type) || 
+                              file.name.toLowerCase().match(/\.(wav|mp3|flac|aac|ogg|webm|m4a|opus)$/);
+                            
+                            if (!isAllowedType) {
+                              message.error('请上传音频文件 (WAV, MP3, FLAC, AAC, OGG, WEBM, M4A, OPUS)');
+                              return false;
+                            }
+                            
+                            // 检查文件大小 (限制为5MB)
+                            const maxSize = 5 * 1024 * 1024; // 5MB
+                            if (file.size > maxSize) {
+                              message.error('文件大小不能超过5MB');
+                              return false;
+                            }
+                            
+                            setAsrTestFile(file);
+                            return false;
+                          }}
+                          maxCount={1}
+                          fileList={asrTestFile ? [{ uid: '-1', name: asrTestFile.name, status: 'done' }] : []}
+                          onRemove={() => setAsrTestFile(null)}
+                        >
+                          <Button icon={<UploadOutlined />}>选择音频文件</Button>
+                        </Upload>
+                        <Text type="secondary" style={{ display: 'block', marginTop: '8px' }}>
+                          支持格式: WAV, MP3, FLAC, AAC, OGG, WEBM, M4A, OPUS (最大5MB)
+                        </Text>
+                      </Col>
+                      <Col span={12}>
+                        <Button 
+                          type="primary" 
+                          icon={<PlayCircleOutlined />}
+                          onClick={testAsrService}
+                          loading={asrTesting}
+                          disabled={!asrTestFile}
+                        >
+                          测试ASR服务
+                        </Button>
+                      </Col>
+                      {asrTestResult && (
+                        <Col span={24}>
+                          <Text strong>测试结果:</Text>
+                          <div style={{ 
+                            marginTop: '8px', 
+                            padding: '12px', 
+                            backgroundColor: '#fff', 
+                            border: '1px solid #d9d9d9', 
+                            borderRadius: '4px',
+                            maxHeight: '300px',
+                            overflow: 'auto',
+                            whiteSpace: 'pre-wrap',
+                            fontFamily: 'monospace',
+                            fontSize: '12px'
+                          }}>
+                            {asrTestResult}
+                          </div>
+                        </Col>
+                      )}
+                    </Row>
+                  </div>
+                )}
                 <Row gutter={16}>
                   {configs.map(config => (
                     <Col span={24} key={config.key}>
@@ -338,6 +464,16 @@ return (
                             readOnly
                             disabled
                           />
+                        ) : config.key === 'asr_model_type' ? (
+                          // ASR模型类型选择下拉框
+                          <Select 
+                            placeholder="请选择ASR模型类型"
+                            defaultValue={config.value || 'whisper'}
+                            onChange={(value) => form.setFieldsValue({ [config.key]: value })}
+                          >
+                            <Select.Option value="whisper">Whisper模型</Select.Option>
+                            <Select.Option value="sense">Sense模型</Select.Option>
+                          </Select>
                         ) : config.key.includes('password') || config.key.includes('secret') || config.key.includes('key') ? (
                           <Input.Password 
                             placeholder={config.default || `请输入${config.key}`}

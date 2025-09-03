@@ -216,12 +216,13 @@ def generate_srt(self, video_id: str, project_id: int, user_id: int, split_files
             
         print(f"DEBUG: 获取到Celery任务ID: {celery_task_id}")
         
-        # 动态获取最新的ASR服务URL
+        # 动态获取最新的ASR服务URL和模型类型
         with get_sync_db() as db:
             from app.core.config import settings
             db_configs = SystemConfigService.get_all_configs_sync(db)
             asr_service_url = db_configs.get("asr_service_url", settings.asr_service_url)
-            logger.info(f"动态获取ASR服务URL: {asr_service_url}")
+            asr_model_type = db_configs.get("asr_model_type", settings.asr_model_type)
+            logger.info(f"动态获取ASR服务URL: {asr_service_url}, 模型类型: {asr_model_type}")
         
         _update_task_status(celery_task_id, ProcessingTaskStatus.RUNNING, 10, "开始生成字幕")
         self.update_state(state='PROGRESS', meta={'progress': 10, 'stage': ProcessingStage.GENERATE_SRT, 'message': '开始生成字幕'})
@@ -323,7 +324,8 @@ def generate_srt(self, video_id: str, project_id: int, user_id: int, split_files
                         custom_filename=custom_filename,
                         start_time=start_time,
                         end_time=end_time,
-                        asr_service_url=asr_service_url  # 传递最新的URL
+                        asr_service_url=asr_service_url,  # 传递最新的URL
+                        asr_model_type=asr_model_type  # 传递模型类型
                     )
                 )
                 
