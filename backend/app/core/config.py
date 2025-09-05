@@ -53,6 +53,10 @@ class Settings(BaseSettings):
     
     # LLM Configuration
     openrouter_api_key: Optional[str] = None
+    llm_base_url: str = "https://openrouter.ai/api/v1"
+    llm_model_type: str = "google/gemini-2.5-flash"
+    llm_temperature: float = 0.7
+    llm_max_tokens: int = 65535
     llm_system_prompt: str = '''
 角色设定与核心目标：
 

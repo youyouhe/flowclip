@@ -18,12 +18,29 @@ class LLMService:
     """LLM服务类"""
     
     def __init__(self):
-        self.base_url = "https://openrouter.ai/api/v1"
-        #self.model = "google/gemini-2.5-flash-lite"
-        self.model = "google/gemini-2.5-flash"
-        self.default_system_prompt = settings.llm_system_prompt
+        # LLM服务使用动态配置，不在初始化时固定配置值
+        logger.info("初始化LLM服务")
         
-        logger.info(f"初始化LLM服务 - 模型: {self.model}")
+    def _get_current_config(self):
+        """获取当前最新的配置"""
+        with get_sync_db_context() as db:
+            SystemConfigService.update_settings_from_db_sync(db)
+        
+        base_url = getattr(settings, 'llm_base_url', 'https://openrouter.ai/api/v1')
+        model = getattr(settings, 'llm_model_type', 'google/gemini-2.5-flash')
+        default_system_prompt = settings.llm_system_prompt
+        default_temperature = getattr(settings, 'llm_temperature', 0.7)
+        default_max_tokens = getattr(settings, 'llm_max_tokens', 65535)
+        api_key = settings.openrouter_api_key
+        
+        return {
+            'base_url': base_url,
+            'model': model,
+            'default_system_prompt': default_system_prompt,
+            'default_temperature': default_temperature,
+            'default_max_tokens': default_max_tokens,
+            'api_key': api_key
+        }
     
     async def get_available_models(self, filter_provider: Optional[str] = "google") -> List[Dict[str, Any]]:
         """
@@ -35,11 +52,10 @@ class LLMService:
         Returns:
             包含模型信息的列表
         """
-        # 动态获取最新的API密钥
-        with get_sync_db_context() as db:
-            SystemConfigService.update_settings_from_db_sync(db)
+        # 动态获取最新的配置
+        config = self._get_current_config()
         
-        api_key = settings.openrouter_api_key
+        api_key = config['api_key']
         logger.info("开始获取OpenRouter可用模型列表")
         
         # 检查API密钥
@@ -53,7 +69,7 @@ class LLMService:
         }
         
         try:
-            timeout = aiohttp.ClientTimeout(total=30)
+            timeout = aiohttp.ClientTimeout(total=60, connect=30)
             async with aiohttp.ClientSession(timeout=timeout, headers=headers) as session:
                 async with session.get(f"{self.base_url}/models") as response:
                     if response.status == 200:
@@ -82,7 +98,7 @@ class LLMService:
         self,
         messages: List[Dict[str, str]],
         system_prompt: Optional[str] = None,
-        temperature: float = 0.7,
+        temperature: Optional[float] = None,
         max_tokens: Optional[int] = None
     ) -> Dict[str, Any]:
         """
@@ -97,12 +113,11 @@ class LLMService:
         Returns:
             LLM响应结果
         """
-        # 动态获取最新的API密钥
-        with get_sync_db_context() as db:
-            SystemConfigService.update_settings_from_db_sync(db)
+        # 动态获取最新的配置
+        config = self._get_current_config()
         
-        api_key = settings.openrouter_api_key
-        logger.info(f"开始LLM对话请求 - 消息数量: {len(messages)}, 模型: {self.model}")
+        api_key = config['api_key']
+        logger.info(f"开始LLM对话请求 - 消息数量: {len(messages)}, 模型: {config['model']}")
         
         # 检查API密钥
         if not api_key or api_key == "your-key-here":
@@ -120,7 +135,7 @@ class LLMService:
         api_messages = []
         
         # 添加系统提示词
-        final_system_prompt = system_prompt or self.default_system_prompt
+        final_system_prompt = system_prompt or config['default_system_prompt']
         if final_system_prompt:
             api_messages.append({
                 "role": "system",
@@ -131,15 +146,20 @@ class LLMService:
         api_messages.extend(messages)
         
         payload = {
-            "model": self.model,
+            "model": config['model'],
             "messages": api_messages,
-            "temperature": temperature,
+            "temperature": temperature if temperature is not None else config['default_temperature'],
         }
         
-        if max_tokens:
+        if max_tokens is not None:
             payload["max_tokens"] = max_tokens
+        else:
+            payload["max_tokens"] = config['default_max_tokens']
         
-        logger.info(f"准备发送请求到: {self.base_url}/chat/completions")
+        # 使用动态获取的基础URL
+        base_url = config['base_url']
+        
+        logger.info(f"准备发送请求到: {base_url}/chat/completions")
         logger.info(f"请求头: {headers}")
         logger.info(f"请求负载: {payload}")
         
@@ -152,7 +172,7 @@ class LLMService:
                 aiohttp.TCPConnector(ssl=False, force_close=False),
             ]
             
-            timeout = aiohttp.ClientTimeout(total=60, connect=30)
+            timeout = aiohttp.ClientTimeout(total=120, connect=60)
             
             for i, connector in enumerate(connector_configs):
                 try:
@@ -167,7 +187,7 @@ class LLMService:
                         logger.info("创建HTTP会话成功，开始发送请求...")
                         
                         async with session.post(
-                            f"{self.base_url}/chat/completions",
+                            f"{base_url}/chat/completions",
                             json=payload
                         ) as response:
                             logger.info(f"收到响应 - 状态码: {response.status}")
@@ -204,7 +224,7 @@ class LLMService:
             # 尝试使用curl作为备选方案
             logger.info("尝试使用curl作为备选方案...")
             try:
-                return await self._curl_fallback(payload, headers)
+                return await self._curl_fallback(payload, headers, base_url)
             except Exception as curl_error:
                 logger.error(f"Curl备选方案也失败: {curl_error}")
                 raise Exception(f"网络请求失败: {str(e)}")
@@ -212,13 +232,13 @@ class LLMService:
             logger.error(f"LLM服务异常: {type(e).__name__}: {str(e)}")
             raise Exception(f"LLM服务异常: {str(e)}")
     
-    async def _curl_fallback(self, payload: Dict, headers: Dict) -> Dict[str, Any]:
+    async def _curl_fallback(self, payload: Dict, headers: Dict, base_url: str) -> Dict[str, Any]:
         """使用curl作为备选方案"""
         try:
             # 构建curl命令
             curl_cmd = [
                 'curl', '-s', '-X', 'POST',
-                f"{self.base_url}/chat/completions",
+                f"{base_url}/chat/completions",
                 '-H', 'Content-Type: application/json',
                 '-H', f"Authorization: {headers['Authorization']}",
                 '-H', f"HTTP-Referer: {headers['HTTP-Referer']}",
@@ -231,7 +251,7 @@ class LLMService:
             # 在事件循环中执行curl
             loop = asyncio.get_event_loop()
             result = await loop.run_in_executor(None, subprocess.run, curl_cmd, 
-                                              capture_output=True, text=True, timeout=60)
+                                              capture_output=True, text=True, timeout=120)
             
             if result.returncode != 0:
                 logger.error(f"Curl执行失败: {result.stderr}")
@@ -288,9 +308,7 @@ class LLMService:
         
         return await self.chat_completion(
             messages=messages,
-            system_prompt=system_prompt,
-            temperature=0.3,  # 分析任务使用较低温度以获得更稳定的结果
-            max_tokens=65535  # 设置为Google Gemini 2.5 Flash模型支持的最大输出tokens数
+            system_prompt=system_prompt
         )
     
     async def simple_chat(self, message: str, system_prompt: Optional[str] = None) -> Dict[str, Any]:
@@ -313,9 +331,7 @@ class LLMService:
         
         return await self.chat_completion(
             messages=messages,
-            system_prompt=system_prompt,
-            temperature=0.7,
-            max_tokens=1000
+            system_prompt=system_prompt
         )
 
 # 创建全局LLM服务实例

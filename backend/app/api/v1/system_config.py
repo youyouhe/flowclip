@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy.orm import Session
 from typing import List, Dict, Optional
-from app.core.database import get_db
+from app.core.database import get_db, get_sync_db_context
 from app.core.security import get_current_active_user
 from app.models.system_config import SystemConfig
 from app.services.system_config_service import SystemConfigService
@@ -340,6 +340,58 @@ async def check_service_status(
                     service=service_name,
                     status="offline",
                     message=f"CapCut连接失败: {str(e)}"
+                )
+                
+        elif service_name.lower() == "llm":
+            # LLM服务健康检查
+            openrouter_api_key = get_config("openrouter_api_key", settings.openrouter_api_key)
+            llm_base_url = get_config("llm_base_url", settings.llm_base_url)
+            
+            logger.info(f"LLM配置: base_url={llm_base_url}, checking API key")
+            
+            if not openrouter_api_key or openrouter_api_key == "your-key-here":
+                return ServiceStatus(
+                    service=service_name,
+                    status="offline",
+                    message="OpenRouter API密钥未设置或为占位符"
+                )
+            
+            if not llm_base_url:
+                return ServiceStatus(
+                    service=service_name,
+                    status="offline",
+                    message="LLM基础URL未设置"
+                )
+            
+            try:
+                # 测试LLM服务连接
+                from app.services.llm_service import llm_service
+                
+                # 动态更新LLM服务的配置
+                with get_sync_db_context() as db:
+                    SystemConfigService.update_settings_from_db_sync(db)
+                
+                # 重新初始化LLM服务以使用最新的配置
+                models = await llm_service.get_available_models(filter_provider="google")
+                
+                if models:
+                    return ServiceStatus(
+                        service=service_name,
+                        status="online",
+                        message=f"LLM服务正常，基础URL: {llm_base_url}，可使用 {len(models)} 个模型"
+                    )
+                else:
+                    return ServiceStatus(
+                        service=service_name,
+                        status="offline",
+                        message="无法获取模型列表，请检查API密钥、基础URL和网络连接"
+                    )
+            except Exception as e:
+                logger.error(f"LLM连接失败: {str(e)}")
+                return ServiceStatus(
+                    service=service_name,
+                    status="offline",
+                    message=f"LLM连接失败: {str(e)}"
                 )
                 
         else:

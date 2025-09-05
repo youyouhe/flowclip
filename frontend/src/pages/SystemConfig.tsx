@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Card, Row, Col, Form, Input, Button, Spin, Alert, Typography, Divider, Collapse, Tag, Select, Upload, message, Tabs } from 'antd';
-import { systemConfigAPI, capcutAPI, asrAPI } from '../services/api';
+import { systemConfigAPI, capcutAPI, asrAPI, llmAPI } from '../services/api';
 import { useAuth } from '../components/AuthProvider';
 import { UploadOutlined, PlayCircleOutlined } from '@ant-design/icons';
 
@@ -32,10 +32,34 @@ const SystemConfig: React.FC = () => {
   const [asrTestFile, setAsrTestFile] = useState<File | null>(null);
   const [asrTesting, setAsrTesting] = useState(false);
   const [asrTestResult, setAsrTestResult] = useState<string | null>(null);
+  const [llmModels, setLlmModels] = useState<Array<{id: string, name: string}>>([]);
   const { user } = useAuth();
 
   useEffect(() => {
     fetchSystemConfigs();
+  }, []);
+
+  // 获取LLM模型列表
+  useEffect(() => {
+    const fetchLlmModels = async () => {
+      try {
+        const response = await llmAPI.getAvailableModels();
+        if (response.data && response.data.models) {
+          setLlmModels(response.data.models);
+        }
+      } catch (err) {
+        console.error('获取LLM模型列表失败:', err);
+        // 如果获取失败，使用默认模型列表
+        setLlmModels([
+          { id: 'google/gemini-2.5-flash', name: 'Google: Gemini 2.5 Flash' },
+          { id: 'google/gemini-2.5-flash-lite', name: 'Google: Gemini 2.5 Flash Lite' },
+          { id: 'openai/gpt-4', name: 'OpenAI: GPT-4' },
+          { id: 'openai/gpt-3.5-turbo', name: 'OpenAI: GPT-3.5 Turbo' }
+        ]);
+      }
+    };
+
+    fetchLlmModels();
   }, []);
 
   // 页面加载时自动检查所有服务状态
@@ -195,6 +219,24 @@ const SystemConfig: React.FC = () => {
       }
       groups[config.category].push(config);
     });
+    
+    // 对"其他服务配置"类别中的ASR相关配置项进行自定义排序
+    // 确保asr_model_type在asr_service_url之前显示
+    if (groups['其他服务配置']) {
+      groups['其他服务配置'].sort((a, b) => {
+        // 如果是asr_model_type，排在asr_service_url前面
+        if (a.key === 'asr_model_type' && b.key === 'asr_service_url') {
+          return -1;
+        }
+        // 如果是asr_service_url，排在asr_model_type后面
+        if (a.key === 'asr_service_url' && b.key === 'asr_model_type') {
+          return 1;
+        }
+        // 其他情况保持原有顺序
+        return 0;
+      });
+    }
+    
     return groups;
   };
 
@@ -234,7 +276,8 @@ const serviceCategoryMap: Record<string, string> = {
   'redis': 'Redis配置',
   'minio': 'MinIO配置',
   'asr': '其他服务配置',
-  'capcut': '其他服务配置'
+  'capcut': '其他服务配置',
+  'llm': 'LLM配置'
 };
 
 // 定义服务显示名称
@@ -243,7 +286,8 @@ const serviceDisplayNames: Record<string, string> = {
   'redis': 'Redis',
   'minio': 'MinIO',
   'asr': 'ASR',
-  'capcut': 'CapCut'
+  'capcut': 'CapCut',
+  'llm': 'LLM'
 };
 
 // 获取服务状态显示组件
@@ -352,16 +396,32 @@ return (
                 } 
                 key={category}
               >
-                {category === '其他服务配置' && (
+                {(category === '其他服务配置' || category === 'LLM配置') && (
                   <div style={{ marginBottom: '24px', padding: '16px', backgroundColor: '#f0f2f5', borderRadius: '8px' }}>
-                    <Title level={4} style={{ marginTop: 0, marginBottom: '16px' }}>
-                      <PlayCircleOutlined /> ASR服务测试
-                    </Title>
-                    <Row gutter={[16, 16]}>
-                      <Col span={24}>
-                        <Text strong>上传音频文件进行测试:</Text>
-                      </Col>
-                      <Col span={12}>
+                    {category === '其他服务配置' && (
+                      <Title level={4} style={{ marginTop: 0, marginBottom: '16px' }}>
+                        <PlayCircleOutlined /> ASR服务测试
+                      </Title>
+                    )}
+                    {category === 'LLM配置' && (
+                      <>
+                        <Title level={4} style={{ marginTop: 0, marginBottom: '16px' }}>
+                          <PlayCircleOutlined /> LLM服务状态
+                        </Title>
+                        <Row gutter={[16, 16]}>
+                          <Col span={24}>
+                            <Text>LLM服务配置状态将在此显示</Text>
+                          </Col>
+                        </Row>
+                      </>
+                    )}
+                    {category === '其他服务配置' && (
+                      <>
+                        <Row gutter={[16, 16]}>
+                          <Col span={24}>
+                            <Text strong>上传音频文件进行测试:</Text>
+                          </Col>
+                          <Col span={12}>
                         <Upload
                           accept=".wav,.mp3,.flac,.aac,.ogg,.webm,.m4a,.opus,audio/*"
                           beforeUpload={(file) => {
@@ -438,6 +498,8 @@ return (
                         </Col>
                       )}
                     </Row>
+                      </>
+                    )}
                   </div>
                 )}
                 <Row gutter={16}>
@@ -449,7 +511,7 @@ return (
                             {config.key} 
                             {config.default && (
                               <Text type="secondary" className="ml-2">
-                                (默认: {config.default})
+                                (默认: {config.key === 'llm_system_prompt' && config.default.length > 200 ? config.default.substring(0, 200) + '...' : config.default})
                               </Text>
                             )}
                           </span>
@@ -474,6 +536,35 @@ return (
                             <Select.Option value="whisper">Whisper模型</Select.Option>
                             <Select.Option value="sense">Sense模型</Select.Option>
                           </Select>
+                        ) : config.key === 'llm_model_type' ? (
+                          // LLM模型类型支持手动输入的输入框
+                          <Input 
+                            placeholder={config.default || '请输入LLM模型类型，如 google/gemini-2.5-flash'}
+                            defaultValue={config.value}
+                          />
+                        ) : config.key === 'llm_system_prompt' ? (
+                          // LLM系统提示词使用文本区域
+                          <Input.TextArea 
+                            rows={8}
+                            placeholder={config.default || `请输入${config.key}`}
+                            showCount
+                            maxLength={5000}
+                          />
+                        ) : config.key === 'llm_base_url' ? (
+                          // LLM基础URL使用URL输入框
+                          <Input 
+                            placeholder={config.default || `请输入${config.key}`}
+                            addonBefore="https://"
+                          />
+                        ) : config.key === 'llm_temperature' || config.key === 'llm_max_tokens' ? (
+                          // LLM数值参数使用数字输入框
+                          <Input 
+                            type="number"
+                            placeholder={config.default || `请输入${config.key}`}
+                            step={config.key === 'llm_temperature' ? "0.1" : "1"}
+                            min={config.key === 'llm_temperature' ? "0" : "1"}
+                            max={config.key === 'llm_temperature' ? "1" : "100000"}
+                          />
                         ) : config.key.includes('password') || config.key.includes('secret') || config.key.includes('key') ? (
                           <Input.Password 
                             placeholder={config.default || `请输入${config.key}`}

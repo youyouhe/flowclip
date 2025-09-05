@@ -35,6 +35,13 @@ class SystemConfigService:
         "openrouter_api_key": "openrouter_api_key",
         "capcut_api_url": "capcut_api_url",
         "capcut_draft_folder": "capcut_draft_folder",
+        
+        # LLM配置
+        "llm_base_url": "llm_base_url",
+        "llm_model_type": "llm_model_type",
+        "llm_system_prompt": "llm_system_prompt",
+        "llm_temperature": "llm_temperature",
+        "llm_max_tokens": "llm_max_tokens",
     }
     
     @staticmethod
@@ -184,7 +191,14 @@ class SystemConfigService:
             # 其他服务配置
             {"key": "asr_service_url", "label": "ASR服务URL", "category": "其他服务配置", "default": settings.asr_service_url},
             {"key": "asr_model_type", "label": "ASR模型类型", "category": "其他服务配置", "default": getattr(settings, 'asr_model_type', 'whisper'), "description": "选择ASR模型类型：whisper 或 sense"},
-            {"key": "openrouter_api_key", "label": "OpenRouter API密钥", "category": "其他服务配置", "default": settings.openrouter_api_key or "", "sensitive": True},
             {"key": "capcut_api_url", "label": "CapCut API URL", "category": "其他服务配置", "default": settings.capcut_api_url},
             {"key": "capcut_draft_folder", "label": "CapCut草稿文件夹路径", "category": "其他服务配置", "default": settings.capcut_draft_folder or "", "description": "CapCut草稿文件夹的完整路径"},
+            
+            # LLM配置
+            {"key": "openrouter_api_key", "label": "OpenRouter API密钥", "category": "LLM配置", "default": settings.openrouter_api_key or "", "sensitive": True},
+            {"key": "llm_base_url", "label": "LLM服务基础URL", "category": "LLM配置", "default": getattr(settings, 'llm_base_url', 'https://openrouter.ai/api/v1'), "description": "LLM服务的基础URL，例如OpenRouter API的URL"},
+            {"key": "llm_model_type", "label": "LLM模型类型", "category": "LLM配置", "default": getattr(settings, 'llm_model_type', 'google/gemini-2.5-flash'), "description": "选择LLM模型类型：google/gemini-2.5-flash, google/gemini-2.5-flash-lite, openai/gpt-4, openai/gpt-3.5-turbo"},
+            {"key": "llm_system_prompt", "label": "LLM系统提示词", "category": "LLM配置", "default": settings.llm_system_prompt, "description": "LLM系统提示词，用于指导AI如何处理视频内容"},
+            {"key": "llm_temperature", "label": "LLM温度参数", "category": "LLM配置", "default": str(getattr(settings, 'llm_temperature', '0.7')), "description": "控制LLM输出随机性的参数，范围0-1，值越大越随机"},
+            {"key": "llm_max_tokens", "label": "LLM最大令牌数", "category": "LLM配置", "default": str(getattr(settings, 'llm_max_tokens', '65535')), "description": "LLM生成的最大令牌数，影响回答长度"},
         ]

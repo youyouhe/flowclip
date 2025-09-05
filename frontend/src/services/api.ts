@@ -174,13 +174,17 @@ export const llmAPI = {
       video_id: videoId,
       system_prompt: systemPrompt,
       use_srt_context: useSrtContext
+    }, {
+      timeout: 120000, // 2分钟超时
     }),
   updateSystemPrompt: (systemPrompt: string) =>
     api.post('/llm/system-prompt', { system_prompt: systemPrompt }),
   getCurrentSystemPrompt: () =>
     api.get('/llm/system-prompt'),
   getAvailableModels: () =>
-    api.get('/llm/models'),
+    api.get('/llm/models', {
+      timeout: 60000, // 1分钟超时
+    }),
 };
 
 // 视频切片相关API
