@@ -346,10 +346,14 @@ def export_slice_to_capcut(self, slice_id: int, draft_folder: str, user_id: int 
                         
                         # 添加子切片标题文本（与水波纹特效同步显示，不带年月信息）
                         if sub_slice.cover_title:
-                            print(f"DEBUG: 添加子切片标题 - 文本: {sub_slice.cover_title}, 时间轴起始: {current_time}秒, 时间轴结束: {current_time + 3}秒")
+                            # 在标点符号?和:后面添加换行符
+                            formatted_sub_title = sub_slice.cover_title
+                            formatted_sub_title = formatted_sub_title.replace("？", "？\n")
+                            formatted_sub_title = formatted_sub_title.replace("：", "：\n")
+                            print(f"DEBUG: 添加子切片标题 - 文本: {formatted_sub_title}, 时间轴起始: {current_time}秒, 时间轴结束: {current_time + 3}秒")
                             text_result = asyncio.run(capcut_service.add_text(
                                 draft_id=draft_id,
-                                text=sub_slice.cover_title,
+                                text=formatted_sub_title,
                                 start=current_time,
                                 end=current_time + 3,
                                 font="挥墨体",
@@ -558,7 +562,11 @@ def export_slice_to_capcut(self, slice_id: int, draft_folder: str, user_id: int 
             # 添加覆盖文本（带年月信息）
             from datetime import datetime
             current_date = datetime.now().strftime("%Y-%m-%d")
-            cover_title_with_date = f"{slice_obj.cover_title}({current_date})"
+            # 在标点符号?和:后面添加换行符
+            formatted_title = slice_obj.title
+            formatted_title = formatted_title.replace("？", "？\n")
+            formatted_title = formatted_title.replace("：", "：\n")
+            cover_title_with_date = f"{formatted_title}({current_date})"
             print(f"DEBUG: 添加切片覆盖标题 - 文本: {cover_title_with_date}, 时间轴起始: 0秒, 时间轴结束: {current_time}秒")
             text_result = asyncio.run(capcut_service.add_text(
                 draft_id=draft_id,
