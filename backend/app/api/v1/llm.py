@@ -18,7 +18,10 @@ import logging
 # 设置日志
 logger = logging.getLogger(__name__)
 
-router = APIRouter()
+router = APIRouter(
+    tags=["llm"],
+    responses={404: {"description": "未找到"}},
+)
 
 class ChatRequest(BaseModel):
     """聊天请求模型"""
@@ -43,13 +46,57 @@ class SystemPromptResponse(BaseModel):
     message: str
     current_prompt: str
 
-@router.post("/chat", response_model=ChatResponse)
+@router.post("/chat", response_model=ChatResponse,
+    summary="与LLM对话",
+    description="与大型语言模型进行对话。支持使用视频内容作为上下文进行分析，也可以进行简单的对话。",
+    responses={
+        200: {
+            "description": "成功返回LLM响应",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "response": "这是LLM的回复内容",
+                        "usage": {"prompt_tokens": 10, "completion_tokens": 20, "total_tokens": 30},
+                        "model": "google/gemini-2.5-flash",
+                        "video_context_used": True
+                    }
+                }
+            }
+        },
+        404: {"description": "视频未找到"},
+        500: {"description": "服务器内部错误"}
+    }
+)
 async def chat_with_llm(
     request: ChatRequest,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    """与LLM对话"""
+    """
+    与LLM对话
+    
+    与大型语言模型进行对话。支持使用视频内容作为上下文进行分析，也可以进行简单的对话。
+    如果请求中包含video_id且use_srt_context为True，则会使用视频的SRT字幕内容作为上下文。
+    
+    Args:
+        request (ChatRequest): 聊天请求参数
+            - message (str): 用户的聊天消息
+            - video_id (Optional[int]): 视频ID，用于视频内容分析
+            - system_prompt (Optional[str]): 系统提示词
+            - use_srt_context (bool): 是否使用SRT字幕内容作为上下文
+        current_user (User): 当前认证用户
+        db (AsyncSession): 数据库会话依赖
+        
+    Returns:
+        ChatResponse: LLM响应结果
+            - response (str): LLM的回复内容
+            - usage (Optional[Dict[str, Any]]): 令牌使用情况
+            - model (str): 使用的模型名称
+            - video_context_used (bool): 是否使用了视频上下文
+            
+    Raises:
+        HTTPException: 当视频未找到或LLM对话失败时抛出异常
+    """
     
     logger.info(f"收到LLM聊天请求 - 用户: {current_user.id}, 消息: {request.message[:50]}...")
     logger.info(f"请求参数 - video_id: {request.video_id}, use_srt_context: {request.use_srt_context}")
@@ -161,12 +208,46 @@ async def chat_with_llm(
             detail=f"LLM对话失败: {str(e)}"
         )
 
-@router.post("/system-prompt", response_model=SystemPromptResponse)
+@router.post("/system-prompt", response_model=SystemPromptResponse,
+    summary="更新系统提示词",
+    description="更新LLM对话的系统提示词。该设置仅在当前会话中生效。",
+    responses={
+        200: {
+            "description": "成功更新系统提示词",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "message": "系统提示词已更新，将在下次对话中生效",
+                        "current_prompt": "你是一个AI助手..."
+                    }
+                }
+            }
+        },
+        500: {"description": "服务器内部错误"}
+    }
+)
 async def update_system_prompt(
     request: SystemPromptRequest,
     current_user: User = Depends(get_current_user)
 ):
-    """更新系统提示词（仅用于当前会话）"""
+    """
+    更新系统提示词（仅用于当前会话）
+    
+    更新LLM对话的系统提示词。该设置仅在当前会话中生效。
+    
+    Args:
+        request (SystemPromptRequest): 系统提示词请求参数
+            - system_prompt (str): 新的系统提示词
+        current_user (User): 当前认证用户
+        
+    Returns:
+        SystemPromptResponse: 更新结果
+            - message (str): 操作结果消息
+            - current_prompt (str): 当前设置的提示词（截取前100个字符）
+            
+    Raises:
+        HTTPException: 当更新失败时抛出异常
+    """
     
     try:
         # 这里只是返回成功消息，实际的系统提示词在每个请求中传递
@@ -182,14 +263,43 @@ async def update_system_prompt(
             detail=f"更新系统提示词失败: {str(e)}"
         )
 
-@router.get("/system-prompt")
+@router.get("/system-prompt",
+    summary="获取当前系统提示词",
+    description="获取当前设置的LLM系统提示词。",
+    responses={
+        200: {
+            "description": "成功返回当前系统提示词",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "system_prompt": "你是一个AI助手..."
+                    }
+                }
+            }
+        },
+        500: {"description": "服务器内部错误"}
+    }
+)
 async def get_current_system_prompt():
-    """获取当前系统提示词"""
+    """
+    获取当前系统提示词
+    
+    获取当前设置的LLM系统提示词。
+    
+    Returns:
+        dict: 包含当前系统提示词的字典
+            - system_prompt (str): 当前的系统提示词
+            
+    Raises:
+        HTTPException: 当获取失败时抛出异常
+    """
     
     try:
         from app.services.llm_service import llm_service
+        # 获取当前配置而不是直接访问不存在的属性
+        config = llm_service._get_current_config()
         return {
-            "system_prompt": llm_service.default_system_prompt
+            "system_prompt": config['default_system_prompt']
         }
         
     except Exception as e:
@@ -198,9 +308,46 @@ async def get_current_system_prompt():
             detail=f"获取系统提示词失败: {str(e)}"
         )
 
-@router.get("/models")
+@router.get("/models",
+    summary="获取可用的模型列表",
+    description="获取LLM服务中可用的模型列表。该接口会从OpenRouter API动态获取Google模型列表，如果获取失败则返回默认模型。",
+    responses={
+        200: {
+            "description": "成功返回模型列表",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "models": [
+                            {
+                                "id": "google/gemini-2.5-flash",
+                                "name": "Gemini 2.5 Flash",
+                                "description": "默认使用的Gemini模型"
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        500: {"description": "服务器内部错误"}
+    }
+)
 async def get_available_models():
-    """获取可用的模型列表"""
+    """
+    获取可用的模型列表
+    
+    获取LLM服务中可用的模型列表。该接口会从OpenRouter API动态获取Google模型列表，
+    如果获取失败则返回默认模型。
+    
+    Returns:
+        dict: 包含模型列表的字典
+            - models (List[Dict]): 模型信息列表
+                - id (str): 模型ID
+                - name (str): 模型名称
+                - description (str): 模型描述
+                
+    Raises:
+        HTTPException: 当获取模型列表失败时抛出异常
+    """
     
     try:
         # 从OpenRouter API动态获取Google模型列表
