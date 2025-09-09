@@ -19,16 +19,65 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-@router.post("/upload")
+@router.post("/upload", summary="上传视频文件", description="上传本地视频文件到指定项目中")
 async def upload_video(
-    title: str = Form(...),
-    description: str = Form(""),
-    project_id: int = Form(...),
-    file: UploadFile = File(...),
+    title: str = Form(..., description="视频标题"),
+    description: str = Form("", description="视频描述"),
+    project_id: int = Form(..., description="目标项目ID"),
+    file: UploadFile = File(..., description="要上传的视频文件"),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    """上传视频文件，支持后台上传"""
+    """上传视频文件，支持后台上传
+    
+    上传本地视频文件到指定项目中，支持多种视频格式，文件大小限制为6GB。
+    
+    Args:
+        title (str): 视频标题
+        description (str): 视频描述
+        project_id (int): 目标项目ID
+        file (UploadFile): 要上传的视频文件
+        current_user (User): 当前认证用户依赖
+        db (AsyncSession): 数据库会话依赖
+    
+    Returns:
+        dict: 上传结果信息
+            - video (VideoResponse): 视频信息
+                - id (int): 视频ID
+                - project_id (int): 项目ID
+                - title (str): 视频标题
+                - description (Optional[str]): 视频描述
+                - url (Optional[str]): 视频URL
+                - filename (Optional[str]): 视频文件名
+                - file_path (Optional[str]): 视频文件路径
+                - duration (Optional[float]): 视频时长（秒）
+                - file_size (Optional[int]): 文件大小（字节）
+                - thumbnail_url (Optional[str]): 缩略图URL
+                - status (str): 视频处理状态
+                - download_progress (float): 下载进度（0-100）
+                - created_at (datetime): 创建时间
+                - updated_at (Optional[datetime]): 更新时间
+                - project_name (str): 项目名称
+            - task_id (str): Celery任务ID
+            - processing_task_id (int): 处理任务ID
+            - message (str): 上传消息
+            - status (str): 上传状态
+    
+    Raises:
+        HTTPException:
+            - 400: 不支持的文件类型或文件过大
+            - 404: 项目不存在
+            - 422: 请求参数验证失败
+            - 500: 文件保存或任务启动失败
+    
+    Examples:
+        上传视频: POST /api/v1/videos/upload
+        Form Data:
+        - title: 我的视频
+        - description: 这是一个视频
+        - project_id: 1
+        - file: [视频文件]
+    """
     logger.info(f"开始视频上传 - user_id: {current_user.id}, project_id: {project_id}, filename: {file.filename}")
     
     try:

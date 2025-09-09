@@ -22,7 +22,10 @@ from app.models.processing_task import ProcessingTask
 # 避免循环导入 - 导入Celery任务对象
 from app.tasks.video_tasks import export_slice_to_capcut as celery_export_slice_to_capcut
 
-router = APIRouter(tags=["capcut"])
+router = APIRouter(
+    tags=["capcut"],
+    responses={404: {"description": "未找到"}},
+)
 
 # CapCut API 服务器地址
 CAPCUT_API_BASE_URL = settings.capcut_api_url
@@ -513,13 +516,52 @@ class CapCutServiceAPI:
 
 capcut_service = CapCutServiceAPI()
 
-@router.post("/export-slice/{slice_id}")
+@router.post("/export-slice/{slice_id}",
+    summary="导出视频切片到CapCut",
+    description="将指定的视频切片导出到CapCut应用。该操作会启动一个异步Celery任务来处理导出过程。",
+    responses={
+        200: {
+            "description": "成功启动导出任务",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "success": True,
+                        "message": "CapCut导出任务已启动",
+                        "task_id": "string",
+                        "processing_task_id": 1
+                    }
+                }
+            }
+        },
+        404: {"description": "切片不存在"},
+        500: {"description": "服务器内部错误"}
+    }
+)
 async def export_slice_to_capcut(
     slice_id: int,
     request: ExportSliceRequest,
     db: AsyncSession = Depends(get_db)
 ):
-    """导出切片到CapCut (异步Celery任务)"""
+    """
+    导出视频切片到CapCut (异步Celery任务)
+    
+    将指定的视频切片导出到CapCut应用。该操作会启动一个异步Celery任务来处理导出过程。
+    
+    Args:
+        slice_id (int): 视频切片的ID
+        request (ExportSliceRequest): 导出请求参数，包含目标文件夹路径
+        db (AsyncSession): 数据库会话依赖
+        
+    Returns:
+        dict: 导出任务启动结果
+            - success (bool): 是否成功启动
+            - message (str): 操作结果消息
+            - task_id (str): Celery任务ID
+            - processing_task_id (int): 处理任务ID
+            
+    Raises:
+        HTTPException: 当切片不存在或启动任务失败时抛出异常
+    """
     # 添加详细的调试日志
     logger.info(f"收到CapCut导出请求 - slice_id: {slice_id}, request: {request}")
     
@@ -579,9 +621,30 @@ async def export_slice_to_capcut(
         await db.rollback()
         raise HTTPException(status_code=500, detail=f"启动导出任务失败: {str(e)}")
 
-@router.get("/proxy-resource/{resource_path:path}")
+@router.get("/proxy-resource/{resource_path:path}",
+    summary="代理MinIO资源",
+    description="为CapCut服务器提供可访问的MinIO资源代理，允许CapCut服务访问存储在MinIO中的资源文件。",
+    responses={
+        200: {"description": "成功返回资源内容"},
+        404: {"description": "资源未找到"},
+        500: {"description": "服务器内部错误"}
+    }
+)
 async def proxy_minio_resource(resource_path: str):
-    """为CapCut服务器提供可访问的MinIO资源代理"""
+    """
+    为CapCut服务器提供可访问的MinIO资源代理
+    
+    允许CapCut服务访问存储在MinIO中的资源文件。该端点会从MinIO获取指定路径的资源并直接返回给请求方。
+    
+    Args:
+        resource_path (str): MinIO中的资源路径
+        
+    Returns:
+        Response: 包含资源内容的HTTP响应，带有适当的内容类型和缓存头
+        
+    Raises:
+        HTTPException: 当资源未找到或访问失败时抛出异常
+    """
     try:
         logger.info(f"代理MinIO资源请求: {resource_path}")
         
@@ -621,9 +684,39 @@ async def proxy_minio_resource(resource_path: str):
         raise HTTPException(status_code=500, detail=f"代理资源失败: {str(e)}")
 
 
-@router.get("/status")
+@router.get("/status",
+    summary="检查CapCut服务状态",
+    description="通过向CapCut服务发送健康检查请求来验证服务是否在线。该端点会尝试连接到配置的CapCut服务URL并检查其健康状态。",
+    responses={
+        200: {
+            "description": "成功返回CapCut服务状态",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "status": "online"
+                    }
+                }
+            }
+        },
+        503: {"description": "服务不可用"}
+    }
+)
 async def get_capcut_status():
-    """获取CapCut服务状态"""
+    """
+    获取CapCut服务状态
+    
+    通过向CapCut服务发送健康检查请求来验证服务是否在线。
+    该端点会尝试连接到配置的CapCut服务URL并检查其健康状态。
+    
+    Returns:
+        dict: 包含服务状态的字典
+            - status (str): 服务状态，"online"表示在线，"offline"表示离线
+            
+    Example:
+        {
+            "status": "online"
+        }
+    """
     try:
         # 从数据库获取最新的配置
         from app.core.database import get_db

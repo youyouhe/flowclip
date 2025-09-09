@@ -205,6 +205,45 @@ services:
         max-size: "20m"
         max-file: "2"
 
+  # MCP Server
+  mcp-server:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: flowclip-mcp-server
+    ports:
+      - "8002:8002"  # Expose MCP server port
+    environment:
+      - DATABASE_URL=mysql+aiomysql://youtube_user:youtube_password@mysql:3306/youtube_slicer?charset=utf8mb4
+      - REDIS_URL=redis://redis:6379
+      - MINIO_ENDPOINT=minio:9000
+      - MINIO_PUBLIC_ENDPOINT=${PUBLIC_IP}:9000
+      - MINIO_ACCESS_KEY=i4W5jAG1j9w2MheEQ7GmYEotBrkAaIPSmLRQa6Iruc0=
+      - MINIO_SECRET_KEY=TcFA+qUwvCnikxANs7k/HX7oZz2zEjLo3RakL1kZt5k=
+      - MINIO_BUCKET_NAME=youtube-videos
+      - SECRET_KEY=your-secret-key-change-in-production
+      - DEBUG=true
+      - FRONTEND_URL=http://frontend:3000
+    depends_on:
+      - mysql
+      - redis
+      - minio
+      - backend
+    volumes:
+      - ./backend:/app
+      - ./.env:/app/.env:ro
+      - media_files:/app/media
+      - /tmp/cookies:/tmp/cookies
+      - /tmp:/tmp
+    networks:
+      - flowclip-network
+    command: python run_mcp_server.py
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "2"
+
 volumes:
   redis_data:
   minio_data:

@@ -17,13 +17,37 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-@router.post("/{video_id}/extract-audio")
+@router.post("/{video_id}/extract-audio", summary="提取视频音频", description="从指定视频中提取音频文件")
 async def extract_audio_endpoint(
     video_id: int,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    """提取视频音频"""
+    """提取视频音频
+    
+    从指定视频中提取音频文件，生成WAV格式的音频文件并存储到MinIO中。
+    
+    Args:
+        video_id (int): 视频ID
+        current_user (User): 当前认证用户依赖
+        db (AsyncSession): 数据库会话依赖
+    
+    Returns:
+        dict: 音频提取任务信息
+            - task_id (str): Celery任务ID
+            - processing_task_id (int): 处理任务ID
+            - message (str): 任务启动消息
+            - status (str): 任务状态
+    
+    Raises:
+        HTTPException:
+            - 404: 视频不存在或无权限访问
+            - 400: 视频文件不可用
+            - 500: 启动音频提取任务失败
+    
+    Examples:
+        提取音频: POST /api/v1/videos/1/extract-audio
+    """
     from app.services.minio_client import minio_service
     
     logger.info(f"开始提取音频 - video_id: {video_id}, user_id: {current_user.id}")
@@ -91,13 +115,36 @@ async def extract_audio_endpoint(
     return response_data
 
 
-@router.post("/{video_id}/generate-srt")
+@router.post("/{video_id}/generate-srt", summary="生成SRT字幕文件", description="为指定视频生成SRT字幕文件")
 async def generate_srt_endpoint(
     video_id: int,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    """生成SRT字幕文件"""
+    """生成SRT字幕文件
+    
+    为指定视频生成SRT字幕文件，使用ASR服务进行语音识别并生成字幕。
+    
+    Args:
+        video_id (int): 视频ID
+        current_user (User): 当前认证用户依赖
+        db (AsyncSession): 数据库会话依赖
+    
+    Returns:
+        dict: 字幕生成任务信息
+            - task_id (str): Celery任务ID
+            - processing_task_id (int): 处理任务ID
+            - message (str): 任务启动消息
+            - status (str): 任务状态
+    
+    Raises:
+        HTTPException:
+            - 404: 视频不存在或无权限访问
+            - 500: 启动字幕生成任务失败
+    
+    Examples:
+        生成字幕: POST /api/v1/videos/1/generate-srt
+    """
     logger.info(f"开始生成字幕 - video_id: {video_id}, user_id: {current_user.id}")
     
     # 验证视频属于当前用户

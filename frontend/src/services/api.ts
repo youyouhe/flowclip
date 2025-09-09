@@ -64,14 +64,9 @@ api.interceptors.response.use(
 // 认证相关API
 export const authAPI = {
   login: (username: string, password: string) => {
-    const formData = new URLSearchParams();
-    formData.append('username', username);
-    formData.append('password', password);
-    
-    return api.post('/auth/login', formData, {
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
+    return api.post('/auth/login', {
+      username,
+      password,
     });
   },
   register: (userData: any) =>
@@ -331,6 +326,18 @@ export const resourceAPI = {
     api.post('/resources/upload', formData),
   toggleResourceActiveStatus: (id: number, IsActive: boolean) =>
     api.put(`/resources/${id}/activate`, { is_active: IsActive }),
+  
+  // 标签管理
+  getResourceTags: (params?: any) =>
+    api.get('/resources/tags', { params }),
+  createResourceTag: (data: any) =>
+    api.post('/resources/tags', data),
+  deleteResourceTag: (id: number) =>
+    api.delete(`/resources/tags/${id}`),
+  getResourceViewUrl: (id: number) =>
+    api.get(`/resources/${id}/view-url`),
+  getResourceDownloadUrl: (id: number) =>
+    api.get(`/resources/${id}/download-url`),
 };
 
 // 系统配置相关API

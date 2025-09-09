@@ -101,16 +101,58 @@ async def download_video_task(
                 logger.warning(f"清理cookie文件失败: {cleanup_error}")
 
 
-@router.post("/download", response_model=VideoResponse)
+@router.post("/download", response_model=VideoResponse, summary="下载YouTube视频", description="下载指定URL的YouTube视频到项目中")
 async def download_video(
-    url: str = Form(...),
-    project_id: int = Form(...),
-    quality: str = 'best',  # 新增质量参数
-    cookies_file: UploadFile = File(None),  # 新增cookie文件上传
+    url: str = Form(..., description="YouTube视频URL"),
+    project_id: int = Form(..., description="目标项目ID"),
+    quality: str = Form('best', description="视频质量 (best, 720p, 480p等)"),
+    cookies_file: UploadFile = File(None, description="可选的cookies文件，用于访问需要登录的视频"),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    """下载YouTube视频"""
+    """下载YouTube视频
+    
+    下载指定URL的YouTube视频到项目中，支持指定视频质量和使用cookies文件访问需要登录的视频。
+    
+    Args:
+        url (str): YouTube视频URL
+        project_id (int): 目标项目ID
+        quality (str): 视频质量，可选值: "best", "720p", "480p"等，默认为"best"
+        cookies_file (UploadFile): 可选的cookies文件，用于访问需要登录的视频
+        current_user (User): 当前认证用户依赖
+        db (AsyncSession): 数据库会话依赖
+    
+    Returns:
+        VideoResponse: 创建的视频信息
+            - id (int): 视频ID
+            - project_id (int): 项目ID
+            - title (str): 视频标题
+            - description (Optional[str]): 视频描述
+            - url (Optional[str]): 视频URL
+            - filename (Optional[str]): 视频文件名
+            - file_path (Optional[str]): 视频文件路径
+            - duration (Optional[float]): 视频时长（秒）
+            - file_size (Optional[int]): 文件大小（字节）
+            - thumbnail_url (Optional[str]): 缩略图URL
+            - status (str): 视频处理状态
+            - download_progress (float): 下载进度（0-100）
+            - created_at (datetime): 创建时间
+            - updated_at (Optional[datetime]): 更新时间
+            - project_name (str): 项目名称
+    
+    Raises:
+        HTTPException:
+            - 400: 无效的视频URL或文件类型
+            - 404: 项目不存在
+            - 422: 请求参数验证失败
+    
+    Examples:
+        下载视频: POST /api/v1/videos/download
+        Form Data:
+        - url: https://www.youtube.com/watch?v=xxxxxx
+        - project_id: 1
+        - quality: 720p
+    """
     # 验证项目属于当前用户
     stmt = select(Project).where(
         Project.id == project_id,

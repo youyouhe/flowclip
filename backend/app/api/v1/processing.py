@@ -18,7 +18,46 @@ router = APIRouter()
 
 # === 日志管理 API 端点 ===
 
-@router.get("/logs", response_model=Dict[str, Any])
+@router.get("/logs",
+    summary="获取处理任务日志列表",
+    description="获取处理任务日志列表，支持多种过滤条件。可以按视频ID、任务ID、任务类型、状态、时间范围等进行过滤。",
+    responses={
+        200: {
+            "description": "成功返回处理任务日志列表",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "logs": [
+                            {
+                                "id": 1,
+                                "task_id": 1,
+                                "task_name": "视频下载任务",
+                                "task_type": "download",
+                                "video_id": 1,
+                                "video_title": "示例视频",
+                                "old_status": "pending",
+                                "new_status": "completed",
+                                "message": "任务完成",
+                                "details": {},
+                                "created_at": "2023-01-01T00:00:00",
+                                "level": "INFO"
+                            }
+                        ],
+                        "pagination": {
+                            "total": 1,
+                            "page": 1,
+                            "page_size": 50,
+                            "total_pages": 1
+                        },
+                        "filters": {}
+                    }
+                }
+            }
+        },
+        404: {"description": "视频不存在或无权限访问"},
+        500: {"description": "服务器内部错误"}
+    }
+)
 async def get_processing_logs(
     video_id: Optional[int] = Query(None, description="视频ID过滤"),
     task_id: Optional[int] = Query(None, description="任务ID过滤"),
@@ -33,7 +72,41 @@ async def get_processing_logs(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    """获取处理任务日志列表"""
+    """
+    获取处理任务日志列表
+    
+    获取处理任务日志列表，支持多种过滤条件。可以按视频ID、任务ID、任务类型、状态、时间范围等进行过滤。
+    支持分页和搜索功能。
+    
+    Args:
+        video_id (Optional[int]): 视频ID过滤
+        task_id (Optional[int]): 任务ID过滤
+        task_type (Optional[str]): 任务类型过滤
+        status (Optional[str]): 状态过滤
+        start_date (Optional[datetime]): 开始日期
+        end_date (Optional[datetime]): 结束日期
+        level (Optional[str]): 日志级别过滤，默认为"INFO"
+        search (Optional[str]): 搜索关键词
+        page (int): 页码，默认为1
+        page_size (int): 每页大小，默认为50，最大1000
+        current_user (User): 当前认证用户（依赖注入）
+        db (AsyncSession): 数据库会话（依赖注入）
+        
+    Returns:
+        Dict[str, Any]: 包含日志列表、分页信息和过滤条件的字典
+            - logs (List[Dict]): 日志列表
+            - pagination (Dict): 分页信息
+                - total (int): 总记录数
+                - page (int): 当前页码
+                - page_size (int): 每页大小
+                - total_pages (int): 总页数
+            - filters (Dict): 过滤条件
+            
+    Raises:
+        HTTPException:
+            - 404: 当指定的视频不存在或无权限访问时
+            - 500: 当获取日志失败时
+    """
     
     try:
         # 构建查询条件
@@ -184,13 +257,55 @@ async def get_processing_logs(
             detail=f"获取日志失败: {str(e)}"
         )
 
-@router.get("/logs/task/{task_id}", response_model=List[ProcessingTaskLogResponse])
+@router.get("/logs/task/{task_id}",
+    summary="获取特定任务的所有日志",
+    description="获取特定处理任务的所有日志记录。",
+    responses={
+        200: {
+            "description": "成功返回任务日志列表",
+            "content": {
+                "application/json": {
+                    "example": [
+                        {
+                            "id": 1,
+                            "task_id": 1,
+                            "old_status": "pending",
+                            "new_status": "completed",
+                            "message": "任务完成",
+                            "details": {},
+                            "created_at": "2023-01-01T00:00:00"
+                        }
+                    ]
+                }
+            }
+        },
+        404: {"description": "任务不存在或无权限访问"},
+        500: {"description": "服务器内部错误"}
+    }
+)
 async def get_task_logs(
     task_id: int,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    """获取特定任务的所有日志"""
+    """
+    获取特定任务的所有日志
+    
+    获取特定处理任务的所有日志记录。
+    
+    Args:
+        task_id (int): 任务ID
+        current_user (User): 当前认证用户（依赖注入）
+        db (AsyncSession): 数据库会话（依赖注入）
+        
+    Returns:
+        List[ProcessingTaskLogResponse]: 任务日志列表
+        
+    Raises:
+        HTTPException:
+            - 404: 当指定的任务不存在或无权限访问时
+            - 500: 当获取任务日志失败时
+    """
     
     try:
         # 验证任务权限
@@ -224,13 +339,86 @@ async def get_task_logs(
             detail=f"获取任务日志失败: {str(e)}"
         )
 
-@router.get("/logs/video/{video_id}", response_model=Dict[str, Any])
+@router.get("/logs/video/{video_id}",
+    summary="获取视频的日志汇总",
+    description="获取特定视频的所有处理任务日志汇总信息，包括任务统计和最近日志。",
+    responses={
+        200: {
+            "description": "成功返回视频日志汇总信息",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "video_id": 1,
+                        "video_title": "示例视频",
+                        "task_statistics": [
+                            {
+                                "task_type": "download",
+                                "status": "completed",
+                                "count": 1,
+                                "last_updated": "2023-01-01T00:00:00"
+                            }
+                        ],
+                        "recent_logs": [
+                            {
+                                "id": 1,
+                                "task_id": 1,
+                                "task_name": "视频下载任务",
+                                "task_type": "download",
+                                "old_status": "pending",
+                                "new_status": "completed",
+                                "message": "任务完成",
+                                "details": {},
+                                "created_at": "2023-01-01T00:00:00"
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        404: {"description": "视频不存在或无权限访问"},
+        500: {"description": "服务器内部错误"}
+    }
+)
 async def get_video_logs_summary(
     video_id: int,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    """获取视频的日志汇总"""
+    """
+    获取视频的日志汇总
+    
+    获取特定视频的所有处理任务日志汇总信息，包括任务统计和最近日志。
+    
+    Args:
+        video_id (int): 视频ID
+        current_user (User): 当前认证用户（依赖注入）
+        db (AsyncSession): 数据库会话（依赖注入）
+        
+    Returns:
+        Dict[str, Any]: 包含视频日志汇总信息的字典
+            - video_id (int): 视频ID
+            - video_title (str): 视频标题
+            - task_statistics (List[Dict]): 任务统计信息
+                - task_type (str): 任务类型
+                - status (str): 任务状态
+                - count (int): 任务数量
+                - last_updated (datetime): 最后更新时间
+            - recent_logs (List[Dict]): 最近日志列表
+                - id (int): 日志ID
+                - task_id (int): 任务ID
+                - task_name (str): 任务名称
+                - task_type (str): 任务类型
+                - old_status (str): 旧状态
+                - new_status (str): 新状态
+                - message (str): 消息
+                - details (Dict): 详细信息
+                - created_at (datetime): 创建时间
+                
+    Raises:
+        HTTPException:
+            - 404: 当指定的视频不存在或无权限访问时
+            - 500: 当获取日志汇总失败时
+    """
     
     try:
         # 验证视频权限
@@ -318,13 +506,48 @@ async def get_video_logs_summary(
             detail=f"获取日志汇总失败: {str(e)}"
         )
 
-@router.delete("/logs/{log_id}")
+@router.delete("/logs/{log_id}",
+    summary="删除特定日志",
+    description="删除指定ID的日志记录。",
+    responses={
+        200: {
+            "description": "成功删除日志",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "message": "日志删除成功"
+                    }
+                }
+            }
+        },
+        404: {"description": "日志不存在或无权限访问"},
+        500: {"description": "服务器内部错误"}
+    }
+)
 async def delete_log(
     log_id: int,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    """删除特定日志"""
+    """
+    删除特定日志
+    
+    删除指定ID的日志记录。
+    
+    Args:
+        log_id (int): 日志ID
+        current_user (User): 当前认证用户（依赖注入）
+        db (AsyncSession): 数据库会话（依赖注入）
+        
+    Returns:
+        Dict[str, str]: 删除结果消息
+            - message (str): 操作结果消息
+            
+    Raises:
+        HTTPException:
+            - 404: 当指定的日志不存在或无权限访问时
+            - 500: 当删除日志失败时
+    """
     
     try:
         # 验证日志权限
@@ -354,13 +577,48 @@ async def delete_log(
             detail=f"删除日志失败: {str(e)}"
         )
 
-@router.delete("/logs/task/{task_id}")
+@router.delete("/logs/task/{task_id}",
+    summary="删除任务的所有日志",
+    description="删除指定任务ID的所有日志记录。",
+    responses={
+        200: {
+            "description": "成功删除任务日志",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "message": "已删除 5 条日志"
+                    }
+                }
+            }
+        },
+        404: {"description": "任务不存在或无权限访问"},
+        500: {"description": "服务器内部错误"}
+    }
+)
 async def delete_task_logs(
     task_id: int,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    """删除任务的所有日志"""
+    """
+    删除任务的所有日志
+    
+    删除指定任务ID的所有日志记录。
+    
+    Args:
+        task_id (int): 任务ID
+        current_user (User): 当前认证用户（依赖注入）
+        db (AsyncSession): 数据库会话（依赖注入）
+        
+    Returns:
+        Dict[str, str]: 删除结果消息
+            - message (str): 操作结果消息，包含删除的日志数量
+            
+    Raises:
+        HTTPException:
+            - 404: 当指定的任务不存在或无权限访问时
+            - 500: 当删除任务日志失败时
+    """
     
     try:
         # 验证任务权限
@@ -398,13 +656,48 @@ async def delete_task_logs(
             detail=f"删除任务日志失败: {str(e)}"
         )
 
-@router.delete("/logs/video/{video_id}")
+@router.delete("/logs/video/{video_id}",
+    summary="删除视频的所有日志",
+    description="删除指定视频ID的所有相关任务日志记录。",
+    responses={
+        200: {
+            "description": "成功删除视频日志",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "message": "已删除视频 1 的所有日志"
+                    }
+                }
+            }
+        },
+        404: {"description": "视频不存在或无权限访问"},
+        500: {"description": "服务器内部错误"}
+    }
+)
 async def delete_video_logs(
     video_id: int,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    """删除视频的所有日志"""
+    """
+    删除视频的所有日志
+    
+    删除指定视频ID的所有相关任务日志记录。
+    
+    Args:
+        video_id (int): 视频ID
+        current_user (User): 当前认证用户（依赖注入）
+        db (AsyncSession): 数据库会话（依赖注入）
+        
+    Returns:
+        Dict[str, str]: 删除结果消息
+            - message (str): 操作结果消息，包含删除的视频ID
+            
+    Raises:
+        HTTPException:
+            - 404: 当指定的视频不存在或无权限访问时
+            - 500: 当删除视频日志失败时
+    """
     
     try:
         # 验证视频权限
@@ -450,7 +743,36 @@ async def delete_video_logs(
             detail=f"删除视频日志失败: {str(e)}"
         )
 
-@router.get("/logs/statistics", response_model=Dict[str, Any])
+@router.get("/logs/statistics",
+    summary="获取日志统计信息",
+    description="获取处理任务日志的统计信息，包括按状态、任务类型和日期的统计。",
+    responses={
+        200: {
+            "description": "成功返回日志统计信息",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "statistics": {
+                            "by_status": [
+                                {"status": "completed", "count": 10}
+                            ],
+                            "by_task_type": [
+                                {"task_type": "download", "count": 5}
+                            ],
+                            "by_date": [
+                                {"date": "2023-01-01", "count": 3}
+                            ],
+                            "total_logs": 10
+                        },
+                        "filters": {}
+                    }
+                }
+            }
+        },
+        404: {"description": "视频不存在或无权限访问"},
+        500: {"description": "服务器内部错误"}
+    }
+)
 async def get_logs_statistics(
     video_id: Optional[int] = Query(None, description="视频ID过滤"),
     start_date: Optional[datetime] = Query(None, description="开始日期"),
@@ -458,7 +780,41 @@ async def get_logs_statistics(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    """获取日志统计信息"""
+    """
+    获取日志统计信息
+    
+    获取处理任务日志的统计信息，包括按状态、任务类型和日期的统计。
+    
+    Args:
+        video_id (Optional[int]): 视频ID过滤
+        start_date (Optional[datetime]): 开始日期
+        end_date (Optional[datetime]): 结束日期
+        current_user (User): 当前认证用户（依赖注入）
+        db (AsyncSession): 数据库会话（依赖注入）
+        
+    Returns:
+        Dict[str, Any]: 包含日志统计信息和过滤条件的字典
+            - statistics (Dict): 统计信息
+                - by_status (List[Dict]): 按状态统计
+                    - status (str): 状态
+                    - count (int): 数量
+                - by_task_type (List[Dict]): 按任务类型统计
+                    - task_type (str): 任务类型
+                    - count (int): 数量
+                - by_date (List[Dict]): 按日期统计（最近7天）
+                    - date (str): 日期
+                    - count (int): 数量
+                - total_logs (int): 总日志数
+            - filters (Dict): 过滤条件
+                - video_id (Optional[int]): 视频ID过滤
+                - start_date (Optional[datetime]): 开始日期
+                - end_date (Optional[datetime]): 结束日期
+                
+    Raises:
+        HTTPException:
+            - 404: 当指定的视频不存在或无权限访问时
+            - 500: 当获取日志统计失败时
+    """
     
     try:
         # 构建查询条件

@@ -17,14 +17,40 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-@router.get("/{video_id}/audio-download-url")
+@router.get("/{video_id}/audio-download-url", summary="获取音频下载URL", description="获取指定视频音频文件的预签名下载URL")
 async def get_audio_download_url(
     video_id: int,
     expiry: int = 3600,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    """获取音频文件的预签名下载URL"""
+    """获取音频文件的预签名下载URL
+    
+    获取指定视频音频文件的预签名下载URL，用于直接下载音频文件。
+    
+    Args:
+        video_id (int): 视频ID
+        expiry (int): URL过期时间（秒），默认为3600秒（1小时）
+        current_user (User): 当前认证用户依赖
+        db (AsyncSession): 数据库会话依赖
+    
+    Returns:
+        dict: 预签名下载URL信息
+            - download_url (str): 音频文件下载URL
+            - expires_in (int): 过期时间（秒）
+            - object_name (str): MinIO对象名称
+            - duration (float): 音频时长（秒）
+            - content_type (str): 内容类型
+    
+    Raises:
+        HTTPException:
+            - 404: 视频不存在或无权限访问，或音频文件未生成
+            - 500: 生成下载URL失败
+    
+    Examples:
+        获取音频下载URL: GET /api/v1/videos/1/audio-download-url
+        获取带过期时间的音频下载URL: GET /api/v1/videos/1/audio-download-url?expiry=7200
+    """
     
     # 验证视频属于当前用户
     stmt = select(Video).join(Project).where(
@@ -74,14 +100,39 @@ async def get_audio_download_url(
     }
 
 
-@router.get("/{video_id}/srt-download-url")
+@router.get("/{video_id}/srt-download-url", summary="获取SRT字幕下载URL", description="获取指定视频SRT字幕文件的预签名下载URL")
 async def get_srt_download_url(
     video_id: int,
     expiry: int = 3600,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    """获取SRT字幕文件的预签名下载URL"""
+    """获取SRT字幕文件的预签名下载URL
+    
+    获取指定视频SRT字幕文件的预签名下载URL，用于直接下载字幕文件。
+    
+    Args:
+        video_id (int): 视频ID
+        expiry (int): URL过期时间（秒），默认为3600秒（1小时）
+        current_user (User): 当前认证用户依赖
+        db (AsyncSession): 数据库会话依赖
+    
+    Returns:
+        dict: 预签名下载URL信息
+            - download_url (str): SRT字幕文件下载URL
+            - expires_in (int): 过期时间（秒）
+            - object_name (str): MinIO对象名称
+            - content_type (str): 内容类型
+    
+    Raises:
+        HTTPException:
+            - 404: 视频不存在或无权限访问，或SRT字幕文件未生成
+            - 500: 生成下载URL失败
+    
+    Examples:
+        获取SRT下载URL: GET /api/v1/videos/1/srt-download-url
+        获取带过期时间的SRT下载URL: GET /api/v1/videos/1/srt-download-url?expiry=7200
+    """
     
     # 验证视频属于当前用户
     stmt = select(Video).join(Project).where(

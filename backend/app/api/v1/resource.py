@@ -3,6 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete, update, func, and_, insert
 from sqlalchemy.orm import selectinload
 from typing import List, Optional
+from pydantic import BaseModel, Field
 from app.core.database import get_db
 from app.models.resource import Resource, ResourceTag, resource_tags_mapping
 from app.schemas.resource import Resource as ResourceSchema, ResourceCreate, ResourceUpdate, ResourceQuery, ResourceSearchResult
@@ -14,6 +15,12 @@ from app.core.config import settings
 import os
 import uuid
 from datetime import datetime
+
+class ResourceTagCreate(BaseModel):
+    """资源标签创建请求模型"""
+    name: str = Field(..., description="标签名，必须唯一")
+    tag_type: str = Field(..., pattern="^(audio|video|image|general)$", description="标签类型，可选值：audio, video, image, general")
+    description: Optional[str] = Field(None, description="标签描述")
 
 router = APIRouter(tags=["resources"])
 
@@ -28,16 +35,58 @@ def get_minio_service():
 
 # ==================== 标签管理端点 ====================
 
-@router.get("/tags", response_model=List[dict])
+@router.get("/tags",
+    summary="获取资源标签列表",
+    description="获取资源标签列表，支持分页、类型过滤和激活状态过滤。",
+    responses={
+        200: {
+            "description": "成功返回资源标签列表",
+            "content": {
+                "application/json": {
+                    "example": [
+                        {
+                            "id": 1,
+                            "name": "示例标签",
+                            "tag_type": "general"
+                        }
+                    ]
+                }
+            }
+        },
+        500: {"description": "服务器内部错误"}
+    }
+)
 async def get_resource_tags(
-    skip: int = Query(0, ge=0),
-    limit: int = Query(100, ge=1, le=1000),
-    tag_type: Optional[str] = Query(None, pattern="^(audio|video|image|general)$"),
-    is_active: Optional[bool] = None,
+    skip: int = Query(0, ge=0, description="跳过的记录数"),
+    limit: int = Query(100, ge=1, le=1000, description="返回的记录数，最大1000"),
+    tag_type: Optional[str] = Query(None, pattern="^(audio|video|image|general)$", description="标签类型过滤"),
+    is_active: Optional[bool] = Query(None, description="激活状态过滤"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """获取资源标签列表"""
+    """
+    获取资源标签列表
+    
+    获取资源标签列表，支持分页、类型过滤和激活状态过滤。
+    
+    Args:
+        skip (int): 跳过的记录数，默认为0
+        limit (int): 返回的记录数，默认为100，最大1000
+        tag_type (Optional[str]): 标签类型过滤，可选值：audio, video, image, general
+        is_active (Optional[bool]): 激活状态过滤
+        db (AsyncSession): 数据库会话（依赖注入）
+        current_user (User): 当前认证用户（依赖注入）
+        
+    Returns:
+        List[dict]: 资源标签列表
+            - id (int): 标签ID
+            - name (str): 标签名
+            - tag_type (str): 标签类型
+            
+    Raises:
+        HTTPException:
+            - 500: 当获取标签列表失败时
+    """
     query = select(ResourceTag)
     
     # 添加过滤条件
@@ -54,18 +103,63 @@ async def get_resource_tags(
     print(f"🏷️ Returning {len(result)} tags:", result)
     return result
 
-@router.post("/tags", response_model=dict)
+@router.post("/tags",
+    summary="创建资源标签",
+    description="创建一个新的资源标签。标签名必须唯一，不能与现有标签重复。",
+    responses={
+        200: {
+            "description": "成功创建资源标签",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "message": "标签创建成功",
+                        "tag": {
+                            "id": 1,
+                            "name": "示例标签",
+                            "tag_type": "general"
+                        }
+                    }
+                }
+            }
+        },
+        400: {"description": "标签名已存在"},
+        500: {"description": "服务器内部错误"}
+    }
+)
 async def create_resource_tag(
-    name: str = Form(...),
-    tag_type: str = Form(..., pattern="^(audio|video|image|general)$"),
-    description: Optional[str] = Form(None),
+    tag_data: ResourceTagCreate,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """创建资源标签"""
+    """
+    创建资源标签
+    
+    创建一个新的资源标签。标签名必须唯一，不能与现有标签重复。
+    
+    Args:
+        tag_data (ResourceTagCreate): 标签创建数据
+            - name (str): 标签名，必须唯一
+            - tag_type (str): 标签类型，可选值：audio, video, image, general
+            - description (Optional[str]): 标签描述
+        db (AsyncSession): 数据库会话（依赖注入）
+        current_user (User): 当前认证用户（依赖注入）
+        
+    Returns:
+        dict: 创建结果信息
+            - message (str): 创建结果消息
+            - tag (dict): 创建的标签信息
+                - id (int): 标签ID
+                - name (str): 标签名
+                - tag_type (str): 标签类型
+            
+    Raises:
+        HTTPException:
+            - 400: 当标签名已存在时
+            - 500: 当创建标签失败时
+    """
     # 检查标签名是否已存在
     result = await db.execute(
-        select(ResourceTag).where(ResourceTag.name == name)
+        select(ResourceTag).where(ResourceTag.name == tag_data.name)
     )
     existing_tag = result.scalar_one_or_none()
     if existing_tag:
@@ -73,9 +167,9 @@ async def create_resource_tag(
     
     # 创建新标签
     db_tag = ResourceTag(
-        name=name,
-        tag_type=tag_type,
-        description=description
+        name=tag_data.name,
+        tag_type=tag_data.tag_type,
+        description=tag_data.description
     )
     db.add(db_tag)
     await db.commit()
@@ -83,13 +177,48 @@ async def create_resource_tag(
     
     return {"message": "标签创建成功", "tag": {"id": db_tag.id, "name": db_tag.name, "tag_type": db_tag.tag_type}}
 
-@router.delete("/tags/{tag_id}")
+@router.delete("/tags/{tag_id}",
+    summary="删除资源标签",
+    description="根据标签ID删除资源标签。该操作为软删除，将标签的is_active状态设置为False。",
+    responses={
+        200: {
+            "description": "成功删除资源标签",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "message": "标签删除成功"
+                    }
+                }
+            }
+        },
+        404: {"description": "标签不存在"},
+        500: {"description": "服务器内部错误"}
+    }
+)
 async def delete_resource_tag(
     tag_id: int,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """删除资源标签"""
+    """
+    删除资源标签
+    
+    根据标签ID删除资源标签。该操作为软删除，将标签的is_active状态设置为False。
+    
+    Args:
+        tag_id (int): 标签ID
+        db (AsyncSession): 数据库会话（依赖注入）
+        current_user (User): 当前认证用户（依赖注入）
+        
+    Returns:
+        dict: 删除结果信息
+            - message (str): 删除结果消息
+            
+    Raises:
+        HTTPException:
+            - 404: 当标签不存在时
+            - 500: 当删除标签失败时
+    """
     result = await db.execute(
         select(ResourceTag).where(ResourceTag.id == tag_id)
     )
@@ -105,13 +234,96 @@ async def delete_resource_tag(
 
 # ==================== 资源管理端点 ====================
 
-@router.post("/", response_model=ResourceSchema)
+@router.post("/",
+    summary="创建资源",
+    description="创建一个新的资源记录。",
+    responses={
+        200: {
+            "description": "成功创建资源",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "id": 1,
+                        "filename": "example.mp4",
+                        "original_filename": "example_video.mp4",
+                        "description": "示例视频文件",
+                        "is_public": True,
+                        "file_path": "global-resources/video/1/example.mp4",
+                        "file_size": 1024000,
+                        "mime_type": "video/mp4",
+                        "file_type": "video",
+                        "duration": 120.5,
+                        "width": 1920,
+                        "height": 1080,
+                        "download_count": 0,
+                        "view_count": 0,
+                        "is_active": True,
+                        "created_at": "2023-01-01T00:00:00",
+                        "updated_at": "2023-01-01T00:00:00",
+                        "created_by": 1,
+                        "tags": []
+                    }
+                }
+            }
+        },
+        400: {"description": "文件路径已存在"},
+        500: {"description": "服务器内部错误"}
+    }
+)
 async def create_resource(
     resource: ResourceCreate,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """创建资源"""
+    """
+    创建资源
+    
+    创建一个新的资源记录。
+    
+    Args:
+        resource (ResourceCreate): 资源创建请求数据
+            - filename (str): 文件名
+            - original_filename (str): 原始文件名
+            - description (Optional[str]): 资源描述
+            - is_public (bool): 是否公开
+            - file_path (str): 文件路径
+            - file_size (float): 文件大小
+            - mime_type (str): MIME类型
+            - file_type (str): 文件类型
+            - duration (Optional[float]): 时长（秒）
+            - width (Optional[int]): 宽度（像素）
+            - height (Optional[int]): 高度（像素）
+            - tag_ids (Optional[List[int]]): 标签ID列表
+        db (AsyncSession): 数据库会话（依赖注入）
+        current_user (User): 当前认证用户（依赖注入）
+        
+    Returns:
+        ResourceSchema: 创建的资源信息
+            - id (int): 资源ID
+            - filename (str): 文件名
+            - original_filename (str): 原始文件名
+            - description (Optional[str]): 资源描述
+            - is_public (bool): 是否公开
+            - file_path (str): 文件路径
+            - file_size (float): 文件大小
+            - mime_type (str): MIME类型
+            - file_type (str): 文件类型
+            - duration (Optional[float]): 时长（秒）
+            - width (Optional[int]): 宽度（像素）
+            - height (Optional[int]): 高度（像素）
+            - download_count (int): 下载次数
+            - view_count (int): 查看次数
+            - is_active (bool): 是否激活
+            - created_at (datetime): 创建时间
+            - updated_at (datetime): 更新时间
+            - created_by (int): 创建者ID
+            - tags (List[ResourceTagSchema]): 标签列表
+            
+    Raises:
+        HTTPException:
+            - 400: 当文件路径已存在时
+            - 500: 当创建资源失败时
+    """
     # 检查文件路径是否已存在
     result = await db.execute(
         select(Resource).where(Resource.file_path == resource.file_path)
@@ -143,21 +355,111 @@ async def create_resource(
     
     return db_resource
 
-@router.get("/", response_model=ResourceSearchResult)
+@router.get("/",
+    summary="获取资源列表",
+    description="获取资源列表，支持多种过滤条件和分页。",
+    responses={
+        200: {
+            "description": "成功返回资源列表",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "resources": [
+                            {
+                                "id": 1,
+                                "filename": "example.mp4",
+                                "original_filename": "example_video.mp4",
+                                "description": "示例视频文件",
+                                "is_public": True,
+                                "file_path": "global-resources/video/1/example.mp4",
+                                "file_size": 1024000,
+                                "mime_type": "video/mp4",
+                                "file_type": "video",
+                                "duration": 120.5,
+                                "width": 1920,
+                                "height": 1080,
+                                "download_count": 0,
+                                "view_count": 0,
+                                "is_active": True,
+                                "created_at": "2023-01-01T00:00:00",
+                                "updated_at": "2023-01-01T00:00:00",
+                                "created_by": 1,
+                                "tags": []
+                            }
+                        ],
+                        "total": 1,
+                        "page": 1,
+                        "page_size": 20,
+                        "total_pages": 1
+                    }
+                }
+            }
+        },
+        500: {"description": "服务器内部错误"}
+    }
+)
 async def get_resources(
-    file_type: Optional[str] = Query(None, pattern="^(video|audio|image|all)$"),
-    tag_id: Optional[int] = Query(None, ge=1),
-    search: Optional[str] = Query(None),
-    tags: Optional[str] = Query(None),
-    is_public: Optional[bool] = None,
-    created_by: Optional[int] = Query(None, ge=1),
-    is_active: Optional[bool] = None,
-    skip: int = Query(0, ge=0),
-    limit: int = Query(20, ge=1, le=100),
+    file_type: Optional[str] = Query(None, pattern="^(video|audio|image|all)$", description="文件类型过滤"),
+    tag_id: Optional[int] = Query(None, ge=1, description="标签ID过滤"),
+    search: Optional[str] = Query(None, description="搜索关键词"),
+    tags: Optional[str] = Query(None, description="标签名称过滤（逗号分隔）"),
+    is_public: Optional[bool] = Query(None, description="公开状态过滤"),
+    created_by: Optional[int] = Query(None, ge=1, description="创建者ID过滤"),
+    is_active: Optional[bool] = Query(None, description="激活状态过滤"),
+    skip: int = Query(0, ge=0, description="跳过的记录数"),
+    limit: int = Query(20, ge=1, le=100, description="返回的记录数，最大100"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """获取资源列表"""
+    """
+    获取资源列表
+    
+    获取资源列表，支持多种过滤条件和分页。
+    
+    Args:
+        file_type (Optional[str]): 文件类型过滤，可选值：video, audio, image, all
+        tag_id (Optional[int]): 标签ID过滤
+        search (Optional[str]): 搜索关键词
+        tags (Optional[str]): 标签名称过滤（逗号分隔）
+        is_public (Optional[bool]): 公开状态过滤
+        created_by (Optional[int]): 创建者ID过滤
+        is_active (Optional[bool]): 激活状态过滤
+        skip (int): 跳过的记录数，默认为0
+        limit (int): 返回的记录数，默认为20，最大100
+        db (AsyncSession): 数据库会话（依赖注入）
+        current_user (User): 当前认证用户（依赖注入）
+        
+    Returns:
+        ResourceSearchResult: 资源列表和分页信息
+            - resources (List[ResourceSchema]): 资源列表
+                - id (int): 资源ID
+                - filename (str): 文件名
+                - original_filename (str): 原始文件名
+                - description (Optional[str]): 资源描述
+                - is_public (bool): 是否公开
+                - file_path (str): 文件路径
+                - file_size (float): 文件大小
+                - mime_type (str): MIME类型
+                - file_type (str): 文件类型
+                - duration (Optional[float]): 时长（秒）
+                - width (Optional[int]): 宽度（像素）
+                - height (Optional[int]): 高度（像素）
+                - download_count (int): 下载次数
+                - view_count (int): 查看次数
+                - is_active (bool): 是否激活
+                - created_at (datetime): 创建时间
+                - updated_at (datetime): 更新时间
+                - created_by (int): 创建者ID
+                - tags (List[ResourceTagSchema]): 标签列表
+            - total (int): 总记录数
+            - page (int): 当前页码
+            - page_size (int): 每页记录数
+            - total_pages (int): 总页数
+            
+    Raises:
+        HTTPException:
+            - 500: 当获取资源列表失败时
+    """
     query = select(Resource)
     count_query = select(func.count(Resource.id))
     
@@ -237,13 +539,84 @@ async def get_resources(
         total_pages=(total + limit - 1) // limit
     )
 
-@router.get("/{resource_id}", response_model=ResourceSchema)
+@router.get("/{resource_id}",
+    summary="获取特定资源",
+    description="根据资源ID获取特定资源的详细信息，包括关联的标签信息。",
+    responses={
+        200: {
+            "description": "成功返回资源信息",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "id": 1,
+                        "filename": "example.mp4",
+                        "original_filename": "example_video.mp4",
+                        "description": "示例视频文件",
+                        "is_public": True,
+                        "file_path": "global-resources/video/1/example.mp4",
+                        "file_size": 1024000,
+                        "mime_type": "video/mp4",
+                        "file_type": "video",
+                        "duration": 120.5,
+                        "width": 1920,
+                        "height": 1080,
+                        "download_count": 0,
+                        "view_count": 0,
+                        "is_active": True,
+                        "created_at": "2023-01-01T00:00:00",
+                        "updated_at": "2023-01-01T00:00:00",
+                        "created_by": 1,
+                        "tags": []
+                    }
+                }
+            }
+        },
+        404: {"description": "资源不存在"},
+        500: {"description": "服务器内部错误"}
+    }
+)
 async def get_resource(
     resource_id: int,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """获取特定资源"""
+    """
+    获取特定资源
+    
+    根据资源ID获取特定资源的详细信息，包括关联的标签信息。
+    
+    Args:
+        resource_id (int): 资源ID
+        db (AsyncSession): 数据库会话（依赖注入）
+        current_user (User): 当前认证用户（依赖注入）
+        
+    Returns:
+        ResourceSchema: 资源信息
+            - id (int): 资源ID
+            - filename (str): 文件名
+            - original_filename (str): 原始文件名
+            - description (Optional[str]): 资源描述
+            - is_public (bool): 是否公开
+            - file_path (str): 文件路径
+            - file_size (float): 文件大小
+            - mime_type (str): MIME类型
+            - file_type (str): 文件类型
+            - duration (Optional[float]): 时长（秒）
+            - width (Optional[int]): 宽度（像素）
+            - height (Optional[int]): 高度（像素）
+            - download_count (int): 下载次数
+            - view_count (int): 查看次数
+            - is_active (bool): 是否激活
+            - created_at (datetime): 创建时间
+            - updated_at (datetime): 更新时间
+            - created_by (int): 创建者ID
+            - tags (List[ResourceTagSchema]): 标签列表
+            
+    Raises:
+        HTTPException:
+            - 404: 当资源不存在时
+            - 500: 当获取资源失败时
+    """
     result = await db.execute(
         select(Resource).where(Resource.id == resource_id)
     )
@@ -256,14 +629,89 @@ async def get_resource(
     
     return resource
 
-@router.put("/{resource_id}", response_model=ResourceSchema)
+@router.put("/{resource_id}",
+    summary="更新资源",
+    description="根据资源ID更新资源信息，包括资源描述、公开状态等基本信息以及标签关联。",
+    responses={
+        200: {
+            "description": "成功更新资源信息",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "id": 1,
+                        "filename": "example.mp4",
+                        "original_filename": "example_video.mp4",
+                        "description": "更新后的示例视频文件",
+                        "is_public": False,
+                        "file_path": "global-resources/video/1/example.mp4",
+                        "file_size": 1024000,
+                        "mime_type": "video/mp4",
+                        "file_type": "video",
+                        "duration": 120.5,
+                        "width": 1920,
+                        "height": 1080,
+                        "download_count": 0,
+                        "view_count": 0,
+                        "is_active": True,
+                        "created_at": "2023-01-01T00:00:00",
+                        "updated_at": "2023-01-02T00:00:00",
+                        "created_by": 1,
+                        "tags": []
+                    }
+                }
+            }
+        },
+        404: {"description": "资源不存在"},
+        500: {"description": "服务器内部错误"}
+    }
+)
 async def update_resource(
     resource_id: int,
     resource_update: ResourceUpdate,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """更新资源"""
+    """
+    更新资源
+    
+    根据资源ID更新资源信息，包括资源描述、公开状态等基本信息以及标签关联。
+    
+    Args:
+        resource_id (int): 资源ID
+        resource_update (ResourceUpdate): 资源更新请求数据
+            - description (Optional[str]): 资源描述
+            - is_public (Optional[bool]): 是否公开
+            - tag_ids (Optional[List[int]]): 标签ID列表
+        db (AsyncSession): 数据库会话（依赖注入）
+        current_user (User): 当前认证用户（依赖注入）
+        
+    Returns:
+        ResourceSchema: 更新后的资源信息
+            - id (int): 资源ID
+            - filename (str): 文件名
+            - original_filename (str): 原始文件名
+            - description (Optional[str]): 资源描述
+            - is_public (bool): 是否公开
+            - file_path (str): 文件路径
+            - file_size (float): 文件大小
+            - mime_type (str): MIME类型
+            - file_type (str): 文件类型
+            - duration (Optional[float]): 时长（秒）
+            - width (Optional[int]): 宽度（像素）
+            - height (Optional[int]): 高度（像素）
+            - download_count (int): 下载次数
+            - view_count (int): 查看次数
+            - is_active (bool): 是否激活
+            - created_at (datetime): 创建时间
+            - updated_at (datetime): 更新时间
+            - created_by (int): 创建者ID
+            - tags (List[ResourceTagSchema]): 标签列表
+            
+    Raises:
+        HTTPException:
+            - 404: 当资源不存在时
+            - 500: 当更新资源失败时
+    """
     result = await db.execute(
         select(Resource).where(Resource.id == resource_id)
     )
@@ -297,14 +745,86 @@ async def update_resource(
     return resource
 
 
-@router.put("/{resource_id}/activate", response_model=ResourceSchema)
+@router.put("/{resource_id}/activate",
+    summary="切换资源的激活状态",
+    description="根据资源ID切换资源的激活状态（is_active字段），用于启用或禁用资源。",
+    responses={
+        200: {
+            "description": "成功切换资源激活状态",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "id": 1,
+                        "filename": "example.mp4",
+                        "original_filename": "example_video.mp4",
+                        "description": "示例视频文件",
+                        "is_public": True,
+                        "file_path": "global-resources/video/1/example.mp4",
+                        "file_size": 1024000,
+                        "mime_type": "video/mp4",
+                        "file_type": "video",
+                        "duration": 120.5,
+                        "width": 1920,
+                        "height": 1080,
+                        "download_count": 0,
+                        "view_count": 0,
+                        "is_active": False,
+                        "created_at": "2023-01-01T00:00:00",
+                        "updated_at": "2023-01-02T00:00:00",
+                        "created_by": 1,
+                        "tags": []
+                    }
+                }
+            }
+        },
+        404: {"description": "资源不存在"},
+        500: {"description": "服务器内部错误"}
+    }
+)
 async def toggle_resource_active_status(
     resource_id: int,
-    is_active: bool = Body(..., embed=True),
+    is_active: bool = Body(..., embed=True, description="资源激活状态，true为激活，false为禁用"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """切换资源的激活状态"""
+    """
+    切换资源的激活状态
+    
+    根据资源ID切换资源的激活状态（is_active字段），用于启用或禁用资源。
+    
+    Args:
+        resource_id (int): 资源ID
+        is_active (bool): 资源激活状态，true为激活，false为禁用
+        db (AsyncSession): 数据库会话（依赖注入）
+        current_user (User): 当前认证用户（依赖注入）
+        
+    Returns:
+        ResourceSchema: 更新后的资源信息
+            - id (int): 资源ID
+            - filename (str): 文件名
+            - original_filename (str): 原始文件名
+            - description (Optional[str]): 资源描述
+            - is_public (bool): 是否公开
+            - file_path (str): 文件路径
+            - file_size (float): 文件大小
+            - mime_type (str): MIME类型
+            - file_type (str): 文件类型
+            - duration (Optional[float]): 时长（秒）
+            - width (Optional[int]): 宽度（像素）
+            - height (Optional[int]): 高度（像素）
+            - download_count (int): 下载次数
+            - view_count (int): 查看次数
+            - is_active (bool): 是否激活
+            - created_at (datetime): 创建时间
+            - updated_at (datetime): 更新时间
+            - created_by (int): 创建者ID
+            - tags (List[ResourceTagSchema]): 标签列表
+            
+    Raises:
+        HTTPException:
+            - 404: 当资源不存在时
+            - 500: 当切换资源激活状态失败时
+    """
     # 直接更新资源状态
     update_result = await db.execute(
         update(Resource)
@@ -327,13 +847,49 @@ async def toggle_resource_active_status(
     
     return resource
 
-@router.delete("/{resource_id}")
+@router.delete("/{resource_id}",
+    summary="删除资源",
+    description="根据资源ID删除资源。该操作为软删除，将资源的is_active状态设置为False，但不会删除MinIO中的实际文件，以支持恢复功能。",
+    responses={
+        200: {
+            "description": "成功删除资源",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "message": "资源删除成功"
+                    }
+                }
+            }
+        },
+        404: {"description": "资源不存在"},
+        500: {"description": "服务器内部错误"}
+    }
+)
 async def delete_resource(
     resource_id: int,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """删除资源"""
+    """
+    删除资源
+    
+    根据资源ID删除资源。该操作为软删除，将资源的is_active状态设置为False，
+    但不会删除MinIO中的实际文件，以支持恢复功能。
+    
+    Args:
+        resource_id (int): 资源ID
+        db (AsyncSession): 数据库会话（依赖注入）
+        current_user (User): 当前认证用户（依赖注入）
+        
+    Returns:
+        dict: 删除结果信息
+            - message (str): 删除结果消息
+            
+    Raises:
+        HTTPException:
+            - 404: 当资源不存在时
+            - 500: 当删除资源失败时
+    """
     result = await db.execute(
         select(Resource).where(Resource.id == resource_id)
     )
@@ -348,16 +904,100 @@ async def delete_resource(
     
     return {"message": "资源删除成功"}
 
-@router.post("/upload")
+@router.post("/upload",
+    summary="上传资源文件",
+    description="上传资源文件到系统中，支持视频、音频和图片文件。上传成功后会自动创建资源记录并关联指定标签。",
+    responses={
+        200: {
+            "description": "成功上传资源文件",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "message": "文件上传成功",
+                        "resource": {
+                            "id": 1,
+                            "filename": "example.mp4",
+                            "original_filename": "example_video.mp4",
+                            "description": "示例视频文件",
+                            "is_public": True,
+                            "file_path": "global-resources/video/1/example.mp4",
+                            "file_size": 1024000,
+                            "mime_type": "video/mp4",
+                            "file_type": "video",
+                            "duration": 120.5,
+                            "width": 1920,
+                            "height": 1080,
+                            "download_count": 0,
+                            "view_count": 0,
+                            "is_active": True,
+                            "created_at": "2023-01-01T00:00:00",
+                            "updated_at": "2023-01-01T00:00:00",
+                            "created_by": 1,
+                            "tags": []
+                        }
+                    }
+                }
+            }
+        },
+        400: {"description": "不支持的文件类型或文件无法读取"},
+        500: {"description": "服务器内部错误，如文件上传失败"}
+    }
+)
 async def upload_resource(
-    file: UploadFile = File(...),
-    description: Optional[str] = Form(None),
-    is_public: bool = Form(True),
-    tags: Optional[str] = Form(None),
+    file: UploadFile = File(..., description="要上传的文件，支持视频、音频和图片格式"),
+    description: Optional[str] = Form(None, description="资源描述信息"),
+    is_public: bool = Form(True, description="资源是否公开，默认为True"),
+    tags: Optional[str] = Form(None, description="标签ID列表，用逗号分隔，如 '1,2,3'"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """上传资源文件"""
+    """
+    上传资源文件
+    
+    上传资源文件到系统中，支持视频、音频和图片文件。上传成功后会自动创建资源记录并关联指定标签。
+    
+    支持的文件类型：
+    - 视频：.mp4, .mov, .avi, .webm
+    - 音频：.mp3, .wav, .ogg, .mpeg
+    - 图片：.jpg, .jpeg, .png, .gif, .webp
+    
+    Args:
+        file (UploadFile): 要上传的文件，支持视频、音频和图片格式
+        description (Optional[str]): 资源描述信息
+        is_public (bool): 资源是否公开，默认为True
+        tags (Optional[str]): 标签ID列表，用逗号分隔，如 '1,2,3'
+        db (AsyncSession): 数据库会话（依赖注入）
+        current_user (User): 当前认证用户（依赖注入）
+        
+    Returns:
+        dict: 上传结果信息
+            - message (str): 上传结果消息
+            - resource (ResourceSchema): 创建的资源信息
+                - id (int): 资源ID
+                - filename (str): 文件名
+                - original_filename (str): 原始文件名
+                - description (Optional[str]): 资源描述
+                - is_public (bool): 是否公开
+                - file_path (str): 文件路径
+                - file_size (float): 文件大小
+                - mime_type (str): MIME类型
+                - file_type (str): 文件类型
+                - duration (Optional[float]): 时长（秒）
+                - width (Optional[int]): 宽度（像素）
+                - height (Optional[int]): 高度（像素）
+                - download_count (int): 下载次数
+                - view_count (int): 查看次数
+                - is_active (bool): 是否激活
+                - created_at (datetime): 创建时间
+                - updated_at (datetime): 更新时间
+                - created_by (int): 创建者ID
+                - tags (List[ResourceTagSchema]): 标签列表
+                
+    Raises:
+        HTTPException:
+            - 400: 当文件类型不支持或文件无法读取时
+            - 500: 当文件上传失败或服务器内部错误时
+    """
     try:
         print("=" * 50)
         print("📁 UPLOAD START")
@@ -499,13 +1139,53 @@ async def upload_resource(
         print(f"Error type: {type(e)}")
         raise HTTPException(status_code=500, detail=f"服务器内部错误: {str(e)}")
 
-@router.get("/{resource_id}/download-url")
+@router.get("/{resource_id}/download-url",
+    summary="获取资源下载链接",
+    description="根据资源ID生成资源文件的下载链接。只有资源所有者或公开资源才能下载。",
+    responses={
+        200: {
+            "description": "成功生成下载链接",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "download_url": "https://minio.example.com/download-link",
+                        "filename": "example_video.mp4"
+                    }
+                }
+            }
+        },
+        403: {"description": "无权访问此资源"},
+        404: {"description": "资源不存在"},
+        500: {"description": "生成下载链接失败"}
+    }
+)
 async def get_resource_download_url(
     resource_id: int,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """获取资源下载链接"""
+    """
+    获取资源下载链接
+    
+    根据资源ID生成资源文件的下载链接。只有资源所有者或公开资源才能下载。
+    下载成功后会自动增加资源的下载次数统计。
+    
+    Args:
+        resource_id (int): 资源ID
+        db (AsyncSession): 数据库会话（依赖注入）
+        current_user (User): 当前认证用户（依赖注入）
+        
+    Returns:
+        dict: 下载链接信息
+            - download_url (str): 资源下载链接
+            - filename (str): 原始文件名
+                
+    Raises:
+        HTTPException:
+            - 403: 当用户无权访问此资源时
+            - 404: 当资源不存在时
+            - 500: 当生成下载链接失败时
+    """
     result = await db.execute(
         select(Resource).where(Resource.id == resource_id)
     )
@@ -536,13 +1216,53 @@ async def get_resource_download_url(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"生成下载链接失败: {str(e)}")
 
-@router.get("/{resource_id}/view-url")
+@router.get("/{resource_id}/view-url",
+    summary="获取资源查看链接",
+    description="根据资源ID生成资源文件的查看链接。只有资源所有者或公开资源才能查看。",
+    responses={
+        200: {
+            "description": "成功生成查看链接",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "view_url": "https://minio.example.com/view-link",
+                        "filename": "example_video.mp4"
+                    }
+                }
+            }
+        },
+        403: {"description": "无权访问此资源"},
+        404: {"description": "资源不存在"},
+        500: {"description": "生成查看链接失败"}
+    }
+)
 async def get_resource_view_url(
     resource_id: int,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """获取资源查看链接"""
+    """
+    获取资源查看链接
+    
+    根据资源ID生成资源文件的查看链接。只有资源所有者或公开资源才能查看。
+    查看成功后会自动增加资源的查看次数统计。
+    
+    Args:
+        resource_id (int): 资源ID
+        db (AsyncSession): 数据库会话（依赖注入）
+        current_user (User): 当前认证用户（依赖注入）
+        
+    Returns:
+        dict: 查看链接信息
+            - view_url (str): 资源查看链接
+            - filename (str): 原始文件名
+                
+    Raises:
+        HTTPException:
+            - 403: 当用户无权访问此资源时
+            - 404: 当资源不存在时
+            - 500: 当生成查看链接失败时
+    """
     print(f"🔍 View URL requested for resource_id: {resource_id}")
     print(f"👤 Current user: {current_user.id}")
     
@@ -608,7 +1328,24 @@ async def get_resource_view_url(
         raise HTTPException(status_code=500, detail=f"生成查看链接失败: {str(e)}")
 
 
-@router.get("/thumbnail-url")
+@router.get("/thumbnail-url",
+    summary="获取缩略图预签名URL",
+    description="根据缩略图路径生成预签名URL，用于安全访问缩略图文件。URL有效期为24小时。",
+    responses={
+        200: {
+            "description": "成功生成缩略图预签名URL",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "download_url": "https://minio.example.com/thumbnail-link"
+                    }
+                }
+            }
+        },
+        400: {"description": "路径参数无效"},
+        500: {"description": "生成缩略图URL失败"}
+    }
+)
 async def get_thumbnail_url(
     path: str,
     db: AsyncSession = Depends(get_db),

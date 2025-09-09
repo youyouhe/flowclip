@@ -13,9 +13,9 @@ from app.schemas.video import VideoResponse
 
 router = APIRouter()
 
-@router.get("/", response_model=List[ProjectWithStats])
+@router.get("/", response_model=List[ProjectWithStats], summary="获取项目列表", description="获取当前用户的所有项目，支持多种筛选和分页功能")
 async def get_projects(
-    status: Optional[str] = Query(None, description="项目状态筛选"),
+    status: Optional[str] = Query(None, description="项目状态筛选 (active, completed, archived)"),
     search: Optional[str] = Query(None, description="搜索项目名称或描述"),
     start_date: Optional[str] = Query(None, description="开始日期 (YYYY-MM-DD)"),
     end_date: Optional[str] = Query(None, description="结束日期 (YYYY-MM-DD)"),
@@ -26,7 +26,41 @@ async def get_projects(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    """获取当前用户的所有项目（包含视频统计和筛选功能）"""
+    """获取项目列表
+    
+    获取当前用户的所有项目列表，包含每个项目的视频统计信息。支持多种筛选条件和分页。
+    
+    Args:
+        status (Optional[str]): 项目状态筛选，可选值: "active", "completed", "archived"
+        search (Optional[str]): 搜索关键词，匹配项目名称或描述
+        start_date (Optional[str]): 创建时间起始日期 (格式: YYYY-MM-DD)
+        end_date (Optional[str]): 创建时间结束日期 (格式: YYYY-MM-DD)
+        min_video_count (Optional[int]): 最小视频数量筛选
+        max_video_count (Optional[int]): 最大视频数量筛选
+        page (int): 页码，从1开始，默认为1
+        page_size (int): 每页项目数量，范围1-100，默认为10
+        current_user (User): 当前认证用户依赖
+        db (AsyncSession): 数据库会话依赖
+    
+    Returns:
+        List[ProjectWithStats]: 项目列表，每个项目包含视频统计信息
+            - id (int): 项目ID
+            - name (str): 项目名称
+            - description (Optional[str]): 项目描述
+            - user_id (int): 用户ID
+            - status (str): 项目状态
+            - created_at (datetime): 创建时间
+            - updated_at (datetime): 更新时间
+            - video_count (int): 视频总数
+            - completed_videos (int): 已完成视频数
+            - total_slices (int): 总切片数
+    
+    Examples:
+        获取所有项目: GET /api/v1/projects/
+        搜索项目: GET /api/v1/projects/?search=测试
+        状态筛选: GET /api/v1/projects/?status=active
+        分页查询: GET /api/v1/projects/?page=2&page_size=20
+    """
     # 构建基础查询
     stmt = select(Project).where(Project.user_id == current_user.id)
     
@@ -125,13 +159,38 @@ async def get_projects(
     
     return projects_with_stats
 
-@router.post("/", response_model=ProjectResponse)
+@router.post("/", response_model=ProjectResponse, summary="创建项目", description="创建一个新的项目")
 async def create_project(
     project: ProjectCreate,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    """创建新项目"""
+    """创建新项目
+    
+    创建一个新的项目。每个项目都属于当前用户。
+    
+    Args:
+        project (ProjectCreate): 项目创建信息
+            - name (str): 项目名称，必须唯一
+            - description (Optional[str]): 项目描述
+        current_user (User): 当前认证用户依赖
+        db (AsyncSession): 数据库会话依赖
+    
+    Returns:
+        ProjectResponse: 创建成功的项目信息
+            - id (int): 项目ID
+            - name (str): 项目名称
+            - description (Optional[str]): 项目描述
+            - user_id (int): 用户ID
+            - status (str): 项目状态，默认为"active"
+            - created_at (datetime): 创建时间
+            - updated_at (datetime): 更新时间
+    
+    Raises:
+        HTTPException:
+            - 400: 项目名称已存在
+            - 422: 请求参数验证失败
+    """
     new_project = Project(
         name=project.name,
         description=project.description,
@@ -191,14 +250,46 @@ async def get_project(
     
     return project_with_stats
 
-@router.put("/{project_id}", response_model=ProjectResponse)
+@router.put("/{project_id}", response_model=ProjectResponse, summary="更新项目", description="更新指定项目的名称或描述信息")
 async def update_project(
     project_id: int,
     project_update: ProjectUpdate,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    """更新项目"""
+    """更新项目
+    
+    更新指定项目的名称或描述信息。只有项目所有者可以更新项目。
+    
+    Args:
+        project_id (int): 项目ID
+        project_update (ProjectUpdate): 项目更新信息
+            - name (Optional[str]): 新的项目名称
+            - description (Optional[str]): 新的项目描述
+        current_user (User): 当前认证用户依赖
+        db (AsyncSession): 数据库会话依赖
+    
+    Returns:
+        ProjectResponse: 更新后的项目信息
+            - id (int): 项目ID
+            - name (str): 项目名称
+            - description (Optional[str]): 项目描述
+            - user_id (int): 用户ID
+            - status (str): 项目状态
+            - created_at (datetime): 创建时间
+            - updated_at (datetime): 更新时间
+    
+    Raises:
+        HTTPException:
+            - 404: 项目不存在或无权限访问
+            - 422: 请求参数验证失败
+    
+    Examples:
+        更新项目名称: PUT /api/v1/projects/1
+        {
+            "name": "更新后的项目名称"
+        }
+    """
     stmt = select(Project).where(
         Project.id == project_id,
         Project.user_id == current_user.id
@@ -220,13 +311,33 @@ async def update_project(
     await db.refresh(project)
     return project
 
-@router.delete("/{project_id}")
+@router.delete("/{project_id}", summary="删除项目", description="删除指定项目及其关联的所有视频和数据1")
 async def delete_project(
     project_id: int,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    """删除项目"""
+    """删除项目
+    
+    删除指定项目及其关联的所有视频和数据。这是一个不可逆操作，请谨慎使用。
+    只有项目所有者可以删除项目。
+    
+    Args:
+        project_id (int): 要删除的项目ID
+        current_user (User): 当前认证用户依赖
+        db (AsyncSession): 数据库会话依赖
+    
+    Returns:
+        dict: 删除成功消息
+            - message (str): 删除成功提示信息
+    
+    Raises:
+        HTTPException:
+            - 404: 项目不存在或无权限访问
+    
+    Examples:
+        删除项目: DELETE /api/v1/projects/1
+    """
     stmt = select(Project).where(
         Project.id == project_id,
         Project.user_id == current_user.id

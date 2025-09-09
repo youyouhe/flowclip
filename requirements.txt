@@ -1,0 +1,6 @@
+fastapi
+uvicorn
+pydantic
+python-jose[cryptography]
+python-multipart
+fastapi-mcp

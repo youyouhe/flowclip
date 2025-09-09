@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.database import create_tables
 from app.models import LLMAnalysis, VideoSlice, VideoSubSlice
@@ -76,6 +76,23 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# 添加请求日志中间件
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    logger = logging.getLogger("http")
+    logger.debug(f"Received request: {request.method} {request.url}")
+    logger.debug(f"Headers: {dict(request.headers)}")
+    
+    try:
+        body = await request.body()
+        logger.debug(f"Body: {body.decode() if body else 'No body'}")
+    except Exception as e:
+        logger.debug(f"Could not read body: {e}")
+    
+    response = await call_next(request)
+    logger.debug(f"Response status: {response.status_code}")
+    return response
 
 # Include routers
 app.include_router(api_router, prefix="/api/v1")

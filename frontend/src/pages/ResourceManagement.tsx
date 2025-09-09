@@ -297,11 +297,12 @@ const ResourceManagement: React.FC = () => {
   const handleCreateTag = async (values: any) => {
     try {
       console.log('🏷️ Creating tag:', values);
-      await resourceAPI.createResourceTag(
-        values.name,
-        values.tag_type,
-        values.description
-      );
+      const tagData = {
+        name: values.name,
+        tag_type: values.tag_type,
+        description: values.description || null
+      };
+      await resourceAPI.createResourceTag(tagData);
       console.log('✅ Tag creation successful');
       message.success('标签创建成功');
       setTagModalVisible(false);

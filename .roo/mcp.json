@@ -1,14 +1,10 @@
 {
   "mcpServers": {
-    "context7": {
-      "command": "npx",
+    "time": {
+      "command": "uvx",
       "args": [
-        "-y",
-        "@upstash/context7-mcp"
-      ],
-      "env": {
-        "DEFAULT_MINIMUM_TOKENS": ""
-      }
+        "mcp-server-time"
+      ]
     }
   }
 }

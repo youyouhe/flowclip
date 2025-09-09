@@ -18,12 +18,40 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-@router.get("/active", response_model=List[VideoResponse])
+@router.get("/active", response_model=List[VideoResponse], summary="获取活动视频列表", description="获取当前用户所有非完成状态的视频")
 async def get_active_videos(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    """获取当前用户所有非完成状态的视频"""
+    """获取当前用户所有非完成状态的视频
+    
+    获取当前用户所有非完成状态的视频列表，按创建时间倒序排列。包括正在下载、处理中的视频。
+    
+    Args:
+        current_user (User): 当前认证用户依赖
+        db (AsyncSession): 数据库会话依赖
+    
+    Returns:
+        List[VideoResponse]: 视频列表
+            - id (int): 视频ID
+            - project_id (int): 项目ID
+            - title (str): 视频标题
+            - description (Optional[str]): 视频描述
+            - url (Optional[str]): 视频URL
+            - filename (Optional[str]): 视频文件名
+            - file_path (Optional[str]): 视频文件路径
+            - duration (Optional[float]): 视频时长（秒）
+            - file_size (Optional[int]): 文件大小（字节）
+            - thumbnail_url (Optional[str]): 缩略图URL
+            - status (str): 视频处理状态
+            - download_progress (float): 下载进度（0-100）
+            - created_at (datetime): 创建时间
+            - updated_at (Optional[datetime]): 更新时间
+            - project_name (str): 项目名称
+    
+    Examples:
+        获取活动视频: GET /api/v1/videos/active
+    """
     # 查询所有非完成状态的视频
     stmt = select(Video, Project.name.label('project_name')).join(Project).where(
         Project.user_id == current_user.id,
@@ -74,12 +102,12 @@ async def get_active_videos(
     return videos
 
 
-@router.get("/", response_model=PaginatedVideoResponse)
+@router.get("/", response_model=PaginatedVideoResponse, summary="获取视频列表", description="获取当前用户的所有视频，支持多种筛选和分页功能")
 async def get_videos(
     project_id: Optional[int] = Query(None, description="项目ID筛选"),
-    status: Optional[str] = Query(None, description="视频状态筛选"),
+    status: Optional[str] = Query(None, description="视频状态筛选 (pending, downloading, downloaded, processing, completed, failed)"),
     srt_processed: Optional[bool] = Query(None, description="SRT处理是否完成"),
-    search: Optional[str] = Query(None, description="搜索视频标题"),
+    search: Optional[str] = Query(None, description="搜索视频标题或描述"),
     start_date: Optional[str] = Query(None, description="开始日期 (YYYY-MM-DD)"),
     end_date: Optional[str] = Query(None, description="结束日期 (YYYY-MM-DD)"),
     min_duration: Optional[int] = Query(None, description="最小时长（秒）"),
@@ -91,7 +119,57 @@ async def get_videos(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    """获取当前用户的所有视频（支持筛选功能）"""
+    """获取当前用户的所有视频（支持筛选功能）
+    
+    获取当前用户的所有视频列表，支持多种筛选条件和分页功能。
+    
+    Args:
+        project_id (Optional[int]): 项目ID筛选
+        status (Optional[str]): 视频状态筛选，可选值: "pending", "downloading", "downloaded", "processing", "completed", "failed"
+        srt_processed (Optional[bool]): SRT处理是否完成筛选
+        search (Optional[str]): 搜索关键词，匹配视频标题或描述
+        start_date (Optional[str]): 创建时间起始日期 (格式: YYYY-MM-DD)
+        end_date (Optional[str]): 创建时间结束日期 (格式: YYYY-MM-DD)
+        min_duration (Optional[int]): 最小时长筛选（秒）
+        max_duration (Optional[int]): 最大时长筛选（秒）
+        min_file_size (Optional[int]): 最小文件大小筛选（字节）
+        max_file_size (Optional[int]): 最大文件大小筛选（字节）
+        page (int): 页码，从1开始，默认为1
+        page_size (int): 每页视频数量，范围1-100，默认为10
+        current_user (User): 当前认证用户依赖
+        db (AsyncSession): 数据库会话依赖
+    
+    Returns:
+        PaginatedVideoResponse: 分页视频列表响应
+            - videos (List[VideoResponse]): 视频列表
+                - id (int): 视频ID
+                - project_id (int): 项目ID
+                - title (str): 视频标题
+                - description (Optional[str]): 视频描述
+                - url (Optional[str]): 视频URL
+                - filename (Optional[str]): 视频文件名
+                - file_path (Optional[str]): 视频文件路径
+                - duration (Optional[float]): 视频时长（秒）
+                - file_size (Optional[int]): 文件大小（字节）
+                - thumbnail_url (Optional[str]): 缩略图URL
+                - status (str): 视频处理状态
+                - download_progress (float): 下载进度（0-100）
+                - created_at (datetime): 创建时间
+                - updated_at (Optional[datetime]): 更新时间
+                - project_name (str): 项目名称
+            - pagination (dict): 分页信息
+                - page (int): 当前页码
+                - page_size (int): 每页数量
+                - total (int): 总记录数
+                - total_pages (int): 总页数
+            - total (int): 总记录数
+    
+    Examples:
+        获取所有视频: GET /api/v1/videos/
+        搜索视频: GET /api/v1/videos/?search=测试
+        状态筛选: GET /api/v1/videos/?status=completed
+        分页查询: GET /api/v1/videos/?page=2&page_size=20
+    """
     from app.core.constants import ProcessingTaskType
     from app.models.processing_task import ProcessingTask
     
