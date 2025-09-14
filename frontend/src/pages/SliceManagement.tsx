@@ -7,6 +7,7 @@ import { videoSliceAPI } from '../services/api';
 import { asrAPI, systemConfigAPI } from '../services/api';
 import { projectAPI } from '../services/api';
 import { wsService, startHeartbeat, stopHeartbeat } from '../services/websocket';
+import SliceTimeline from '../components/SliceTimeline';
 
 const { Title, Text, Paragraph } = Typography;
 const { TextArea } = Input;
@@ -1267,6 +1268,13 @@ const SliceManagement: React.FC = () => {
                           return true;
                         },
                       }}
+                    />
+                  </TabPane>
+                  <TabPane tab="可视化切片" key="timeline">
+                    <SliceTimeline 
+                      slices={slices} 
+                      loading={loading}
+                      selectedVideo={selectedVideo}
                     />
                   </TabPane>
                 </Tabs>
