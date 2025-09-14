@@ -20,6 +20,26 @@ from app.models import VideoSlice, VideoSubSlice, Transcript, ProcessingTask, Re
 # 创建logger
 logger = logging.getLogger(__name__)
 
+# 定义特效数组
+OPEN_EFFECTS = [
+    {"type": "爆炸", "params": None},
+    {"type": "闪电", "params": None},
+    {"type": "闪光灯_I", "params": None},
+    {"type": "渐显开幕", "params": None},
+    {"type": "横条开幕", "params": None},
+    {"type": "模糊开幕", "params": None},
+    {"type": "分屏开幕", "params": None},
+    {"type": "擦拭开幕", "params": None}            
+]
+
+CLOSE_EFFECTS = [
+    {"type": "模糊闭幕", "params": None},
+    {"type": "横向闭幕", "params": None},
+    {"type": "渐隐闭幕", "params": None},
+    {"type": "闭幕", "params": None},
+    {"type": "闭幕_II", "params": None}
+]
+
 def _get_proxy_url(resource_path: str) -> str:
     """生成资源的签名URL，供CapCut服务器访问"""
     # 使用配置的minio_public_endpoint生成可访问的URL
@@ -270,7 +290,12 @@ def export_slice_to_capcut(self, slice_id: int, draft_folder: str, user_id: int 
             if slice_obj.type == "fragment":
                 # 对于fragment切片，处理所有子切片
                 total_sub_slices = len(sub_slices)
-                
+
+                # 为整个fragment切片随机选择打开和关闭特效，保持一致性
+                import random
+                open_effect = random.choice(OPEN_EFFECTS)
+                close_effect = random.choice(CLOSE_EFFECTS)
+
                 for i, sub_slice in enumerate(sub_slices):
                     try:
                         progress = 20 + (i / total_sub_slices) * 50
@@ -278,17 +303,20 @@ def export_slice_to_capcut(self, slice_id: int, draft_folder: str, user_id: int 
                         _update_task_status(celery_task_id, ProcessingTaskStatus.RUNNING, progress, message)
                         self.update_state(state='PROGRESS', meta={'progress': progress, 'stage': ProcessingStage.CAPCUT_EXPORT, 'message': message})
                         
-                        # 添加水平打开特效 (前3秒)
-                        print(f"DEBUG: 添加水平打开特效 - 时间轴起始: {current_time}秒, 时间轴结束: {current_time + 3}秒")
-                        open_effect_result = asyncio.run(capcut_service.add_effect(
-                            draft_id=draft_id,
-                            effect_type="Explosion",
-                            params=[50,20],
-                            start=current_time,
-                            end=current_time + 3,
-                            track_name=f"open_effect_track_{i+1}",
-                            max_retries=3
-                        ))
+                        # 添加打开特效 (前3秒)
+                        # 使用在循环外统一选择的特效
+                        print(f"DEBUG: 添加{open_effect['type']}打开特效 - 时间轴起始: {current_time}秒, 时间轴结束: {current_time + 3}秒")
+                        effect_kwargs = {
+                            "draft_id": draft_id,
+                            "effect_type": open_effect["type"],
+                            "start": current_time,
+                            "end": current_time + 3,
+                            "track_name": f"open_effect_track_{i+1}",
+                            "max_retries": 3
+                        }
+                        if open_effect["params"] is not None:
+                            effect_kwargs["params"] = open_effect["params"]
+                        open_effect_result = asyncio.run(capcut_service.add_effect(**effect_kwargs))
                         
                         # 添加电视彩虹屏特效 (从水平打开特效结束后持续到子切片结束前3秒)
                         print(f"DEBUG: 添加电视彩虹屏特效 - 时间轴起始: {current_time + 3}秒, 时间轴结束: {current_time + sub_slice.duration - 3}秒")
@@ -332,17 +360,21 @@ def export_slice_to_capcut(self, slice_id: int, draft_folder: str, user_id: int 
                             max_retries=3
                         ))
                         
-                        # 添加水平关闭特效 (结束前3秒)
+                        # 添加关闭特效 (结束前3秒)
+                        # 使用在循环外统一选择的特效
                         close_effect_start = current_time + sub_slice.duration - 3
-                        print(f"DEBUG: 添加水平关闭特效 - 时间轴起始: {close_effect_start}秒, 时间轴结束: {current_time + sub_slice.duration}秒")
-                        close_effect_result = asyncio.run(capcut_service.add_effect(
-                            draft_id=draft_id,
-                            effect_type="Horizontal_Close",
-                            start=close_effect_start,
-                            end=current_time + sub_slice.duration,
-                            track_name=f"close_effect_track_{i+1}",
-                            max_retries=3
-                        ))
+                        print(f"DEBUG: 添加{close_effect['type']}关闭特效 - 时间轴起始: {close_effect_start}秒, 时间轴结束: {current_time + sub_slice.duration}秒")
+                        close_effect_kwargs = {
+                            "draft_id": draft_id,
+                            "effect_type": close_effect["type"],
+                            "start": close_effect_start,
+                            "end": current_time + sub_slice.duration,
+                            "track_name": f"close_effect_track_{i+1}",
+                            "max_retries": 3
+                        }
+                        if close_effect["params"] is not None:
+                            close_effect_kwargs["params"] = close_effect["params"]
+                        close_effect_result = asyncio.run(capcut_service.add_effect(**close_effect_kwargs))
                         
                         # 添加子切片标题文本（与水波纹特效同步显示，不带年月信息）
                         if sub_slice.cover_title:
@@ -467,6 +499,46 @@ def export_slice_to_capcut(self, slice_id: int, draft_folder: str, user_id: int 
                         print(f"处理子切片 {i+1} 失败: {str(e)}")
                         # 继续处理其他子切片
                         continue
+
+                # 添加片尾视频
+                ending_video_url = _get_resource_by_tag_from_db("片尾", "video")
+                if ending_video_url:
+                    # 如果是从数据库获取的URL，提取资源路径并生成代理URL
+                    from urllib.parse import urlparse
+                    parsed_url = urlparse(ending_video_url)
+                    resource_path = parsed_url.path.lstrip('/')
+                    # 移除bucket名称前缀
+                    if resource_path.startswith(settings.minio_bucket_name + '/'):
+                        resource_path = resource_path[len(settings.minio_bucket_name) + 1:]
+                    proxy_ending_video_url = _get_proxy_url(resource_path)
+
+                    # 添加"渐显开幕"特效
+                    print(f"DEBUG: 添加渐显开幕特效 - 时间轴起始: {current_time}秒, 时间轴结束: {current_time + 3}秒")
+                    open_effect_result = asyncio.run(capcut_service.add_effect(
+                        draft_id=draft_id,
+                        effect_type="渐显开幕",
+                        start=current_time,
+                        end=current_time + 3,
+                        track_name="ending_open_effect_track",
+                        max_retries=3
+                    ))
+
+                    # 添加片尾视频，持续3秒
+                    print(f"DEBUG: 添加片尾视频 - URL: {proxy_ending_video_url}, 时间轴起始: {current_time}秒, 时间轴结束: {current_time + 3}秒")
+                    ending_video_result = asyncio.run(capcut_service.add_video(
+                        draft_id=draft_id,
+                        video_url=proxy_ending_video_url,
+                        start=0,
+                        end=3,
+                        track_name="ending_video_track",
+                        target_start=current_time,
+                        max_retries=3
+                    ))
+
+                    # 更新总时长
+                    current_time += 3
+                else:
+                    print("DEBUG: 未找到片尾视频资源")
             else:
                 # 对于full切片，添加水波纹特效和音效，然后添加整个切片视频
                 try:
@@ -475,17 +547,21 @@ def export_slice_to_capcut(self, slice_id: int, draft_folder: str, user_id: int 
                     _update_task_status(celery_task_id, ProcessingTaskStatus.RUNNING, progress, message)
                     self.update_state(state='PROGRESS', meta={'progress': progress, 'stage': ProcessingStage.CAPCUT_EXPORT, 'message': message})
                     
-                    # 添加水平打开特效 (前3秒)
-                    print(f"DEBUG: 添加水平打开特效 - 时间轴起始: 0秒, 时间轴结束: 3秒")
-                    open_effect_result = asyncio.run(capcut_service.add_effect(
-                        draft_id=draft_id,
-                        effect_type="Explosion",
-                        params=[50,20],
-                        start=0,
-                        end=3,
-                        track_name="open_effect_track_main",
-                        max_retries=3
-                    ))
+                    # 添加随机打开特效 (前3秒)
+                    import random
+                    open_effect = random.choice(OPEN_EFFECTS)
+                    print(f"DEBUG: 添加{open_effect['type']}打开特效 - 时间轴起始: 0秒, 时间轴结束: 3秒")
+                    effect_kwargs = {
+                        "draft_id": draft_id,
+                        "effect_type": open_effect["type"],
+                        "start": 0,
+                        "end": 3,
+                        "track_name": "open_effect_track_main",
+                        "max_retries": 3
+                    }
+                    if open_effect["params"] is not None:
+                        effect_kwargs["params"] = open_effect["params"]
+                    open_effect_result = asyncio.run(capcut_service.add_effect(**effect_kwargs))
                     
                     # 添加电视彩虹屏特效 (从水平打开特效结束后持续到视频结束前3秒)
                     print(f"DEBUG: 添加电视彩虹屏特效 - 时间轴起始: 3秒, 时间轴结束: {slice_obj.duration - 3}秒")
@@ -498,17 +574,21 @@ def export_slice_to_capcut(self, slice_id: int, draft_folder: str, user_id: int 
                         max_retries=3
                     ))
                     
-                    # 添加水平关闭特效 (结束前3秒)
+                    # 添加随机关闭特效 (结束前3秒)
                     close_effect_start = slice_obj.duration - 3
-                    print(f"DEBUG: 添加水平关闭特效 - 时间轴起始: {close_effect_start}秒, 时间轴结束: {slice_obj.duration}秒")
-                    close_effect_result = asyncio.run(capcut_service.add_effect(
-                        draft_id=draft_id,
-                        effect_type="Horizontal_Close",
-                        start=close_effect_start,
-                        end=slice_obj.duration,
-                        track_name="close_effect_track_main",
-                        max_retries=3
-                    ))
+                    close_effect = random.choice(CLOSE_EFFECTS)
+                    print(f"DEBUG: 添加{close_effect['type']}关闭特效 - 时间轴起始: {close_effect_start}秒, 时间轴结束: {slice_obj.duration}秒")
+                    close_effect_kwargs = {
+                        "draft_id": draft_id,
+                        "effect_type": close_effect["type"],
+                        "start": close_effect_start,
+                        "end": slice_obj.duration,
+                        "track_name": "close_effect_track_main",
+                        "max_retries": 3
+                    }
+                    if close_effect["params"] is not None:
+                        close_effect_kwargs["params"] = close_effect["params"]
+                    close_effect_result = asyncio.run(capcut_service.add_effect(**close_effect_kwargs))
                     
                     # 获取水波纹音频资源
                     audio_url = _get_resource_by_tag_from_db("水波纹", "audio")
@@ -552,6 +632,46 @@ def export_slice_to_capcut(self, slice_id: int, draft_folder: str, user_id: int 
                     ))
                     
                     current_time = slice_obj.duration
+
+                    # 添加片尾视频
+                    ending_video_url = _get_resource_by_tag_from_db("片尾", "video")
+                    if ending_video_url:
+                        # 如果是从数据库获取的URL，提取资源路径并生成代理URL
+                        from urllib.parse import urlparse
+                        parsed_url = urlparse(ending_video_url)
+                        resource_path = parsed_url.path.lstrip('/')
+                        # 移除bucket名称前缀
+                        if resource_path.startswith(settings.minio_bucket_name + '/'):
+                            resource_path = resource_path[len(settings.minio_bucket_name) + 1:]
+                        proxy_ending_video_url = _get_proxy_url(resource_path)
+
+                        # 添加"渐显开幕"特效
+                        print(f"DEBUG: 添加渐显开幕特效 - 时间轴起始: {current_time}秒, 时间轴结束: {current_time + 3}秒")
+                        open_effect_result = asyncio.run(capcut_service.add_effect(
+                            draft_id=draft_id,
+                            effect_type="渐显开幕",
+                            start=current_time,
+                            end=current_time + 3,
+                            track_name="ending_open_effect_track_main",
+                            max_retries=3
+                        ))
+
+                        # 添加片尾视频，持续3秒
+                        print(f"DEBUG: 添加片尾视频 - URL: {proxy_ending_video_url}, 时间轴起始: {current_time}秒, 时间轴结束: {current_time + 3}秒")
+                        ending_video_result = asyncio.run(capcut_service.add_video(
+                            draft_id=draft_id,
+                            video_url=proxy_ending_video_url,
+                            start=0,
+                            end=3,
+                            track_name="ending_video_track_main",
+                            target_start=current_time,
+                            max_retries=3
+                        ))
+
+                        # 更新总时长
+                        current_time += 3
+                    else:
+                        print("DEBUG: 未找到片尾视频资源")
                 except Exception as e:
                     print(f"处理完整切片失败: {str(e)}")
                     raise Exception(f"处理完整切片失败: {str(e)}")
