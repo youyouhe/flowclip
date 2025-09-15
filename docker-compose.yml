@@ -196,7 +196,6 @@ services:
       - backend
     volumes:
       - ./frontend:/app
-      - /app/node_modules
     networks:
       - flowclip-network
     logging:
