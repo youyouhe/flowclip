@@ -369,7 +369,26 @@ fi
 
 # 等待一段时间确保数据库初始化完成
 log_info "⏳ 等待数据库初始化完成..."
-sleep 10
+sleep 15
+
+# 等待后端服务完全启动
+log_info "⏳ 等待后端服务启动完成..."
+BACKEND_MAX_ATTEMPTS=30
+BACKEND_ATTEMPT=1
+while [ $BACKEND_ATTEMPT -le $BACKEND_MAX_ATTEMPTS ]; do
+    if docker-compose exec backend python -c "import sys; sys.exit(0)" &> /dev/null; then
+        log_success "后端服务已准备就绪"
+        break
+    fi
+    log_info "等待后端服务... (尝试 $BACKEND_ATTEMPT/$BACKEND_MAX_ATTEMPTS)"
+    sleep 2
+    BACKEND_ATTEMPT=$((BACKEND_ATTEMPT + 1))
+done
+
+if [ $BACKEND_ATTEMPT -gt $BACKEND_MAX_ATTEMPTS ]; then
+    log_error "后端服务未能在规定时间内准备就绪"
+    exit 1
+fi
 
 # 初始化数据库配置
 log_info "💾 初始化数据库配置..."
@@ -377,6 +396,8 @@ log_info "💾 初始化数据库配置..."
 INIT_MAX_ATTEMPTS=5
 INIT_ATTEMPT=1
 while [ $INIT_ATTEMPT -le $INIT_MAX_ATTEMPTS ]; do
+    # 增加延迟确保数据库完全初始化
+    sleep 5
     if docker-compose exec -T backend python init_system_config.py; then
         log_success "数据库配置初始化成功"
         break
