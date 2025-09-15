@@ -137,7 +137,7 @@ class SystemConfigService:
         
         # 更新其他配置项
         for db_key, settings_attr in SystemConfigService.CONFIG_MAPPING.items():
-            if db_key in db_configs:
+            if db_key in db_configs and db_configs[db_key].strip():
                 setattr(settings, settings_attr, db_configs[db_key])
     
     @staticmethod
@@ -157,7 +157,7 @@ class SystemConfigService:
         
         # 更新其他配置项
         for db_key, settings_attr in SystemConfigService.CONFIG_MAPPING.items():
-            if db_key in db_configs:
+            if db_key in db_configs and db_configs[db_key].strip():
                 print(f"DEBUG: 更新配置项 {db_key} 从 '{getattr(settings, settings_attr, None)}' 到 '{db_configs[db_key]}'")
                 setattr(settings, settings_attr, db_configs[db_key])
         
