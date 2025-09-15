@@ -41,7 +41,7 @@ const Register: React.FC = () => {
       <Card className="w-full max-w-md shadow-xl">
         <div className="text-center mb-6">
           <h1 className="text-3xl font-bold text-gray-800">创建账号</h1>
-          <p className="text-gray-600 mt-2">注册Video Slice Tools</p>
+          <p className="text-gray-600 mt-2">注册Flowclip</p>
         </div>
         
         <Form

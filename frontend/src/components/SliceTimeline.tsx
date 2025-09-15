@@ -376,8 +376,8 @@ const SliceTimeline: React.FC<SliceTimelineProps> = ({
         position: 'relative'
       }}>
         <Timeline
-          groups={groups}
-          items={timelineItems}
+          groups={groups as any}
+          items={timelineItems as any}
           defaultTimeStart={moment(visibleTimeStart)}
           defaultTimeEnd={moment(visibleTimeEnd)}
           visibleTimeStart={visibleTimeStart}
@@ -394,16 +394,10 @@ const SliceTimeline: React.FC<SliceTimelineProps> = ({
           canChangeGroup={false}
           stackItems={true}
           lineHeight={60}
-          groupHeights={groups.map(() => 60)}
           sidebarWidth={320}
           traditionalZoom={true}
-          showCursorLine={true}
           dragSnap={60000} // Snap to 1 minute
           itemTouchSendsClick={false}
-          containerStyle={{
-            background: '#fafafa',
-            border: 'none'
-          }}
         >
           <TimelineHeaders>
             <SidebarHeader>
@@ -423,16 +417,19 @@ const SliceTimeline: React.FC<SliceTimelineProps> = ({
                 fontWeight: 'bold'
               }}
             />
-            <DateHeader 
+            <DateHeader
               labelFormat="mm:ss"
-              style={{ 
-                height: 50, 
+              style={{
+                height: 50,
                 backgroundColor: '#ffffff',
                 borderBottom: '1px solid #d9d9d9',
                 textAlign: 'center',
                 fontSize: '12px'
               }}
-              intervalRenderer={({ intervalContext, getIntervalProps, data }) => {
+              intervalRenderer={(props: any) => {
+                if (!props) return null;
+                const { intervalContext, getIntervalProps, data } = props;
+                if (!intervalContext || !getIntervalProps) return null;
                 return (
                   <div {...getIntervalProps()} style={{
                     height: 50,
@@ -603,8 +600,8 @@ const SliceTimeline: React.FC<SliceTimelineProps> = ({
               borderRadius: '8px' 
             }}>
             <Timeline
-              groups={groups}
-              items={timelineItems}
+              groups={groups as any}
+              items={timelineItems as any}
               defaultTimeStart={moment(visibleTimeStart)}
               defaultTimeEnd={moment(visibleTimeEnd)}
               visibleTimeStart={visibleTimeStart}
@@ -621,16 +618,10 @@ const SliceTimeline: React.FC<SliceTimelineProps> = ({
               canChangeGroup={false}
               stackItems={true}
               lineHeight={60}
-              groupHeights={groups.map(() => 60)}
               sidebarWidth={370}
               traditionalZoom={true}
-              showCursorLine={true}
               dragSnap={60000}
               itemTouchSendsClick={false}
-              containerStyle={{
-                background: '#fafafa',
-                border: 'none'
-              }}
             >
               <TimelineHeaders>
                 <SidebarHeader>
@@ -650,16 +641,19 @@ const SliceTimeline: React.FC<SliceTimelineProps> = ({
                     fontWeight: 'bold'
                   }}
                 />
-                <DateHeader 
+                <DateHeader
                   labelFormat="mm:ss"
-                  style={{ 
-                    height: 50, 
+                  style={{
+                    height: 50,
                     backgroundColor: '#ffffff',
                     borderBottom: '1px solid #d9d9d9',
                     textAlign: 'center',
                     fontSize: '12px'
                   }}
-                  intervalRenderer={({ intervalContext, getIntervalProps, data }) => {
+                  intervalRenderer={(props: any) => {
+                    if (!props) return null;
+                    const { intervalContext, getIntervalProps, data } = props;
+                    if (!intervalContext || !getIntervalProps) return null;
                     return (
                       <div {...getIntervalProps()} style={{
                         height: 50,

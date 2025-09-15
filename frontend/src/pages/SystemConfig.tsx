@@ -3,6 +3,7 @@ import { Card, Row, Col, Form, Input, Button, Spin, Alert, Typography, Divider, 
 import { systemConfigAPI, capcutAPI, asrAPI, llmAPI } from '../services/api';
 import { useAuth } from '../components/AuthProvider';
 import { UploadOutlined, PlayCircleOutlined } from '@ant-design/icons';
+import { AxiosResponse } from 'axios';
 
 const { Title, Text } = Typography;
 const { Panel } = Collapse;
@@ -47,7 +48,7 @@ const SystemConfig: React.FC = () => {
         if (response.data && response.data.models) {
           setLlmModels(response.data.models);
         }
-      } catch (err) {
+      } catch (err: any) {
         console.error('获取LLM模型列表失败:', err);
         // 如果获取失败，使用默认模型列表
         setLlmModels([
@@ -80,10 +81,10 @@ const SystemConfig: React.FC = () => {
       setError(null);
       const response = await systemConfigAPI.getSystemConfigs();
       setConfigs(response.data);
-      
+
       // 设置表单初始值
       const initialValues: Record<string, string> = {};
-      response.data.forEach(config => {
+      response.data.forEach((config: { key: string | number; value: string; }) => {
         initialValues[config.key] = config.value;
       });
       form.setFieldsValue(initialValues);
@@ -104,14 +105,14 @@ const SystemConfig: React.FC = () => {
     try {
       setAsrTesting(true);
       setAsrTestResult(null);
-      
+
       // 获取当前表单中的ASR模型类型配置
       const formValues = form.getFieldsValue();
       const asrModelType = formValues.asr_model_type || 'whisper';
-      
+
       // 调用后端代理API进行测试
       const response = await asrAPI.testAsrService(asrTestFile, asrModelType);
-      
+
       // 处理响应结果
       if (response.data.success) {
         setAsrTestResult(response.data.result || 'ASR服务测试成功，但未返回结果');
@@ -140,9 +141,9 @@ const SystemConfig: React.FC = () => {
           message: '检查中...'
         }
       }));
-      
+
       // 对于CapCut服务，使用专门的API检查
-      let response;
+      let response: AxiosResponse<any, any, {}>;
       if (serviceName === 'capcut') {
         response = await capcutAPI.getStatus();
         setServiceStatus(prev => ({
@@ -178,7 +179,7 @@ const SystemConfig: React.FC = () => {
       setSaving(true);
       setError(null);
       setSuccess(null);
-      
+
       // 构造更新数据
       const updateData = Object.keys(values).map(key => {
         const config = configs.find(c => c.key === key);
@@ -189,13 +190,13 @@ const SystemConfig: React.FC = () => {
           category: config?.category || ''
         };
       });
-      
+
       await systemConfigAPI.updateSystemConfigs(updateData);
       setSuccess('配置保存成功');
-      
+
       // 重新获取配置以确保同步
       await fetchSystemConfigs();
-      
+
       // 重新检查所有服务状态，因为配置可能已更改
       Object.keys(serviceCategoryMap).forEach(serviceName => {
         setTimeout(() => {

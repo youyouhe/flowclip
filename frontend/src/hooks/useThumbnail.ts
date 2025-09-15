@@ -30,7 +30,7 @@ export const useThumbnail = (video: {
         // 首先尝试使用新的缩略图路径生成URL
         if (video.thumbnail_path) {
           try {
-            const response = await resourceAPI.getThumbnailUrlByPath(video.thumbnail_path);
+            const response = await videoAPI.getThumbnailUrlByPath(video.thumbnail_path);
             setThumbnailUrl(response.data.download_url);
             setLoading(false);
             return;

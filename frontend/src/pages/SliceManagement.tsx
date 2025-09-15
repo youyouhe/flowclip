@@ -97,6 +97,23 @@ interface Project {
   name: string;
 }
 
+// 定义新的切片数据接口，以匹配新的JSON格式
+interface SliceChapter {
+  cover_title: string;
+  start: string; // 格式: "00:08:20,100"
+  end: string;   // 格式: "00:10:55,300"
+}
+
+interface SliceData {
+  cover_title: string;
+  title: string;
+  desc: string;
+  tags: string[];
+  start: string; // 格式: "00:08:15,250"
+  end: string;   // 格式: "00:15:45,800"
+  chapters: SliceChapter[];
+}
+
 interface LLMAnalysis {
   id: number;
   video_id: number;
@@ -179,7 +196,7 @@ const SliceManagement: React.FC = () => {
   });
   
   // 轮询定时器引用
-  const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const pollIntervalRef = useRef<number | null>(null);
   
   // 筛选状态
   const [filters, setFilters] = useState({
@@ -194,22 +211,6 @@ const SliceManagement: React.FC = () => {
     max_file_size: undefined as number | undefined,
   });
   
-  // 定义新的切片数据接口，以匹配新的JSON格式
-  interface SliceChapter {
-    cover_title: string;
-    start: string; // 格式: "00:08:20,100"
-    end: string;   // 格式: "00:10:55,300"
-  }
-  
-  interface SliceData {
-    cover_title: string;
-    title: string;
-    desc: string;
-    tags: string[];
-    start: string; // 格式: "00:08:15,250"
-    end: string;   // 格式: "00:15:45,800"
-    chapters: SliceChapter[];
-  }
 
   const checkAsrStatus = async () => {
     try {
@@ -389,13 +390,13 @@ const SliceManagement: React.FC = () => {
       if (filters.max_duration !== undefined) params.max_duration = filters.max_duration;
       if (filters.min_file_size !== undefined) params.min_file_size = filters.min_file_size;
       if (filters.max_file_size !== undefined) params.max_file_size = filters.max_file_size;
-      
+
       const response = await videoAPI.getVideos(params);
       // 处理分页响应格式
       const videosData = response.data.videos || response.data;
-      
+
       setVideos(videosData);
-    } catch (error) {
+    } catch (error: any) {
       message.error('加载视频列表失败');
     } finally {
       setVideosLoading(false);
@@ -406,7 +407,7 @@ const SliceManagement: React.FC = () => {
     try {
       const response = await projectAPI.getProjects();
       setProjects(response.data);
-    } catch (error) {
+    } catch (error: any) {
       message.error('获取项目列表失败');
     }
   };
@@ -447,7 +448,7 @@ const SliceManagement: React.FC = () => {
       setLoading(true);
       const response = await videoSliceAPI.getVideoAnalyses(selectedVideo);
       setAnalyses(response.data);
-    } catch (error) {
+    } catch (error: any) {
       message.error('加载分析数据失败');
     } finally {
       setLoading(false);
@@ -461,7 +462,7 @@ const SliceManagement: React.FC = () => {
       setLoading(true);
       const response = await videoSliceAPI.getVideoSlices(selectedVideo);
       const slicesData = response.data;
-      
+
       // 为每个切片加载子切片
       const slicesWithSubs = await Promise.all(
         slicesData.map(async (slice: VideoSlice) => {
@@ -471,7 +472,7 @@ const SliceManagement: React.FC = () => {
               ...slice,
               sub_slices: subResponse.data
             };
-          } catch (error) {
+          } catch (error: any) {
             console.error(`加载切片 ${slice.id} 的子切片失败:`, error);
             return {
               ...slice,
@@ -480,9 +481,9 @@ const SliceManagement: React.FC = () => {
           }
         })
       );
-      
+
       setSlices(slicesWithSubs);
-    } catch (error) {
+    } catch (error: any) {
       message.error('加载切片数据失败');
     } finally {
       setLoading(false);
@@ -598,7 +599,7 @@ const SliceManagement: React.FC = () => {
           await videoSliceAPI.deleteAnalysis(analysisId);
           message.success('分析数据删除成功');
           loadAnalyses();
-        } catch (error) {
+        } catch (error: any) {
           message.error('删除分析数据失败');
         } finally {
           setLoading(false);
@@ -620,7 +621,7 @@ const SliceManagement: React.FC = () => {
           await videoSliceAPI.deleteSlice(sliceId);
           message.success('切片删除成功');
           loadSlices();
-        } catch (error) {
+        } catch (error: any) {
           message.error('删除切片失败');
         } finally {
           setLoading(false);
@@ -642,7 +643,7 @@ const SliceManagement: React.FC = () => {
           await videoSliceAPI.deleteSubSlice(subSliceId);
           message.success('子切片删除成功');
           loadSlices();
-        } catch (error) {
+        } catch (error: any) {
           message.error('删除子切片失败');
         } finally {
           setLoading(false);
@@ -864,7 +865,7 @@ const SliceManagement: React.FC = () => {
                 title: '切片详情',
                 content: (
                   <div>
-                    <p><strong>描述:</strong> {record.desc || record.description}</p>
+                    <p><strong>描述:</strong> {record.description}</p>
                     <p><strong>标签:</strong> {record.tags?.join(', ')}</p>
                     <p><strong>文件路径:</strong> {record.sliced_file_path}</p>
                   </div>
@@ -1140,7 +1141,7 @@ const SliceManagement: React.FC = () => {
                                   onClick={() => {
                                     // 计算每个子切片的相对时间位置（相对于父切片的开始）
                                     let accumulatedTime = 0;
-                                    const copyContent = record.sub_slices.map((subSlice: VideoSubSlice, index: number) => {
+                                    const copyContent = (record.sub_slices || []).map((subSlice: VideoSubSlice, index: number) => {
                                       const timeStr = formatTime(accumulatedTime);
                                       // 累加当前子切片的持续时间，为下一个子切片准备时间位置
                                       accumulatedTime += subSlice.duration || 0;

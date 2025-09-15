@@ -27,7 +27,7 @@ logging.getLogger('sqlalchemy.dialects').setLevel(logging.ERROR)
 logging.getLogger('sqlalchemy.orm').setLevel(logging.ERROR)
 
 app = FastAPI(
-    title="video slice tools API",
+    title="Flowclip API",
     description="A comprehensive API for video processing and slicing",
     version="1.0.0",
     docs_url="/docs",
@@ -180,7 +180,7 @@ async def startup_event():
 @app.get("/")
 async def root():
     return {
-        "message": "video slice tools API",
+        "message": "Flowclip API",
         "version": "1.0.0",
         "docs": "/docs"
     }

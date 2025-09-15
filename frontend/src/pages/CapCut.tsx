@@ -125,7 +125,7 @@ const CapCut: React.FC = () => {
     try {
       const response = await capcutAPI.getStatus();
       setCapcutStatus(response.data.status === 'online' ? 'online' : 'offline');
-    } catch (error) {
+    } catch (error: any) {
       setCapcutStatus('offline');
     }
   };
@@ -200,14 +200,14 @@ const CapCut: React.FC = () => {
       if (filters.max_duration !== undefined) params.max_duration = filters.max_duration;
       if (filters.min_file_size !== undefined) params.min_file_size = filters.min_file_size;
       if (filters.max_file_size !== undefined) params.max_file_size = filters.max_file_size;
-      
+
       const response = await videoAPI.getVideos(params);
       const videosData = response.data.videos || response.data;
-      const completedVideos = videosData.filter((video: Video) => 
+      const completedVideos = videosData.filter((video: Video) =>
         video.status === 'completed'
       );
       setVideos(completedVideos);
-    } catch (error) {
+    } catch (error: any) {
       message.error('加载视频列表失败');
     } finally {
       setVideosLoading(false);
@@ -218,7 +218,7 @@ const CapCut: React.FC = () => {
     try {
       const response = await projectAPI.getProjects();
       setProjects(response.data);
-    } catch (error) {
+    } catch (error: any) {
       message.error('获取项目列表失败');
     }
   };
@@ -254,12 +254,12 @@ const CapCut: React.FC = () => {
 
   const loadSlices = async () => {
     if (!selectedVideo) return;
-    
+
     try {
       setLoading(true);
       const response = await videoSliceAPI.getVideoSlices(selectedVideo);
       const slicesData = response.data;
-      
+
       // 为每个切片加载子切片
       const slicesWithSubs = await Promise.all(
         slicesData.map(async (slice: VideoSlice) => {
@@ -269,7 +269,7 @@ const CapCut: React.FC = () => {
               ...slice,
               sub_slices: subResponse.data
             };
-          } catch (error) {
+          } catch (error: any) {
             console.error(`加载切片 ${slice.id} 的子切片失败:`, error);
             return {
               ...slice,
@@ -278,9 +278,9 @@ const CapCut: React.FC = () => {
           }
         })
       );
-      
+
       setSlices(slicesWithSubs);
-    } catch (error) {
+    } catch (error: any) {
       message.error('加载切片数据失败');
     } finally {
       setLoading(false);
@@ -304,29 +304,29 @@ const CapCut: React.FC = () => {
 
   const handleCapCutExport = async (slice: VideoSlice) => {
     setSelectedSlice(slice);
-    
+
     // 首先尝试从系统配置获取草稿文件夹路径
     try {
       const response = await systemConfigAPI.getSystemConfigs();
       const configs = response.data;
       const draftFolderConfig = configs.find((config: any) => config.key === 'capcut_draft_folder');
       let defaultDraftFolder = '';
-      
+
       if (draftFolderConfig && draftFolderConfig.value) {
         defaultDraftFolder = draftFolderConfig.value;
       } else {
         // 如果系统配置中没有设置，则使用环境变量
         defaultDraftFolder = import.meta.env.VITE_CAPCUT_DRAFT_FOLDER || '';
       }
-      
+
       setDraftFolder(defaultDraftFolder);
-    } catch (error) {
+    } catch (error: any) {
       // 如果获取系统配置失败，使用环境变量作为备选
       const defaultDraftFolder = import.meta.env.VITE_CAPCUT_DRAFT_FOLDER || '';
       setDraftFolder(defaultDraftFolder);
       console.error('获取系统配置失败:', error);
     }
-    
+
     setCapcutModalVisible(true);
   };
 
@@ -376,7 +376,7 @@ const CapCut: React.FC = () => {
         isProcessing: false,
         progress: 0,
         message: '处理失败: ' + (error.response?.data?.detail || error.message || '未知错误'),
-        taskId: null
+        taskId: ''
       });
     } finally {
       setLoading(false);
@@ -388,12 +388,12 @@ const CapCut: React.FC = () => {
       message.error('草稿文件尚未生成');
       return;
     }
-    
+
     try {
       message.success('正在准备下载...');
       // 直接在浏览器中打开下载链接
       window.open(slice.capcut_draft_url, '_blank');
-    } catch (error) {
+    } catch (error: any) {
       message.error('下载失败');
     }
   };

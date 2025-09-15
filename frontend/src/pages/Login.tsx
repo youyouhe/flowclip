@@ -26,7 +26,7 @@ const Login: React.FC = () => {
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100">
       <Card className="w-full max-w-md shadow-xl">
         <div className="text-center mb-6">
-          <h1 className="text-3xl font-bold text-gray-800">Video Slice Tools</h1>
+          <h1 className="text-3xl font-bold text-gray-800">Flowclip</h1>
           <p className="text-gray-600 mt-2">登录您的账户</p>
         </div>
         

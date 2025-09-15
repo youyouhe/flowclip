@@ -1,20 +1,19 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { 
-  Table, 
-  Button, 
-  Card, 
-  Space, 
-  Modal, 
+import {
+  Table,
+  Button,
+  Card,
+  Space,
+  Modal,
   Form,
-  FormList, 
-  Input, 
-  Select, 
-  message, 
-  Tag, 
-  Progress, 
-  Popconfirm, 
-  Upload, 
-  Row, 
+  Input,
+  Select,
+  message,
+  Tag,
+  Progress,
+  Popconfirm,
+  Upload,
+  Row,
   Col,
   DatePicker,
   InputNumber,
@@ -213,7 +212,7 @@ const Videos: React.FC = () => {
         // 首先尝试使用新的缩略图路径生成URL
         if (video.thumbnail_path) {
           try {
-            const thumbnailResponse = await resourceAPI.getThumbnailUrlByPath(video.thumbnail_path);
+            const thumbnailResponse = await videoAPI.getThumbnailUrlByPath(video.thumbnail_path);
             return { id: video.id, url: thumbnailResponse.data.download_url };
           } catch (error) {
             console.error(`通过路径获取视频 ${video.id} 缩略图失败:`, error);

@@ -36,15 +36,21 @@ import {
   FilterOutlined,
   FileOutlined
 } from '@ant-design/icons';
-import { 
-  resourceAPI, 
-  Resource as ResourceType, 
-  ResourceTag 
+import {
+  resourceAPI
 } from '../services/api';
 
 const { Title, Text } = Typography;
 const { Option } = Select;
 const { TextArea } = Input;
+
+interface ResourceTag {
+  id: number;
+  name: string;
+  tag_type: string;
+  description?: string;
+  created_at: string;
+}
 
 interface Resource {
   id: number;
@@ -126,7 +132,7 @@ const ResourceManagement: React.FC = () => {
       });
       
       setResources(response.data.resources || []);
-    } catch (error) {
+    } catch (error: any) {
       console.error('加载资源失败:', error);
       message.error('加载资源列表失败');
     } finally {
@@ -158,7 +164,7 @@ const ResourceManagement: React.FC = () => {
       console.log('First tag sample:', tagsData[0]);
       
       setTags(tagsData);
-    } catch (error) {
+    } catch (error: any) {
       console.error('加载标签失败:', error);
       message.error('加载标签列表失败');
     }
@@ -256,7 +262,7 @@ const ResourceManagement: React.FC = () => {
       setUploadModalVisible(false);
       form.resetFields();
       loadResources();
-    } catch (error) {
+    } catch (error: any) {
       console.error('❌ UPLOAD ERROR:', error);
       console.error('Error response:', error.response);
       console.error('Error data:', error.response?.data);
@@ -273,7 +279,7 @@ const ResourceManagement: React.FC = () => {
       console.log('✅ Delete successful');
       message.success('删除成功');
       loadResources();
-    } catch (error) {
+    } catch (error: any) {
       console.error('❌ Delete error:', error);
       message.error('删除失败');
     }
@@ -287,7 +293,7 @@ const ResourceManagement: React.FC = () => {
       console.log('✅ Restore successful');
       message.success('恢复成功');
       loadResources();
-    } catch (error) {
+    } catch (error: any) {
       console.error('❌ Restore error:', error);
       message.error('恢复失败');
     }
@@ -308,7 +314,7 @@ const ResourceManagement: React.FC = () => {
       setTagModalVisible(false);
       tagForm.resetFields();
       loadTags();
-    } catch (error) {
+    } catch (error: any) {
       console.error('❌ Tag creation error:', error);
       message.error('标签创建失败');
     }
@@ -322,7 +328,7 @@ const ResourceManagement: React.FC = () => {
       console.log('✅ Tag deletion successful');
       message.success('标签删除成功');
       loadTags();
-    } catch (error) {
+    } catch (error: any) {
       console.error('❌ Tag deletion error:', error);
       message.error('标签删除失败');
     }
@@ -338,7 +344,7 @@ const ResourceManagement: React.FC = () => {
       setPreviewUrl(response.data.view_url);
       setSelectedResource(resource);
       setPreviewModalVisible(true);
-    } catch (error) {
+    } catch (error: any) {
       console.error('❌ Preview error:', error);
       message.error('预览失败');
     }

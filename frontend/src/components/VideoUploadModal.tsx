@@ -214,9 +214,10 @@ const VideoUploadModal: React.FC<VideoUploadModalProps> = ({
     accept: '.mp4,.webm,.mov,.avi,.mkv,.flv,.wmv',
     disabled: uploading,
     // 自定义上传请求，阻止默认上传行为
-    customRequest: ({ file, onSuccess, onError }) => {
+    customRequest: (options: any) => {
       // 我们不在此处上传文件，而是在表单提交时上传
       // 这里只是阻止默认的上传行为
+      const { file, onSuccess, onError } = options;
       if (onSuccess) {
         onSuccess({ status: 'done' });
       }
