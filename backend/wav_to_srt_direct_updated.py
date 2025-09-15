@@ -61,10 +61,10 @@ def get_wav_duration(file_path):
         return None
 
 def process_audio_file(file_path, api_url, index, lang="auto", retry_count=3, retry_delay=2, model_type="whisper"):
-    """处理单个音频文件，调用ASR API获取识别结果"""
+    """处理单个音频文件，调用ASR API获取识别结果 - 优化版本"""
     print(f"处理文件 {index}: {file_path}")
     start_time = time.time()
-    
+
     # 检查文件是否存在和大小
     if not os.path.exists(file_path):
         print(f"错误: 文件不存在 {file_path}")
@@ -73,22 +73,57 @@ def process_audio_file(file_path, api_url, index, lang="auto", retry_count=3, re
             'file_path': file_path,
             'error': '文件不存在'
         }
-    
+
     file_size = os.path.getsize(file_path)
-    print(f"文件大小: {file_size} bytes")
-    
+    print(f"文件大小: {file_size} bytes ({file_size/1024/1024:.2f}MB)")
+
     # 如果文件太小，可能是空文件
     if file_size < 100:
         print(f"警告: 文件可能为空，大小: {file_size} bytes")
         # 直接抛出异常，避免将空文件提交给ASR服务
         raise Exception(f'文件太小，可能是空文件，大小: {file_size} bytes')
-    
+
+    # 创建优化的requests session
+    session = requests.Session()
+
+    # 设置重试策略 - 针对大文件上传优化
+    from requests.adapters import HTTPAdapter
+    from urllib3.util.retry import Retry
+
+    retry_strategy = Retry(
+        total=3,  # 总重试次数
+        backoff_factor=2,  # 指数退避
+        status_forcelist=[429, 500, 502, 503, 504],  # 重试的HTTP状态码
+        allowed_methods=["POST"]  # 允许重试POST请求
+    )
+
+    # 设置连接池优化
+    adapter = HTTPAdapter(
+        max_retries=retry_strategy,
+        pool_connections=10,  # 连接池大小
+        pool_maxsize=20,     # 最大连接数
+        pool_block=False     # 不阻塞获取连接
+    )
+
+    session.mount("http://", adapter)
+    session.mount("https://", adapter)
+
+    # 根据文件大小动态调整超时时间
+    # 连接超时30秒，读取超时根据文件大小计算
+    base_read_timeout = 1800  # 30分钟基础读取超时
+    size_multiplier = file_size / (1024 * 1024) * 60  # 每MB额外60秒
+    read_timeout = max(base_read_timeout + int(size_multiplier), 7200)  # 最长2小时读取超时
+    timeout_config = (30, read_timeout)  # (连接超时, 读取超时)
+
+    print(f"优化配置: 连接超时=30秒, 读取超时={read_timeout}秒, 重试次数=3")
+
     for attempt in range(retry_count):
         try:
+            # 使用优化后的session和chunked上传
             with open(file_path, 'rb') as audio_file:
                 # 根据模型类型构建不同的请求参数
-                files = {"file": audio_file}
-                
+                files = {"file": (os.path.basename(file_path), audio_file, 'audio/wav')}
+
                 if model_type == "whisper":
                     # Whisper模型请求参数
                     data = {
@@ -110,12 +145,25 @@ def process_audio_file(file_path, api_url, index, lang="auto", retry_count=3, re
                         final_api_url = api_url.rstrip('/') + "/asr"
                     else:
                         final_api_url = api_url
-                
+
                 print(f"使用模型类型: {model_type}, 请求URL: {final_api_url}")
-                
-                response = requests.post(final_api_url, files=files, data=data, timeout=7200)
+                print(f"开始上传 (尝试 {attempt+1}/{retry_count})...")
+
+                # 使用优化的session发送请求，启用chunked传输
+                response = session.post(
+                    final_api_url,
+                    files=files,
+                    data=data,
+                    timeout=timeout_config,
+                    stream=False  # 关闭streaming，避免内存问题
+                )
                 response.raise_for_status()
-                
+
+                # 记录上传时间和速度
+                upload_time = time.time() - start_time
+                upload_speed_mb = file_size / (upload_time * 1024 * 1024) if upload_time > 0 else 0
+                print(f"✅ 上传完成！耗时: {upload_time:.2f}秒，平均速度: {upload_speed_mb:.2f}MB/s")
+
                 # 处理不同模型的响应格式
                 # 两种模型都返回JSON格式，需要解析data字段
                 result = response.json()
@@ -124,38 +172,74 @@ def process_audio_file(file_path, api_url, index, lang="auto", retry_count=3, re
                     raise Exception(f"API返回错误: {result['msg']}")
                 # 解析返回的SRT文本
                 srt_text = result['data']
-                
+
                 segments = parse_srt_text(srt_text)
-                
+
                 # 获取wav文件的实际时长
                 wav_duration = get_wav_duration(file_path)
-                
-                duration = time.time() - start_time
+
+                total_duration = time.time() - start_time
                 if wav_duration:
-                    print(f"文件 {index} 处理完成，耗时: {duration:.2f}秒，识别了 {len(segments)} 个片段，文件时长: {wav_duration:.2f}秒")
+                    print(f"🎉 文件 {index} 处理完成！总耗时: {total_duration:.2f}秒，识别了 {len(segments)} 个片段，文件时长: {wav_duration:.2f}秒")
+                    print(f"📊 性能统计: 上传={upload_time:.2f}s, 处理={total_duration-upload_time:.2f}s, 速度={upload_speed_mb:.2f}MB/s")
                 else:
-                    print(f"文件 {index} 处理完成，耗时: {duration:.2f}秒，识别了 {len(segments)} 个片段，无法获取文件时长")
-                
+                    print(f"🎉 文件 {index} 处理完成！总耗时: {total_duration:.2f}秒，识别了 {len(segments)} 个片段，无法获取文件时长")
+                    print(f"📊 性能统计: 上传={upload_time:.2f}s, 处理={total_duration-upload_time:.2f}s, 速度={upload_speed_mb:.2f}MB/s")
+
                 return {
                     'index': index,
                     'file_path': file_path,
                     'segments': segments,
-                    'processing_duration': duration,
-                    'wav_duration': wav_duration
+                    'processing_duration': total_duration,
+                    'wav_duration': wav_duration,
+                    'upload_speed_mbps': upload_speed_mb,
+                    'upload_duration': upload_time
                 }
-        except Exception as e:
-            print(f"处理文件 {file_path} 尝试 {attempt+1}/{retry_count} 失败: {str(e)}")
+        except requests.exceptions.Timeout as e:
+            error_msg = f"请求超时: {str(e)}"
+            print(f"❌ 处理文件 {file_path} 尝试 {attempt+1}/{retry_count} 超时失败: {error_msg}")
             if attempt < retry_count - 1:
                 sleep_time = retry_delay * (2 ** attempt)
-                print(f"等待 {sleep_time} 秒后重试...")
+                print(f"⏰ 等待 {sleep_time} 秒后重试...")
                 time.sleep(sleep_time)
             else:
-                print(f"达到最大重试次数，放弃文件: {file_path}")
+                print(f"💀 达到最大重试次数，放弃文件: {file_path}")
                 return {
                     'index': index,
                     'file_path': file_path,
-                    'error': str(e)
+                    'error': error_msg
                 }
+        except requests.exceptions.ConnectionError as e:
+            error_msg = f"连接错误: {str(e)}"
+            print(f"❌ 处理文件 {file_path} 尝试 {attempt+1}/{retry_count} 连接失败: {error_msg}")
+            if attempt < retry_count - 1:
+                sleep_time = retry_delay * (2 ** attempt)
+                print(f"⏰ 等待 {sleep_time} 秒后重试...")
+                time.sleep(sleep_time)
+            else:
+                print(f"💀 达到最大重试次数，放弃文件: {file_path}")
+                return {
+                    'index': index,
+                    'file_path': file_path,
+                    'error': error_msg
+                }
+        except Exception as e:
+            error_msg = f"处理失败: {str(e)}"
+            print(f"❌ 处理文件 {file_path} 尝试 {attempt+1}/{retry_count} 失败: {error_msg}")
+            if attempt < retry_count - 1:
+                sleep_time = retry_delay * (2 ** attempt)
+                print(f"⏰ 等待 {sleep_time} 秒后重试...")
+                time.sleep(sleep_time)
+            else:
+                print(f"💀 达到最大重试次数，放弃文件: {file_path}")
+                return {
+                    'index': index,
+                    'file_path': file_path,
+                    'error': error_msg
+                }
+        finally:
+            # 确保session被正确关闭
+            session.close()
 
 def process_directory(directory, api_url, lang="auto", max_workers=5):
     """处理目录中的所有WAV文件"""
