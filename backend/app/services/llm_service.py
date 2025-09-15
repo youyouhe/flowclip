@@ -25,14 +25,24 @@ class LLMService:
         """获取当前最新的配置"""
         with get_sync_db_context() as db:
             SystemConfigService.update_settings_from_db_sync(db)
-        
+
         base_url = getattr(settings, 'llm_base_url', 'https://openrouter.ai/api/v1')
         model = getattr(settings, 'llm_model_type', 'google/gemini-2.5-flash')
         default_system_prompt = settings.llm_system_prompt
-        default_temperature = getattr(settings, 'llm_temperature', 0.7)
-        default_max_tokens = getattr(settings, 'llm_max_tokens', 65535)
+
+        # 确保数值类型配置正确转换
+        try:
+            default_temperature = float(getattr(settings, 'llm_temperature', 0.7))
+        except (ValueError, TypeError):
+            default_temperature = 0.7
+
+        try:
+            default_max_tokens = int(getattr(settings, 'llm_max_tokens', 65535))
+        except (ValueError, TypeError):
+            default_max_tokens = 65535
+
         api_key = settings.openrouter_api_key
-        
+
         return {
             'base_url': base_url,
             'model': model,
