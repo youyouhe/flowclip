@@ -5,8 +5,9 @@ WORKDIR /app
 # Copy package files
 COPY package*.json ./
 
-# Install dependencies
-RUN npm install --legacy-peer-deps
+# Install dependencies with specific order to resolve interactjs issue
+RUN npm install interactjs --legacy-peer-deps && \
+    npm install --legacy-peer-deps
 
 # Expose port
 EXPOSE 3000
