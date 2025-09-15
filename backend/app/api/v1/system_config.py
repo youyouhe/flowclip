@@ -435,16 +435,10 @@ async def test_asr_service(
         
         # 根据模型类型确定服务URL和端点
         if model_type == "whisper":
-            # 确保URL指向whisper服务(5001端口)
-            if ":5002" in asr_service_url:
-                asr_service_url = asr_service_url.replace(":5002", ":5001")
-            elif ":5001" not in asr_service_url:
-                asr_service_url = "http://192.168.8.107:5001"
-            
             # 确保URL格式正确
             if not asr_service_url.startswith(('http://', 'https://')):
                 asr_service_url = f"http://{asr_service_url}"
-            
+
             base_url = asr_service_url.rstrip('/')
             endpoint = f"{base_url}/inference" if not base_url.endswith('/inference') else base_url
             params = {
@@ -452,16 +446,10 @@ async def test_asr_service(
                 "language": "auto"
             }
         else:  # sense模型
-            # 确保URL指向sense服务(5002端口)
-            if ":5001" in asr_service_url:
-                asr_service_url = asr_service_url.replace(":5001", ":5002")
-            elif ":5002" not in asr_service_url:
-                asr_service_url = "http://192.168.8.107:5002"
-            
             # 确保URL格式正确
             if not asr_service_url.startswith(('http://', 'https://')):
                 asr_service_url = f"http://{asr_service_url}"
-            
+
             base_url = asr_service_url.rstrip('/')
             endpoint = f"{base_url}/asr" if not base_url.endswith('/asr') else base_url
             params = {
