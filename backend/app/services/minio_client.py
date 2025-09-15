@@ -21,14 +21,14 @@ class MinioService:
         """重新加载配置并创建客户端"""
         from app.core.config import settings
         
-        print(f"DEBUG: _reload_config 开始")
-        print(f"DEBUG: 当前settings对象ID: {id(settings)}")
-        print(f"DEBUG: 当前settings.minio_public_endpoint: {settings.minio_public_endpoint}")
-        print(f"DEBUG: 当前settings.minio_public_endpoint ID: {id(settings.minio_public_endpoint)}")
-        print(f"DEBUG: 当前settings.minio_endpoint: {settings.minio_endpoint}")
-        print(f"DEBUG: 当前settings.minio_access_key: {settings.minio_access_key}")
-        print(f"DEBUG: 当前settings.minio_secret_key: {settings.minio_secret_key}")
-        print(f"DEBUG: 当前settings.minio_bucket_name: {settings.minio_bucket_name}")
+        # print(f"DEBUG: _reload_config 开始")
+        # print(f"DEBUG: 当前settings对象ID: {id(settings)}")
+        # print(f"DEBUG: 当前settings.minio_public_endpoint: {settings.minio_public_endpoint}")
+        # print(f"DEBUG: 当前settings.minio_public_endpoint ID: {id(settings.minio_public_endpoint)}")
+        # print(f"DEBUG: 当前settings.minio_endpoint: {settings.minio_endpoint}")
+        # print(f"DEBUG: 当前settings.minio_access_key: {settings.minio_access_key}")
+        # print(f"DEBUG: 当前settings.minio_secret_key: {settings.minio_secret_key}")
+        # print(f"DEBUG: 当前settings.minio_bucket_name: {settings.minio_bucket_name}")
         
         # 初始化两个客户端：
         # 1. 内部客户端 - 用于文件操作
@@ -41,7 +41,7 @@ class MinioService:
         elif internal_endpoint.startswith('https://'):
             internal_endpoint = internal_endpoint[8:]  # Remove 'https://'
         
-        print(f"DEBUG: 内部客户端配置 - endpoint: {internal_endpoint}, access_key: {settings.minio_access_key}")
+        # print(f"DEBUG: 内部客户端配置 - endpoint: {internal_endpoint}, access_key: {settings.minio_access_key}")
         
         self.internal_client = Minio(
             internal_endpoint,
@@ -54,8 +54,8 @@ class MinioService:
         # 如果配置了公共端点，使用公共端点，否则使用内部端点
         if settings.minio_public_endpoint:
             public_endpoint = settings.minio_public_endpoint
-            print(f"DEBUG: 使用配置的minio_public_endpoint: {public_endpoint}")
-            print(f"DEBUG: 使用配置的minio_public_endpoint类型: {type(public_endpoint)}")
+            # print(f"DEBUG: 使用配置的minio_public_endpoint: {public_endpoint}")
+            # print(f"DEBUG: 使用配置的minio_public_endpoint类型: {type(public_endpoint)}")
             # 移除协议前缀，但保留主机名和端口
             if public_endpoint.startswith('http://'):
                 public_endpoint = public_endpoint[7:]  # Remove 'http://'
@@ -63,12 +63,12 @@ class MinioService:
                 public_endpoint = public_endpoint[8:]  # Remove 'https://'
             # 移除末尾的斜杠
             public_endpoint = public_endpoint.rstrip('/')
-            print(f"DEBUG: 处理后的public_endpoint: {public_endpoint}")
+            # print(f"DEBUG: 处理后的public_endpoint: {public_endpoint}")
         else:
-            print(f"DEBUG: 未配置minio_public_endpoint，使用internal_endpoint: {internal_endpoint}")
+            # print(f"DEBUG: 未配置minio_public_endpoint，使用internal_endpoint: {internal_endpoint}")
             public_endpoint = internal_endpoint
             
-        print(f"DEBUG: 公共客户端配置 - endpoint: {public_endpoint}, access_key: {settings.minio_access_key}")
+        # print(f"DEBUG: 公共客户端配置 - endpoint: {public_endpoint}, access_key: {settings.minio_access_key}")
         
         self.public_client = Minio(
             public_endpoint,
@@ -80,7 +80,7 @@ class MinioService:
         print(f"DEBUG: _reload_config 完成，public_client endpoint: {self.public_client._base_url.host}")
         
         self.bucket_name = settings.minio_bucket_name
-        print(f"DEBUG: 使用的存储桶名称: {self.bucket_name}")
+        # print(f"DEBUG: 使用的存储桶名称: {self.bucket_name}")
     
     def reload_config(self):
         """公共方法：重新加载配置"""

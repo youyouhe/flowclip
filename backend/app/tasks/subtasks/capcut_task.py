@@ -10,6 +10,7 @@ import subprocess
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, Any
+from urllib.parse import urlparse, urlunparse
 from app.services.minio_client import minio_service
 from app.services.state_manager import get_state_manager
 from app.core.constants import ProcessingTaskType, ProcessingTaskStatus, ProcessingStage
@@ -46,13 +47,12 @@ def _get_proxy_url(resource_path: str) -> str:
     from app.services.minio_client import minio_service
     from app.core.config import settings
     import asyncio
-    from urllib.parse import urlparse
     
     # 确保使用最新的配置
-    print(f"DEBUG: _get_proxy_url函数中的settings对象ID: {id(settings)}")
-    print(f"DEBUG: 当前settings.minio_public_endpoint: {settings.minio_public_endpoint}")
-    print(f"DEBUG: 当前settings.minio_public_endpoint ID: {id(settings.minio_public_endpoint)}")
-    print(f"DEBUG: 当前minio_service.public_client._endpoint_url: {minio_service.public_client._base_url.host}")
+    # print(f"DEBUG: _get_proxy_url函数中的settings对象ID: {id(settings)}")
+    # print(f"DEBUG: 当前settings.minio_public_endpoint: {settings.minio_public_endpoint}")
+    # print(f"DEBUG: 当前settings.minio_public_endpoint ID: {id(settings.minio_public_endpoint)}")
+    # print(f"DEBUG: 当前minio_service.public_client._endpoint_url: {minio_service.public_client._base_url.host}")
     
     # 强制重新加载配置以确保使用最新的值
     try:
@@ -63,8 +63,8 @@ def _get_proxy_url(resource_path: str) -> str:
         db.close()
         # 重新加载MinIO配置
         minio_service.reload_config()
-        print(f"DEBUG: 重新加载配置后settings.minio_public_endpoint: {settings.minio_public_endpoint}")
-        print(f"DEBUG: 重新加载配置后minio_service.public_client._endpoint_url: {minio_service.public_client._base_url.host}")
+        # print(f"DEBUG: 重新加载配置后settings.minio_public_endpoint: {settings.minio_public_endpoint}")
+        # print(f"DEBUG: 重新加载配置后minio_service.public_client._endpoint_url: {minio_service.public_client._base_url.host}")
     except Exception as e:
         print(f"DEBUG: 重新加载配置时出错: {e}")
     
@@ -91,24 +91,25 @@ def _get_proxy_url(resource_path: str) -> str:
                 expires=3600  # 1小时有效期
             )
             print(f"DEBUG: 内部客户端生成的URL: {internal_url}")
-            
+
             # 如果配置了minio_public_endpoint，则替换URL中的端点
             if settings.minio_public_endpoint:
-                # 解析内部URL，提取路径和查询参数
+                # 解析内部URL，只替换主机部分，保持路径和查询参数完全不变
                 parsed_internal = urlparse(internal_url)
+
                 # 构造新的URL，使用公共端点
                 public_endpoint = settings.minio_public_endpoint
                 if not public_endpoint.startswith(('http://', 'https://')):
                     public_endpoint = f"http://{public_endpoint}"
-                
+
                 # 移除末尾的斜杠
                 public_endpoint = public_endpoint.rstrip('/')
-                
-                # 构造最终URL
-                final_url = f"{public_endpoint}{parsed_internal.path}"
-                if parsed_internal.query:
-                    final_url = f"{final_url}?{parsed_internal.query}"
-                
+
+                # 直接替换主机，保持路径和查询参数完全不变
+                # 这样避免对已经编码的路径再次编码
+                final_parsed = parsed_internal._replace(netloc=public_endpoint)
+                final_url = urlunparse(final_parsed)
+
                 print(f"DEBUG: 将内部URL {internal_url} 替换为公共URL {final_url}")
                 return final_url
             else:
@@ -182,23 +183,68 @@ def export_slice_to_capcut(self, slice_id: int, draft_folder: str, user_id: int 
     from app.services.capcut_service import CapCutService
     capcut_service = CapCutService()
     
+    def _get_default_local_resource_path(tag_name: str, resource_type: str) -> str:
+        """获取本地默认资源文件的路径"""
+        # 定义默认资源文件映射
+        default_resources = {
+            ("片尾", "video"): "end.mp4",
+            ("水波纹", "audio"): "droplet.mp3"
+        }
+
+        # 检查是否有对应的默认资源
+        resource_file = default_resources.get((tag_name, resource_type))
+        if resource_file:
+            # 构造完整路径
+            # 修正路径构造，避免出现两个app目录
+            base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
+            media_path = os.path.join(base_dir, "media", resource_file)
+            if os.path.exists(media_path):
+                return media_path
+            else:
+                print(f"默认资源文件不存在: {media_path}")
+                return None
+        return None
+
     def _get_resource_by_tag_from_db(tag_name: str, resource_type: str = "audio") -> str:
         """根据标签从数据库获取资源URL"""
         try:
             with get_sync_db() as db:
                 from sqlalchemy import select
                 from app.core.config import settings
-                
+
                 # 查询标签
                 tag_result = db.execute(
                     select(ResourceTag).where(ResourceTag.name == tag_name, ResourceTag.tag_type == resource_type)
                 )
                 tag = tag_result.scalar_one_or_none()
-                
+
                 if not tag:
                     print(f"标签 '{tag_name}' 未找到")
+                    # 尝试获取本地默认资源
+                    default_path = _get_default_local_resource_path(tag_name, resource_type)
+                    if default_path:
+                        # 上传默认资源到MinIO并返回URL
+                        from app.services.minio_client import minio_service
+                        from app.core.config import settings
+                        import uuid
+
+                        # 生成唯一的对象名称
+                        file_extension = os.path.splitext(default_path)[1]
+                        object_name = f"default_resources/{tag_name}_{uuid.uuid4().hex}{file_extension}"
+
+                        # 上传文件到MinIO
+                        minio_service.internal_client.fput_object(
+                            bucket_name=settings.minio_bucket_name,
+                            object_name=object_name,
+                            file_path=default_path
+                        )
+
+                        # 生成可访问的URL
+                        proxy_url = _get_proxy_url(object_name)
+                        print(f"DEBUG: 使用默认资源文件: {default_path}, 上传后URL: {proxy_url}")
+                        return proxy_url
                     return None
-                
+
                 # 查询关联的资源
                 resource_result = db.execute(
                     select(Resource).join(Resource.tags).where(
@@ -208,17 +254,67 @@ def export_slice_to_capcut(self, slice_id: int, draft_folder: str, user_id: int 
                     ).order_by(Resource.created_at.desc())
                 )
                 resource = resource_result.scalar_one_or_none()
-                
+
                 if not resource:
                     print(f"标签 '{tag_name}' 下未找到资源")
+                    # 尝试获取本地默认资源
+                    default_path = _get_default_local_resource_path(tag_name, resource_type)
+                    if default_path:
+                        # 上传默认资源到MinIO并返回URL
+                        from app.services.minio_client import minio_service
+                        from app.core.config import settings
+                        import uuid
+
+                        # 生成唯一的对象名称
+                        file_extension = os.path.splitext(default_path)[1]
+                        object_name = f"default_resources/{tag_name}_{uuid.uuid4().hex}{file_extension}"
+
+                        # 上传文件到MinIO
+                        minio_service.internal_client.fput_object(
+                            bucket_name=settings.minio_bucket_name,
+                            object_name=object_name,
+                            file_path=default_path
+                        )
+
+                        # 生成可访问的URL
+                        proxy_url = _get_proxy_url(object_name)
+                        print(f"DEBUG: 使用默认资源文件: {default_path}, 上传后URL: {proxy_url}")
+                        return proxy_url
                     return None
-                
-                # 使用_get_proxy_url函数生成可访问的URL
-                proxy_url = _get_proxy_url(resource.file_path)
+
+                # 数据库中的resource.file_path是MinIO对象名称，直接生成预签名URL
+                # 这样避免重复调用_getget_proxy_url导致的双重编码问题
+                proxy_url = minio_service.get_file_url_sync(resource.file_path)
                 print(f"DEBUG: 生成的资源代理URL: {proxy_url}")
                 return proxy_url
         except Exception as e:
             print(f"从数据库获取资源失败: {e}")
+            # 即使数据库查询失败，也尝试使用默认资源
+            try:
+                default_path = _get_default_local_resource_path(tag_name, resource_type)
+                if default_path:
+                    # 上传默认资源到MinIO并返回URL
+                    from app.services.minio_client import minio_service
+                    from app.core.config import settings
+                    import uuid
+
+                    # 生成唯一的对象名称
+                    file_extension = os.path.splitext(default_path)[1]
+                    object_name = f"default_resources/{tag_name}_{uuid.uuid4().hex}{file_extension}"
+
+                    # 上传文件到MinIO
+                    minio_service.internal_client.fput_object(
+                        bucket_name=settings.minio_bucket_name,
+                        object_name=object_name,
+                        file_path=default_path
+                    )
+
+                    # 生成可访问的URL
+                    proxy_url = _get_proxy_url(object_name)
+                    print(f"DEBUG: 使用默认资源文件: {default_path}, 上传后URL: {proxy_url}")
+                    return proxy_url
+            except Exception as upload_error:
+                print(f"上传默认资源失败: {upload_error}")
             return None
     
     try:
@@ -334,31 +430,29 @@ def export_slice_to_capcut(self, slice_id: int, draft_folder: str, user_id: int 
                         audio_url = _get_resource_by_tag_from_db("水波纹", "audio")
                         print(f"DEBUG: 从数据库获取的水波纹音频URL: {audio_url}")
                         if audio_url:
-                            # 如果是从数据库获取的URL，提取资源路径并生成代理URL
-                            from urllib.parse import urlparse
-                            parsed_url = urlparse(audio_url)
-                            resource_path = parsed_url.path.lstrip('/')
-                            # 移除bucket名称前缀
-                            if resource_path.startswith(settings.minio_bucket_name + '/'):
-                                resource_path = resource_path[len(settings.minio_bucket_name) + 1:]
-                            proxy_audio_url = _get_proxy_url(resource_path)
-                            print(f"DEBUG: 处理后的水波纹音频代理URL: {proxy_audio_url}")
+                            # _get_resource_by_tag_from_db已经返回代理URL，直接使用
+                            proxy_audio_url = audio_url
+                            print(f"DEBUG: 使用数据库返回的代理URL: {proxy_audio_url}")
                         else:
-                            # 如果获取失败，使用默认音频
-                            proxy_audio_url = "http://tmpfiles.org/dl/9816523/mixkit-liquid-bubble-3000.wav"
-                            print(f"DEBUG: 使用默认水波纹音频URL: {proxy_audio_url}")
+                            # 如果获取失败，_get_resource_by_tag_from_db已经尝试使用默认资源并上传到MinIO
+                            proxy_audio_url = None
+                            print("DEBUG: 无法获取水波纹音频资源")
                         
                         print(f"DEBUG: 添加水波纹音频 - URL: {proxy_audio_url}, 时间轴起始: {current_time}秒, 时间轴结束: {current_time + 3}秒")
-                        audio_result = asyncio.run(capcut_service.add_audio(
-                            draft_id=draft_id,
-                            audio_url=proxy_audio_url,
-                            start=0,
-                            end=3,
-                            track_name=f"bubble_audio_track_{i+1}",
-                            volume=0.5,
-                            target_start=current_time,
-                            max_retries=3
-                        ))
+                        # 只有在proxy_audio_url不为None时才添加音频
+                        if proxy_audio_url:
+                            audio_result = asyncio.run(capcut_service.add_audio(
+                                draft_id=draft_id,
+                                audio_url=proxy_audio_url,
+                                start=0,
+                                end=3,
+                                track_name=f"bubble_audio_track_{i+1}",
+                                volume=0.5,
+                                target_start=current_time,
+                                max_retries=3
+                            ))
+                        else:
+                            print("DEBUG: 跳过添加水波纹音频，因为没有可用的音频资源")
                         
                         # 添加关闭特效 (结束前3秒)
                         # 使用在循环外统一选择的特效
@@ -502,43 +596,39 @@ def export_slice_to_capcut(self, slice_id: int, draft_folder: str, user_id: int 
 
                 # 添加片尾视频
                 ending_video_url = _get_resource_by_tag_from_db("片尾", "video")
+                proxy_ending_video_url = None
                 if ending_video_url:
-                    # 如果是从数据库获取的URL，提取资源路径并生成代理URL
-                    from urllib.parse import urlparse
-                    parsed_url = urlparse(ending_video_url)
-                    resource_path = parsed_url.path.lstrip('/')
-                    # 移除bucket名称前缀
-                    if resource_path.startswith(settings.minio_bucket_name + '/'):
-                        resource_path = resource_path[len(settings.minio_bucket_name) + 1:]
-                    proxy_ending_video_url = _get_proxy_url(resource_path)
+                    # _get_resource_by_tag_from_db已经返回代理URL，直接使用
+                    proxy_ending_video_url = ending_video_url
 
                     # 添加"渐显开幕"特效
-                    print(f"DEBUG: 添加渐显开幕特效 - 时间轴起始: {current_time}秒, 时间轴结束: {current_time + 3}秒")
-                    open_effect_result = asyncio.run(capcut_service.add_effect(
-                        draft_id=draft_id,
-                        effect_type="渐显开幕",
-                        start=current_time,
-                        end=current_time + 3,
-                        track_name="ending_open_effect_track",
-                        max_retries=3
-                    ))
+                    if proxy_ending_video_url:
+                        print(f"DEBUG: 添加渐显开幕特效 - 时间轴起始: {current_time}秒, 时间轴结束: {current_time + 3}秒")
+                        open_effect_result = asyncio.run(capcut_service.add_effect(
+                            draft_id=draft_id,
+                            effect_type="渐显开幕",
+                            start=current_time,
+                            end=current_time + 3,
+                            track_name="ending_open_effect_track",
+                            max_retries=3
+                        ))
 
-                    # 添加片尾视频，持续3秒
-                    print(f"DEBUG: 添加片尾视频 - URL: {proxy_ending_video_url}, 时间轴起始: {current_time}秒, 时间轴结束: {current_time + 3}秒")
-                    ending_video_result = asyncio.run(capcut_service.add_video(
-                        draft_id=draft_id,
-                        video_url=proxy_ending_video_url,
-                        start=0,
-                        end=3,
-                        track_name="ending_video_track",
-                        target_start=current_time,
-                        max_retries=3
-                    ))
+                        # 添加片尾视频，持续3秒
+                        print(f"DEBUG: 添加片尾视频 - URL: {proxy_ending_video_url}, 时间轴起始: {current_time}秒, 时间轴结束: {current_time + 3}秒")
+                        ending_video_result = asyncio.run(capcut_service.add_video(
+                            draft_id=draft_id,
+                            video_url=proxy_ending_video_url,
+                            start=0,
+                            end=3,
+                            track_name="ending_video_track",
+                            target_start=current_time,
+                            max_retries=3
+                        ))
 
-                    # 更新总时长
-                    current_time += 3
-                else:
-                    print("DEBUG: 未找到片尾视频资源")
+                        # 更新总时长
+                        current_time += 3
+                    else:
+                        print("DEBUG: 跳过添加片尾视频，因为没有可用的视频资源")
             else:
                 # 对于full切片，添加水波纹特效和音效，然后添加整个切片视频
                 try:
@@ -593,29 +683,27 @@ def export_slice_to_capcut(self, slice_id: int, draft_folder: str, user_id: int 
                     # 获取水波纹音频资源
                     audio_url = _get_resource_by_tag_from_db("水波纹", "audio")
                     if audio_url:
-                        # 如果是从数据库获取的URL，提取资源路径并生成代理URL
-                        from urllib.parse import urlparse
-                        parsed_url = urlparse(audio_url)
-                        resource_path = parsed_url.path.lstrip('/')
-                        # 移除bucket名称前缀
-                        if resource_path.startswith(settings.minio_bucket_name + '/'):
-                            resource_path = resource_path[len(settings.minio_bucket_name) + 1:]
-                        proxy_audio_url = _get_proxy_url(resource_path)
+                        # _get_resource_by_tag_from_db已经返回代理URL，直接使用
+                        proxy_audio_url = audio_url
                     else:
-                        # 如果获取失败，使用默认音频
-                        proxy_audio_url = "http://tmpfiles.org/dl/9816523/mixkit-liquid-bubble-3000.wav"
+                        # 如果获取失败，_get_resource_by_tag_from_db已经尝试使用默认资源并上传到MinIO
+                        proxy_audio_url = None
                     
                     print(f"DEBUG: 添加水波纹音频 - URL: {proxy_audio_url}, 时间轴起始: 0秒, 时间轴结束: 3秒")
-                    audio_result = asyncio.run(capcut_service.add_audio(
-                        draft_id=draft_id,
-                        audio_url=proxy_audio_url,
-                        start=0,
-                        end=3,
-                        track_name="bubble_audio_track_main",
-                        volume=0.5,
-                        target_start=0,
-                        max_retries=3
-                    ))
+                    # 只有在proxy_audio_url不为None时才添加音频
+                    if proxy_audio_url:
+                        audio_result = asyncio.run(capcut_service.add_audio(
+                            draft_id=draft_id,
+                            audio_url=proxy_audio_url,
+                            start=0,
+                            end=3,
+                            track_name="bubble_audio_track_main",
+                            volume=0.5,
+                            target_start=0,
+                            max_retries=3
+                        ))
+                    else:
+                        print("DEBUG: 跳过添加水波纹音频，因为没有可用的音频资源")
                     
                     # 添加完整切片视频
                     print(f"DEBUG: 完整切片文件路径: {slice_obj.sliced_file_path}")
@@ -635,43 +723,39 @@ def export_slice_to_capcut(self, slice_id: int, draft_folder: str, user_id: int 
 
                     # 添加片尾视频
                     ending_video_url = _get_resource_by_tag_from_db("片尾", "video")
+                    proxy_ending_video_url = None
                     if ending_video_url:
-                        # 如果是从数据库获取的URL，提取资源路径并生成代理URL
-                        from urllib.parse import urlparse
-                        parsed_url = urlparse(ending_video_url)
-                        resource_path = parsed_url.path.lstrip('/')
-                        # 移除bucket名称前缀
-                        if resource_path.startswith(settings.minio_bucket_name + '/'):
-                            resource_path = resource_path[len(settings.minio_bucket_name) + 1:]
-                        proxy_ending_video_url = _get_proxy_url(resource_path)
+                        # _get_resource_by_tag_from_db已经返回代理URL，直接使用
+                        proxy_ending_video_url = ending_video_url
 
                         # 添加"渐显开幕"特效
-                        print(f"DEBUG: 添加渐显开幕特效 - 时间轴起始: {current_time}秒, 时间轴结束: {current_time + 3}秒")
-                        open_effect_result = asyncio.run(capcut_service.add_effect(
-                            draft_id=draft_id,
-                            effect_type="渐显开幕",
-                            start=current_time,
-                            end=current_time + 3,
-                            track_name="ending_open_effect_track_main",
-                            max_retries=3
-                        ))
+                        if proxy_ending_video_url:
+                            print(f"DEBUG: 添加渐显开幕特效 - 时间轴起始: {current_time}秒, 时间轴结束: {current_time + 3}秒")
+                            open_effect_result = asyncio.run(capcut_service.add_effect(
+                                draft_id=draft_id,
+                                effect_type="渐显开幕",
+                                start=current_time,
+                                end=current_time + 3,
+                                track_name="ending_open_effect_track_main",
+                                max_retries=3
+                            ))
 
-                        # 添加片尾视频，持续3秒
-                        print(f"DEBUG: 添加片尾视频 - URL: {proxy_ending_video_url}, 时间轴起始: {current_time}秒, 时间轴结束: {current_time + 3}秒")
-                        ending_video_result = asyncio.run(capcut_service.add_video(
-                            draft_id=draft_id,
-                            video_url=proxy_ending_video_url,
-                            start=0,
-                            end=3,
-                            track_name="ending_video_track_main",
-                            target_start=current_time,
-                            max_retries=3
-                        ))
+                            # 添加片尾视频，持续3秒
+                            print(f"DEBUG: 添加片尾视频 - URL: {proxy_ending_video_url}, 时间轴起始: {current_time}秒, 时间轴结束: {current_time + 3}秒")
+                            ending_video_result = asyncio.run(capcut_service.add_video(
+                                draft_id=draft_id,
+                                video_url=proxy_ending_video_url,
+                                start=0,
+                                end=3,
+                                track_name="ending_video_track_main",
+                                target_start=current_time,
+                                max_retries=3
+                            ))
 
-                        # 更新总时长
-                        current_time += 3
-                    else:
-                        print("DEBUG: 未找到片尾视频资源")
+                            # 更新总时长
+                            current_time += 3
+                        else:
+                            print("DEBUG: 跳过添加片尾视频，因为没有可用的视频资源")
                 except Exception as e:
                     print(f"处理完整切片失败: {str(e)}")
                     raise Exception(f"处理完整切片失败: {str(e)}")
