@@ -55,51 +55,52 @@ class LLMService:
     async def get_available_models(self, filter_provider: Optional[str] = "google") -> List[Dict[str, Any]]:
         """
         从OpenRouter API获取可用模型列表
-        
+
         Args:
             filter_provider: 筛选特定提供商的模型，默认为"google"
-            
+
         Returns:
             包含模型信息的列表
         """
         # 动态获取最新的配置
         config = self._get_current_config()
-        
+
         api_key = config['api_key']
+        base_url = config['base_url']
         logger.info("开始获取OpenRouter可用模型列表")
-        
+
         # 检查API密钥
         if not api_key or api_key == "your-key-here":
             logger.warning("OPENROUTER_API_KEY未设置或为占位符 - 无法获取模型列表")
             return []
-        
+
         headers = {
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
         }
-        
+
         try:
             timeout = aiohttp.ClientTimeout(total=60, connect=30)
             async with aiohttp.ClientSession(timeout=timeout, headers=headers) as session:
-                async with session.get(f"{self.base_url}/models") as response:
+                async with session.get(f"{base_url}/models") as response:
                     if response.status == 200:
                         result = await response.json()
                         # 提取模型数据
                         models = result.get("data", [])
                         logger.info(f"成功获取到 {len(models)} 个模型")
-                        
+
                         # 如果指定了提供商筛选器，则筛选模型
                         if filter_provider:
                             filtered_models = [model for model in models if model.get("id", "").startswith(filter_provider)]
                             logger.info(f"筛选后得到 {len(filtered_models)} 个 {filter_provider} 模型")
                             return filtered_models
-                        
+
                         return models
                     else:
                         error_text = await response.text()
                         logger.error(f"获取模型列表失败: {response.status} - {error_text}")
                         return []
-                        
+
         except Exception as e:
             logger.error(f"获取模型列表时发生异常: {type(e).__name__}: {str(e)}")
             return []
