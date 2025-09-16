@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 清空数据库脚本
-用于清空 YouTube Slicer 数据库中的所有数据和 MinIO 存储文件
+用于清空 Flowclip 数据库中的所有数据和 MinIO 存储文件
 """
 
 import asyncio
@@ -74,7 +74,7 @@ async def clear_database():
     """清空数据库中的所有数据"""
     
     print("=" * 60)
-    print("YouTube Slicer 数据库和存储清空工具")
+    print("Flowclip 数据库和存储清空工具")
     print("=" * 60)
     
     # 确认操作 - 自动确认用于批量处理

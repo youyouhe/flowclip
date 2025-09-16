@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Test script for MCP client to interact with the YouTube Slicer MCP server
+Test script for MCP client to interact with the Flowclip MCP server
 """
 
 import asyncio

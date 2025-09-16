@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Standalone MCP Server for YouTube Slicer
+Standalone MCP Server for Flowclip
 This script runs the MCP server on a separate port to avoid conflicts with the main FastAPI app
 """
 

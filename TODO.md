@@ -1,4 +1,4 @@
-# YouTube Slicer Debug Todo List
+# Flowclip Debug Todo List
 
 ## ✅ Issues Fixed
 

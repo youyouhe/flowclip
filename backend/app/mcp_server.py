@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-MCP Server implementation for YouTube Slicer API
+MCP Server implementation for Flowclip API
 This module converts the FastAPI application into an MCP server
 """
 
@@ -51,9 +51,9 @@ mcp = FastApiMCP(app)
 
 # @mcp.resource("http://youtube-slicer/api/info")
 # def get_api_info() -> dict:
-#     """Get information about the YouTube Slicer API"""
+#     """Get information about the Flowclip API"""
 #     return {
-#         "name": "YouTube Slicer API",
+#         "name": "Flowclip API",
 #         "version": "1.0.0",
 #         "description": "A comprehensive API for video processing and slicing"
 #     }

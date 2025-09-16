@@ -1,7 +1,7 @@
 #!/bin/bash
 # 启动MCP服务器的脚本
 
-echo "正在启动YouTube Slicer MCP服务器..."
+echo "正在启动Flowclip MCP服务器..."
 
 # 激活conda环境
 source /home/cat/miniconda3/bin/activate youtube-slicer

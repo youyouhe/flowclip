@@ -1,11 +1,11 @@
 #!/bin/bash
 
-# YouTube Slicer 配置验证脚本
+# Flowclip 配置验证脚本
 # 使用方法: ./verify-config.sh
 
 set -e
 
-echo "🔍 YouTube Slicer 配置验证"
+echo "🔍 Flowclip 配置验证"
 echo "================================"
 
 # 检查 .env 文件

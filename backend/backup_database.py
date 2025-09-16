@@ -22,7 +22,7 @@ async def backup_database():
     """备份数据库中的配置和重要数据"""
     
     print("=" * 60)
-    print("YouTube Slicer 数据库备份工具")
+    print("Flowclip 数据库备份工具")
     print("=" * 60)
     
     # 创建异步引擎

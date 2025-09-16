@@ -1,7 +1,7 @@
-# YouTube Slicer Whisper Large V3 集成指南
+# Flowclip Whisper Large V3 集成指南
 
 ## 项目概述
-本指南介绍如何在YouTube Slicer项目中集成OpenAI Whisper Large V3模型，以提升自动语音识别(ASR)的准确性和多语言支持能力。
+本指南介绍如何在Flowclip项目中集成OpenAI Whisper Large V3模型，以提升自动语音识别(ASR)的准确性和多语言支持能力。
 
 ## 技术优势
 - 支持99种语言
@@ -124,7 +124,7 @@ if __name__ == "__main__":
     print(f"转录结果: {result['text']}")
 ```
 
-### 4. 与现有YouTube Slicer集成
+### 4. 与现有Flowclip集成
 
 #### 4.1 修改音频处理服务
 在`youtube_downloader_minio.py`中集成Whisper：
@@ -342,4 +342,4 @@ class WhisperPool:
 3. **零样本学习**：无需额外训练即可处理新领域内容
 4. **时间戳支持**：提供精确的词级时间戳信息
 
-这个集成方案可以帮助您充分利用Whisper Large V3的强大功能，提升YouTube Slicer的ASR能力。
+这个集成方案可以帮助您充分利用Whisper Large V3的强大功能，提升Flowclip的ASR能力。
