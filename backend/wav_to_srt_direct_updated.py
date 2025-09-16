@@ -166,12 +166,44 @@ def process_audio_file(file_path, api_url, index, lang="auto", retry_count=3, re
 
                 # 处理不同模型的响应格式
                 # 两种模型都返回JSON格式，需要解析data字段
-                result = response.json()
+
+                # 添加详细的响应调试信息
+                response_text = response.text
+                print(f"DEBUG: ASR响应原始文本 ({len(response_text)} chars):")
+                print(f"DEBUG: 响应前200字符: {response_text[:200]}")
+                print(f"DEBUG: 响应后200字符: {response_text[-200:]}")
+                print(f"DEBUG: Content-Type: {response.headers.get('Content-Type', 'Unknown')}")
+                print(f"DEBUG: Status Code: {response.status_code}")
+
+                try:
+                    result = response.json()
+                    print(f"DEBUG: JSON解析成功，返回对象: {type(result)}")
+                    if isinstance(result, dict):
+                        print(f"DEBUG: 返回字典的key: {list(result.keys())}")
+                except json.JSONDecodeError as json_error:
+                    print(f"❌ JSON解析失败! 错误: {json_error}")
+                    print(f"DEBUG: 尝试查找JSON内容...")
+                    # 尝试提取JSON部分
+                    json_start = response_text.find('{')
+                    json_end = response_text.rfind('}') + 1
+                    if json_start != -1 and json_end > json_start:
+                        potential_json = response_text[json_start:json_end]
+                        print(f"DEBUG: 提取的潜在JSON ({len(potential_json)} chars): {potential_json[:500]}")
+                        try:
+                            result = json.loads(potential_json)
+                            print("✅ 提取的JSON解析成功!")
+                        except json.JSONDecodeError as extract_error:
+                            print(f"❌ 提取的JSON仍然无法解析: {extract_error}")
+                            raise Exception(f"ASR返回数据格式错误: {json_error}, 原始响应: {response_text[:1000]}")
+                    else:
+                        raise Exception(f"ASR返回数据格式错误，无法找到JSON: {json_error}, 原始响应: {response_text[:1000]}")
+
                 # 检查API返回是否成功
                 if result['code'] != 0:
                     raise Exception(f"API返回错误: {result['msg']}")
                 # 解析返回的SRT文本
                 srt_text = result['data']
+                print(f"DEBUG: 成功提取SRT文本 ({len(srt_text)} chars)")
 
                 segments = parse_srt_text(srt_text)
 
