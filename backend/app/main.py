@@ -11,7 +11,7 @@ from app.services.minio_client import minio_service
 
 # 配置日志
 logging.basicConfig(
-    level=logging.DEBUG,
+    level=logging.INFO,  # 从DEBUG改为INFO以减少噪声
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
         logging.StreamHandler()
@@ -77,21 +77,78 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 添加请求日志中间件
+# Header清理中间件 - 在路由处理前过滤不必要的headers
+@app.middleware("http")
+async def header_cleanup_middleware(request: Request, call_next):
+    """清理请求headers，避免大metadata问题"""
+
+    # 保留的headers白名单 (只保留必要的headers)
+    allowed_headers = {
+        'authorization',
+        'content-type',
+        'content-length',
+        'user-agent',
+        'accept',
+        'accept-encoding',
+        'accept-language',
+        'host',
+        'connection',
+        'upgrade-insecure-requests',
+        'sec-ch-ua',
+        'sec-ch-ua-mobile',
+        'sec-ch-ua-platform',
+        'sec-fetch-site',
+        'sec-fetch-mode',
+        'sec-fetch-user',
+        'sec-fetch-dest',
+        'cache-control',
+        'pragma',
+        'referer'
+    }
+
+    # 创建清洁的headers
+    cleaned_headers = {}
+    for key, value in request.headers.items():
+        if key.lower() in allowed_headers and len(str(value)) < 2000:  # 限制单个header的最大长度
+            cleaned_headers[key] = value
+
+    # 替换request的headers（需要直接修改_request对象）
+    request._headers = type(request._headers)(cleaned_headers)
+
+    response = await call_next(request)
+    return response
+
+# 添加请求日志中间件 - 只在开发环境中启用详细日志
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
     logger = logging.getLogger("http")
-    logger.debug(f"Received request: {request.method} {request.url}")
-    logger.debug(f"Headers: {dict(request.headers)}")
-    
-    try:
-        body = await request.body()
-        logger.debug(f"Body: {body.decode() if body else 'No body'}")
-    except Exception as e:
-        logger.debug(f"Could not read body: {e}")
-    
+
+    # 只在开发环境中记录详细信息
+    if settings.debug:
+        logger.debug(f"Received request: {request.method} {request.url}")
+
+        # 过滤敏感headers，只记录关键的非敏感信息
+        safe_headers = {}
+        for key, value in request.headers.items():
+            if key.lower() in ['authorization', 'cookie', 'x-api-key', 'authentication', 'x-auth-token']:
+                # 对敏感header，只记录存在性，不记录值
+                safe_headers[key] = f"[FILTERED - {len(value)} chars]"
+            elif len(value) > 200:  # 对长header进行截断
+                safe_headers[key] = f"{value[:200]}...[TRUNCATED - total {len(value)} chars]"
+            else:
+                safe_headers[key] = value
+
+        logger.debug(f"Headers: {safe_headers}")
+        logger.debug("Body: [NOT LOGGED - may contain large or sensitive data]")
+    else:
+        # 在生产环境中只记录关键信息
+        logger.info(f"{request.method} {request.url} - {request.client.host}")
+
     response = await call_next(request)
-    logger.debug(f"Response status: {response.status_code}")
+
+    if settings.debug:
+        logger.debug(f"Response status: {response.status_code}")
+
     return response
 
 # Include routers

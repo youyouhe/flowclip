@@ -21,8 +21,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__)))
 # Import the FastAPI app
 from app.main import app
 
-# Enable debug logging
-logging.basicConfig(level=logging.DEBUG)
+# Enable info logging
+logging.basicConfig(level=logging.INFO)
 
 # Create MCP server from FastAPI app
 mcp = FastApiMCP(app)

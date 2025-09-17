@@ -66,7 +66,8 @@ class LLMService:
         config = self._get_current_config()
 
         api_key = config['api_key']
-        base_url = config['base_url']
+        # 使用固定的OpenRouter模型API端点
+        base_url = "https://openrouter.ai/api/v1"
         logger.info("开始获取OpenRouter可用模型列表")
 
         # 检查API密钥

@@ -15,8 +15,6 @@ from app.core.config import settings
 from app.services.minio_client import minio_service
 from app.services.progress_service import update_video_progress
 
-# 配置日志
-logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 class YouTubeDownloaderMinio:

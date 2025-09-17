@@ -10,7 +10,7 @@ import logging
 import uvicorn
 
 # 设置日志
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Add the backend directory to the Python path
@@ -24,4 +24,4 @@ if __name__ == "__main__":
     
     # Run the MCP server on a different port (8002) to avoid conflict with FastAPI (8001)
     logger.debug("Starting MCP server on port 8002...")
-    uvicorn.run(app, host="0.0.0.0", port=8002, log_level="debug")
+    uvicorn.run(app, host="0.0.0.0", port=8002, log_level="info")
