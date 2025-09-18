@@ -196,6 +196,7 @@ chapters (子主题/章节列表):
     
     # CapCut Configuration
     capcut_api_url: str = "http://192.168.8.107:9002"
+    capcut_api_key: Optional[str] = None
     capcut_draft_folder: Optional[str] = None
     
     class Config:

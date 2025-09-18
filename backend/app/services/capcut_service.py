@@ -12,36 +12,49 @@ from typing import Dict, Any, Optional, List
 logger = logging.getLogger(__name__)
 
 class CapCutService:
-    def __init__(self, api_base_url: str = None):
-        if api_base_url is None:
+    def __init__(self, api_base_url: str = None, api_key: str = None):
+        if api_base_url is None or api_key is None:
             # 从数据库获取最新的配置
             try:
                 from app.core.database import get_sync_db
                 from app.services.system_config_service import SystemConfigService
                 from app.core.config import settings
-                
+
                 with get_sync_db() as db:
                     db_configs = SystemConfigService.get_all_configs_sync(db)
-                    api_base_url = db_configs.get("capcut_api_url", settings.capcut_api_url)
+                    if api_base_url is None:
+                        api_base_url = db_configs.get("capcut_api_url", settings.capcut_api_url)
+                    if api_key is None:
+                        api_key = db_configs.get("capcut_api_key", settings.capcut_api_key)
             except Exception as e:
                 # 如果无法从数据库获取配置，使用默认值
                 from app.core.config import settings
-                api_base_url = settings.capcut_api_url
+                if api_base_url is None:
+                    api_base_url = settings.capcut_api_url
+                if api_key is None:
+                    api_key = settings.capcut_api_key
                 logger.warning(f"无法从数据库获取CapCut配置，使用默认配置: {e}")
-        
+
         self.base_url = api_base_url
+        self.api_key = api_key
     
     async def create_draft(self, width: int = 1080, height: int = 1920, max_retries: int = 3) -> Dict[str, Any]:
         """创建草稿"""
         for attempt in range(max_retries):
             try:
                 logger.info(f"尝试创建草稿 (尝试 {attempt + 1}/{max_retries})")
+                # 准备请求头
+                headers = {"Content-Type": "application/json"}
+                if self.api_key:
+                    headers["X-API-KEY"] = self.api_key
+
                 response = requests.post(
                     f"{self.base_url}/create_draft",
                     json={
                         "width": width,
                         "height": height
                     },
+                    headers=headers,
                     timeout=30
                 )
                 response.raise_for_status()  # 检查HTTP错误
@@ -76,13 +89,13 @@ class CapCutService:
                 else:
                     raise Exception(f"创建草稿失败: {str(e)}")
     
-    async def add_effect(self, draft_id: str, effect_type: str, start: float, end: float, 
+    async def add_effect(self, draft_id: str, effect_type: str, start: float, end: float,
                         track_name: str, params: List[float] = None, width: int = 1080, height: int = 1920, max_retries: int = 3) -> Dict[str, Any]:
         """添加特效"""
         for attempt in range(max_retries):
             try:
                 logger.info(f"尝试添加特效 '{effect_type}' 到草稿 {draft_id} (尝试 {attempt + 1}/{max_retries})")
-                
+
                 # 构造请求数据
                 payload = {
                     "draft_id": draft_id,
@@ -93,14 +106,20 @@ class CapCutService:
                     "width": width,
                     "height": height
                 }
-                
+
                 # 如果提供了params参数，则添加到请求数据中
                 if params is not None:
                     payload["params"] = params
-                
+
+                # 准备请求头
+                headers = {"Content-Type": "application/json"}
+                if self.api_key:
+                    headers["X-API-KEY"] = self.api_key
+
                 response = requests.post(
                     f"{self.base_url}/add_effect",
                     json=payload,
+                    headers=headers,
                     timeout=30
                 )
                 response.raise_for_status()
@@ -142,6 +161,11 @@ class CapCutService:
         for attempt in range(max_retries):
             try:
                 logger.info(f"尝试添加音频到草稿 {draft_id} (尝试 {attempt + 1}/{max_retries})")
+                # 准备请求头
+                headers = {"Content-Type": "application/json"}
+                if self.api_key:
+                    headers["X-API-KEY"] = self.api_key
+
                 response = requests.post(
                     f"{self.base_url}/add_audio",
                     json={
@@ -155,6 +179,7 @@ class CapCutService:
                         "width": width,
                         "height": height
                     },
+                    headers=headers,
                     timeout=60
                 )
                 response.raise_for_status()
@@ -196,6 +221,11 @@ class CapCutService:
         for attempt in range(max_retries):
             try:
                 logger.info(f"尝试添加视频到草稿 {draft_id} (尝试 {attempt + 1}/{max_retries})")
+                # 准备请求头
+                headers = {"Content-Type": "application/json"}
+                if self.api_key:
+                    headers["X-API-KEY"] = self.api_key
+
                 response = requests.post(
                     f"{self.base_url}/add_video",
                     json={
@@ -208,6 +238,7 @@ class CapCutService:
                         "height": height,
                         "target_start": target_start
                     },
+                    headers=headers,
                     timeout=60
                 )
                 response.raise_for_status()
@@ -274,7 +305,7 @@ class CapCutService:
                     "width": width,
                     "height": height
                 }
-                
+
                 # 添加可选的动画参数
                 if intro_animation is not None:
                     data["intro_animation"] = intro_animation
@@ -284,10 +315,16 @@ class CapCutService:
                     data["outro_animation"] = outro_animation
                 if outro_duration is not None:
                     data["outro_duration"] = outro_duration
-                
+
+                # 准备请求头
+                headers = {"Content-Type": "application/json"}
+                if self.api_key:
+                    headers["X-API-KEY"] = self.api_key
+
                 response = requests.post(
                     f"{self.base_url}/add_text",
                     json=data,
+                    headers=headers,
                     timeout=30
                 )
                 response.raise_for_status()
@@ -327,7 +364,7 @@ class CapCutService:
                           bold: bool = False, italic: bool = False, underline: bool = False,
                           vertical: bool = False, alpha: float = 1.0,
                           border_alpha: float = 1.0, border_color: str = "#000000",
-                          border_width: float = 15.0, 
+                          border_width: float = 15.0,
                           background_color: str = "#000000", background_style: int = 0, background_alpha: float = 0.0,
                           transform_x: float = 0.0, transform_y: float = -0.8,
                           scale_x: float = 1.0, scale_y: float = 1.0, rotation: float = 0.0,
@@ -337,6 +374,11 @@ class CapCutService:
         for attempt in range(max_retries):
             try:
                 logger.info(f"尝试添加字幕到草稿 {draft_id} (尝试 {attempt + 1}/{max_retries})")
+                # 准备请求头
+                headers = {"Content-Type": "application/json"}
+                if self.api_key:
+                    headers["X-API-KEY"] = self.api_key
+
                 response = requests.post(
                     f"{self.base_url}/add_subtitle",
                     json={
@@ -366,6 +408,7 @@ class CapCutService:
                         "width": width,
                         "height": height
                     },
+                    headers=headers,
                     timeout=60
                 )
                 response.raise_for_status()
@@ -405,12 +448,18 @@ class CapCutService:
         for attempt in range(max_retries):
             try:
                 logger.info(f"尝试保存草稿 {draft_id} 到文件夹 {draft_folder} (尝试 {attempt + 1}/{max_retries})")
+                # 准备请求头
+                headers = {"Content-Type": "application/json"}
+                if self.api_key:
+                    headers["X-API-KEY"] = self.api_key
+
                 response = requests.post(
                     f"{self.base_url}/save_draft",
                     json={
                         "draft_id": draft_id,
                         "draft_folder": draft_folder
                     },
+                    headers=headers,
                     timeout=120
                 )
                 response.raise_for_status()

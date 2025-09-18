@@ -529,7 +529,7 @@ return (
                           />
                         ) : config.key === 'asr_model_type' ? (
                           // ASR模型类型选择下拉框
-                          <Select 
+                          <Select
                             placeholder="请选择ASR模型类型"
                             defaultValue={config.value || 'whisper'}
                             onChange={(value) => form.setFieldsValue({ [config.key]: value })}
@@ -537,6 +537,12 @@ return (
                             <Select.Option value="whisper">Whisper模型</Select.Option>
                             <Select.Option value="sense">Sense模型</Select.Option>
                           </Select>
+                        ) : config.key === 'capcut_api_key' ? (
+                          // CapCut API密钥输入框
+                          <Input.Password
+                            placeholder={config.default || "请输入CapCut API密钥"}
+                            visibilityToggle={true}
+                          />
                         ) : config.key === 'llm_model_type' ? (
                           // LLM模型类型支持手动输入的输入框
                           <Input 
