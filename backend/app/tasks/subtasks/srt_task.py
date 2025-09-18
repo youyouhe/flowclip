@@ -215,7 +215,10 @@ def generate_srt(self, video_id: str, project_id: int, user_id: int, split_files
             celery_task_id = "unknown"
             
         print(f"DEBUG: 获取到Celery任务ID: {celery_task_id}")
-        
+
+        # 记录处理开始时间
+        processing_start_time = time.time()
+
         # 动态获取最新的ASR服务URL和模型类型
         with get_sync_db() as db:
             from app.core.config import settings
@@ -382,15 +385,19 @@ def generate_srt(self, video_id: str, project_id: int, user_id: int, split_files
                                         task_id=task.id,
                                         status=ProcessingTaskStatus.SUCCESS,
                                         progress=100,
-                                        message="字幕生成完成",
+                                        message=f"字幕生成完成 (策略: {result.get('strategy', 'standard')})",
                                         output_data={
-                                            'srt_filename': result['srt_filename'],
-                                            'minio_path': result['minio_path'],
-                                            'object_name': result['object_name'],
+                                            'srt_filename': result.get('srt_filename'),
+                                            'minio_path': result.get('minio_path'),
+                                            'object_name': result.get('object_name'),
                                             'srt_url': srt_url,
-                                            'total_segments': result['total_segments'],
-                                            'processing_stats': result['processing_stats'],
-                                            'asr_params': result['asr_params']
+                                            'total_segments': result.get('total_segments', 0),
+                                            'processing_stats': result.get('processing_stats', {}),
+                                            'asr_params': result.get('asr_params', {}),
+                                            'strategy': result.get('strategy', 'standard'),  # 添加策略信息
+                                            'task_id': result.get('task_id'),  # TUS任务ID
+                                            'srt_content': result.get('srt_content', ''),  # SRT内容
+                                            'file_size_info': result.get('file_size_info', {})  # 文件大小信息
                                         },
                                         stage=ProcessingStage.GENERATE_SRT
                                     )
@@ -450,7 +457,181 @@ def generate_srt(self, video_id: str, project_id: int, user_id: int, split_files
                         'asr_params': result['asr_params']
                     }
                 else:
-                    raise Exception(result.get('error', 'Unknown error'))
+                    if 'srt_content' in result and result['srt_content']:
+                        # 如果有SRT内容，说明处理成功
+                        logger.info(f"SRT生成成功，内容长度: {len(result['srt_content'])}")
+
+                        # 为TUS处理构建标准返回结果
+                        srt_content = result['srt_content']
+
+                        # 构造metadata用于处理统计
+                        metadata = {
+                            'language': 'auto',
+                            'model': asr_model_type  # 使用从数据库获取的模型类型
+                        }
+
+                        # 构造文件名和对象名称（使用标准路径，与其他处理保持一致）
+                        srt_filename = f"{video_id}.srt"
+                        srt_object_name = f"users/{user_id}/projects/{project_id}/subtitles/{srt_filename}"
+
+                        # 创建临时文件来保存SRT内容
+                        tmp_srt_path = None
+                        try:
+                            with tempfile.NamedTemporaryFile(mode='w', suffix='.srt', delete=False, encoding='utf-8') as tmp_srt_file:
+                                tmp_srt_file.write(srt_content)
+                                tmp_srt_path = tmp_srt_file.name
+
+                            # 检查临时文件是否正确创建
+                            if not tmp_srt_path or not os.path.exists(tmp_srt_path):
+                                raise Exception("临时SRT文件创建失败")
+
+                            # 检查SRT内容是否写入
+                            if os.path.getsize(tmp_srt_path) == 0:
+                                raise Exception("SRT内容写入失败")
+
+                            print(f"DEBUG: SRT临时文件创建成功: {tmp_srt_path}, 大小: {os.path.getsize(tmp_srt_path)} bytes")
+
+                            # 上传SRT文件到MinIO
+                            srt_url = run_async(
+                                minio_service.upload_file(
+                                    tmp_srt_path,
+                                    srt_object_name,
+                                    "text/srt"
+                                )
+                            )
+
+                            if not srt_url:
+                                raise Exception("SRT文件上传到MinIO失败")
+
+                            print(f"DEBUG: SRT文件上传成功: {srt_url}")
+
+                        finally:
+                            # 清理临时文件
+                            if tmp_srt_path and os.path.exists(tmp_srt_path):
+                                try:
+                                    os.unlink(tmp_srt_path)
+                                    print(f"DEBUG: 临时SRT文件清理成功: {tmp_srt_path}")
+                                except Exception as cleanup_error:
+                                    print(f"DEBUG: 临时SRT文件清理失败: {cleanup_error}")
+
+                        # 上传成功检查已经在try块中完成
+
+                        # 更新任务状态
+                        self.update_state(state='SUCCESS', meta={'progress': 100, 'stage': ProcessingStage.GENERATE_SRT, 'message': '字幕生成完成'})
+
+                        # 计算SRT内容的实际字幕条数
+                        # 使用标准ASR处理的相同方法：从SRT内容解析字幕段落数
+                        srt_lines = srt_content.strip().split('\n')
+                        total_segments_count = sum(1 for line in srt_lines if line.strip() and line.isdigit()) if len(srt_content.strip()) >= 10 else 1
+
+                        # 构造处理统计信息，使其与标准ASR处理保持一致
+                        processing_stats = {
+                            'success_count': 1,
+                            'fail_count': 0,
+                            'total_files': 1,
+                            'tus_processing': {
+                                'strategy': 'tus',
+                                'srt_content_length': len(srt_content),
+                                'processing_time': time.time() - processing_start_time if 'processing_start_time' in locals() else 0,
+                                'file_size_info': result.get('file_size_info', {}),
+                                'task_id': result.get('task_id')
+                            }
+                        }
+
+                        # 更新数据库中的任务状态
+                        try:
+                            with get_sync_db() as db:
+                                state_manager = get_state_manager(db)
+                                task = db.query(ProcessingTask).filter(
+                                    ProcessingTask.celery_task_id == celery_task_id
+                                ).first()
+
+                                if task:
+                                    print(f"找到任务记录: task.id={task.id}, 更新状态...")
+                                    state_manager.update_task_status_sync(
+                                        task_id=task.id,
+                                        status=ProcessingTaskStatus.SUCCESS,
+                                        progress=100,
+                                        message="字幕生成完成 (策略: tus)",
+                                        output_data={
+                                            'srt_filename': srt_filename,
+                                            'minio_path': srt_url,
+                                            'srt_url': srt_url,  # 确保数据库也有srt_url字段
+                                            'object_name': srt_object_name,
+                                            'total_segments': total_segments_count,
+                                            'processing_stats': processing_stats,
+                                            'asr_params': {
+                                                'strategy': 'tus',
+                                                'model': metadata.get('model', 'whisper'),
+                                                'processing_time': time.time() - processing_start_time if 'processing_start_time' in locals() else 0
+                                            },
+                                            'strategy': 'tus',
+                                            'task_id': result.get('task_id'),
+                                            'srt_content': srt_content,
+                                            'file_size_info': result.get('file_size_info', {})
+                                        },
+                                        stage=ProcessingStage.GENERATE_SRT
+                                    )
+
+                                    # 更新视频记录
+                                    video = db.query(Video).filter(Video.id == task.video_id).first()
+                                    if video:
+                                        video.processing_progress = 100
+                                        video.processing_stage = ProcessingStage.GENERATE_SRT.value
+                                        video.processing_message = "字幕生成完成 (策略: tus)"
+                                        video.processing_completed_at = datetime.utcnow()
+                                        print(f"已更新视频记录: video_id={video.id}")
+
+                                    # 更新processing_status表
+                                    try:
+                                        from app.models.processing_task import ProcessingStatus
+                                        processing_status = db.query(ProcessingStatus).filter(
+                                            ProcessingStatus.video_id == task.video_id
+                                        ).first()
+                                        if processing_status:
+                                            processing_status.overall_status = ProcessingTaskStatus.SUCCESS
+                                            processing_status.overall_progress = 100
+                                            processing_status.current_stage = ProcessingStage.COMPLETED.value
+                                            print(f"已更新processing_status整体状态: video_id={task.video_id}")
+                                    except Exception as status_error:
+                                        print(f"更新processing_status失败: {status_error}")
+
+                        except Exception as db_error:
+                            print(f"更新数据库任务状态失败: {db_error}")
+
+                        return {
+                            'success': True,
+                            'strategy': 'tus',
+                            'srt_filename': srt_filename,
+                            'minio_path': srt_url,
+                            'srt_url': srt_url,  # 添加srt_url字段确保兼容性
+                            'object_name': srt_object_name,
+                            'total_segments': total_segments_count,
+                            'processing_stats': processing_stats,
+                            'asr_params': {
+                                'strategy': 'tus',
+                                'model': metadata.get('model', 'whisper'),
+                                'processing_time': time.time() - processing_start_time if 'processing_start_time' in locals() else 0
+                            },
+                            'srt_content': srt_content,
+                            'project_id': project_id,
+                            'user_id': user_id,
+                            'file_path': audio_info['audio_path'] if audio_info else None,
+                            'processing_info': result
+                        }
+
+                    elif 'error' in result and result['error']:
+                        # 只有在有明确的错误信息时才认为失败
+                        logger.error(f"SRT生成失败: {result['error']}")
+                        raise Exception(result['error'])
+                    else:
+                        # 没有明确的错误，但也没有SRT内容，认为是部分成功
+                        logger.warning(f"SRT生成可能不完整，但未明确失败: {result}")
+                        # 如果有处理统计信息，仍认为成功
+                        if 'processing_stats' in result:
+                            logger.info(f"使用处理统计信息判断为成功")
+                        else:
+                            raise Exception("SRT生成结果不完整，也未提供错误信息")
             
     except Exception as e:
         import traceback

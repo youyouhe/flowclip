@@ -195,6 +195,16 @@ class SystemConfigService:
             {"key": "capcut_api_url", "label": "CapCut API URL", "category": "其他服务配置", "default": settings.capcut_api_url},
             {"key": "capcut_api_key", "label": "CapCut API密钥", "category": "其他服务配置", "default": settings.capcut_api_key or "", "sensitive": True, "description": "CapCut服务的API密钥"},
             {"key": "capcut_draft_folder", "label": "CapCut草稿文件夹路径", "category": "其他服务配置", "default": settings.capcut_draft_folder or "", "description": "CapCut草稿文件夹的完整路径"},
+
+            # TUS配置
+            {"key": "tus_api_url", "label": "TUS API URL", "category": "其他服务配置", "default": settings.tus_api_url, "description": "TUS ASR API服务器地址"},
+            {"key": "tus_upload_url", "label": "TUS上传URL", "category": "其他服务配置", "default": settings.tus_upload_url, "description": "TUS上传服务器地址"},
+            {"key": "tus_callback_port", "label": "TUS回调端口", "category": "其他服务配置", "default": str(settings.tus_callback_port), "description": "TUS回调监听端口"},
+            {"key": "tus_callback_host", "label": "TUS回调主机", "category": "其他服务配置", "default": settings.tus_callback_host, "description": "TUS回调主机IP (auto=自动检测)"},
+            {"key": "tus_file_size_threshold_mb", "label": "TUS文件大小阈值(MB)", "category": "其他服务配置", "default": str(settings.tus_file_size_threshold_mb), "description": "TUS协议使用的文件大小阈值(MB)"},
+            {"key": "tus_enable_routing", "label": "启用TUS路由", "category": "其他服务配置", "default": str(settings.tus_enable_routing).lower(), "description": "是否启用TUS自动路由功能"},
+            {"key": "tus_max_retries", "label": "TUS最大重试次数", "category": "其他服务配置", "default": str(settings.tus_max_retries), "description": "TUS操作的最大重试次数"},
+            {"key": "tus_timeout_seconds", "label": "TUS超时时间(秒)", "category": "其他服务配置", "default": str(settings.tus_timeout_seconds), "description": "TUS操作的超时时间(秒)"},
             
             # LLM配置
             {"key": "openrouter_api_key", "label": "OpenRouter API密钥", "category": "LLM配置", "default": settings.openrouter_api_key or "", "sensitive": True},

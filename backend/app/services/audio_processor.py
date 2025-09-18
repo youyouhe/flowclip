@@ -528,11 +528,61 @@ class AudioProcessor:
         start_time: float = None,
         end_time: float = None,
         asr_service_url: str = None,
-        asr_model_type: str = "whisper"  # 添加模型类型参数，默认为whisper
+        asr_model_type: str = "whisper",  # 添加模型类型参数，默认为whisper
+        enable_tus_routing: bool = None,  # 启用TUS路由(默认从配置读取)
+        force_standard_asr: bool = False  # 强制使用标准ASR
     ) -> Dict[str, Any]:
         """从音频文件生成SRT字幕文件 - 更新为直接处理音频文件"""
-        
+
         logger.info(f"开始生成SRT字幕: {audio_path}")
+
+        # 读取TUS路由配置
+        from app.core.config import settings
+        tus_routing_enabled = enable_tus_routing if enable_tus_routing is not None else getattr(settings, 'tus_enable_routing', True)
+
+        # 如果启用TUS路由且不强制使用标准ASR，则进行文件大小检测
+        if tus_routing_enabled and not force_standard_asr:
+            try:
+                from app.services.file_size_detector import file_size_detector
+
+                # 检测文件大小
+                size_info = file_size_detector.detect_file_size(audio_path)
+                logger.info(f"文件大小检测结果: {size_info['file_size_mb']:.2f}MB, 策略: {size_info['strategy']}")
+
+                # 如果文件大小超过阈值，使用TUS客户端
+                if size_info['use_tus']:
+                    logger.info(f"文件大小超过阈值 ({size_info['threshold_mb']}MB)，使用TUS客户端处理")
+
+                    from app.services.file_size_detector import asr_strategy_selector
+                    metadata = {
+                        'language': lang,
+                        'model': asr_model_type,
+                        'video_id': video_id,
+                        'project_id': project_id,
+                        'user_id': user_id
+                    }
+
+                    # 使用TUS客户端处理
+                    tus_result = await asr_strategy_selector._execute_tus_asr(audio_path, metadata)
+
+                    return {
+                        'success': tus_result.get('success', False),
+                        'strategy': 'tus',
+                        'srt_content': tus_result.get('srt_content', ''),
+                        'task_id': tus_result.get('task_id'),
+                        'video_id': video_id,
+                        'project_id': project_id,
+                        'user_id': user_id,
+                        'file_size_info': size_info,
+                        'processing_info': tus_result.get('processing_info', {}),
+                        'audio_path': audio_path
+                    }
+                else:
+                    logger.info(f"文件大小在阈值范围内，使用标准ASR处理")
+
+            except Exception as e:
+                logger.warning(f"文件大小检测失败，回退到标准ASR处理: {e}")
+                # 如果检测失败，继续使用标准ASR处理
         
         # 优先使用传入的asr_service_url，其次是api_url，最后是默认配置
         # 根据模型类型确定正确的端点路径
@@ -754,6 +804,7 @@ class AudioProcessor:
                 
                 return {
                     'success': True,
+                    'strategy': 'standard',  # 标记为标准ASR策略
                     'video_id': video_id,
                     'srt_filename': srt_filename,
                     'minio_path': srt_url,
@@ -769,6 +820,15 @@ class AudioProcessor:
                         'api_url': api_url,
                         'lang': lang,
                         'max_workers': max_workers
+                    },
+                    'srt_content': srt_content,  # 添加SRT内容
+                    'project_id': project_id,
+                    'user_id': user_id,
+                    'audio_path': audio_path,
+                    'processing_info': {
+                        'model_type': asr_model_type,
+                        'final_api_url': final_api_url,
+                        'total_processing_time': time.time() - start_time if 'start_time' in locals() else 0
                     }
                 }
                 

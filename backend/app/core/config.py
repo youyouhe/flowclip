@@ -50,6 +50,16 @@ class Settings(BaseSettings):
     # ASR Service Configuration
     asr_service_url: str = "http://192.168.8.107:5001"
     asr_model_type: str = "whisper"
+
+    # TUS Configuration
+    tus_api_url: str = "http://localhost:8000"  # TUS ASR API服务器URL
+    tus_upload_url: str = "http://localhost:1080"  # TUS上传服务器URL
+    tus_callback_port: int = 9090  # TUS回调监听端口
+    tus_callback_host: str = "auto"  # TUS回调主机IP (auto=自动检测)
+    tus_file_size_threshold_mb: int = 10  # TUS使用阈值(MB)
+    tus_enable_routing: bool = True  # 启用TUS路由
+    tus_max_retries: int = 3  # TUS最大重试次数
+    tus_timeout_seconds: int = 1800  # TUS超时时间(秒)
     
     # LLM Configuration
     openrouter_api_key: Optional[str] = None
