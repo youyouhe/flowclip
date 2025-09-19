@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Card, Input, Button, Select, Space, message, Spin, Typography, Row, Col, Switch, Tag, Divider, Modal, Alert, InputNumber, DatePicker } from 'antd';
-import { SendOutlined, RobotOutlined, VideoCameraOutlined, SettingOutlined, ClearOutlined, ScissorOutlined, SearchOutlined, ClearOutlined as ClearFiltersOutlined, ReloadOutlined } from '@ant-design/icons';
+import { SendOutlined, RobotOutlined, VideoCameraOutlined, SettingOutlined, ClearOutlined, ScissorOutlined, SearchOutlined, ClearOutlined as ClearFiltersOutlined, ReloadOutlined, CopyOutlined } from '@ant-design/icons';
 import { llmAPI } from '../services/api';
 import { videoAPI } from '../services/api';
 import { projectAPI } from '../services/api';
@@ -200,6 +200,55 @@ const LLMChat: React.FC = () => {
     }
   };
 
+  const copyJsonToClipboard = async () => {
+    if (!lastLLMResponse) {
+      message.warning('没有可复制的LLM响应内容');
+      return;
+    }
+
+    try {
+      // 首先尝试验证JSON格式
+      let jsonContent = lastLLMResponse;
+
+      // 检查是否包含```json内容，如果是，则提取
+      if (lastLLMResponse.includes('```json') && lastLLMResponse.includes('```')) {
+        const jsonStart = lastLLMResponse.indexOf('```json');
+        const jsonEnd = lastLLMResponse.indexOf('```', jsonStart + 7);
+        if (jsonEnd !== -1) {
+          jsonContent = lastLLMResponse.substring(jsonStart + 7, jsonEnd).trim();
+        }
+      }
+
+      // 验证JSON格式
+      try {
+        JSON.parse(jsonContent);
+      } catch (e) {
+        message.error('响应内容不是有效的JSON格式，无法复制');
+        return;
+      }
+
+      // 复制到剪贴板
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(jsonContent);
+        message.success('JSON内容已复制到剪贴板');
+      } else {
+        // 降级方法
+        const textArea = document.createElement('textarea');
+        textArea.value = jsonContent;
+        textArea.style.position = 'absolute';
+        textArea.style.left = '-999999px';
+        document.body.appendChild(textArea);
+        textArea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textArea);
+        message.success('JSON内容已复制到剪贴板');
+      }
+    } catch (error) {
+      console.error('复制JSON失败:', error);
+      message.error('复制JSON内容失败');
+    }
+  };
+
   const clearChat = () => {
     setMessages([]);
     message.success('对话已清空');
@@ -239,8 +288,16 @@ const LLMChat: React.FC = () => {
             }
             extra={
               <Space>
-                <Button 
-                  icon={<ClearOutlined />} 
+                <Button
+                  icon={<CopyOutlined />}
+                  onClick={copyJsonToClipboard}
+                  disabled={!lastLLMResponse}
+                  type="default"
+                >
+                  复制JSON
+                </Button>
+                <Button
+                  icon={<ClearOutlined />}
                   onClick={clearChat}
                   disabled={messages.length === 0}
                 >

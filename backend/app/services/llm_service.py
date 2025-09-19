@@ -211,7 +211,41 @@ class LLMService:
                             
                             response.raise_for_status()
                             result = await response.json()
-                            logger.info(f"LLM请求成功 - 响应: {result}")
+                            logger.info(f"LLM请求成功 - 原始响应: {result}")
+
+                            # 提取LLM响应中的JSON内容
+                            if 'choices' in result and len(result['choices']) > 0:
+                                choice = result['choices'][0]
+                                if 'message' in choice and 'content' in choice['message']:
+                                    content = choice['message']['content']
+                                    logger.info(f"提取到的LLM内容: {content}")
+
+                                    # 尝试从content中提取JSON内容
+                                    if '```json' in content and '```' in content.split('```json', 1)[1]:
+                                        # 提取JSON块内容
+                                        json_start = content.find('```json')
+                                        json_end = content.find('```', json_start + 7)
+                                        if json_end != -1:
+                                            json_content = content[json_start + 7:json_end].strip()
+                                            try:
+                                                # 解析JSON内容
+                                                parsed_json = json.loads(json_content)
+                                                logger.info(f"成功解析JSON内容: {type(parsed_json)}")
+                                                # 将解析后的JSON内容添加到响应中
+                                                result['parsed_content'] = parsed_json
+                                            except json.JSONDecodeError as e:
+                                                logger.warning(f"JSON解析失败: {e}, 将返回原始内容")
+                                                result['parsed_content'] = content
+                                        else:
+                                            result['parsed_content'] = content
+                                    else:
+                                        # 如果没有```json标记，直接返回content内容
+                                        result['parsed_content'] = content
+                                else:
+                                    logger.warning("LLM响应中没有找到message.content字段")
+                            else:
+                                logger.warning("LLM响应中没有找到choices字段")
+
                             return result
                             
                 except Exception as config_error:

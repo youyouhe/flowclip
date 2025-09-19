@@ -183,11 +183,22 @@ async def chat_with_llm(
         # 提取回复内容
         response_text = ""
         usage_info = None
-        
+
         if 'choices' in llm_response and len(llm_response['choices']) > 0:
             choice = llm_response['choices'][0]
             if 'message' in choice and 'content' in choice['message']:
-                response_text = choice['message']['content']
+                # 优先使用解析后的JSON内容，本地修改
+                if 'parsed_content' in llm_response:
+                    logger.info("使用解析后的JSON内容")
+                    if isinstance(llm_response['parsed_content'], str):
+                        response_text = llm_response['parsed_content']
+                    else:
+                        # 如果是JSON对象，格式化为字符串
+                        import json
+                        response_text = json.dumps(llm_response['parsed_content'], ensure_ascii=False, indent=2)
+                else:
+                    # 如果没有解析后的内容，使用原始content
+                    response_text = choice['message']['content']
         
         if 'usage' in llm_response:
             usage_info = llm_response['usage']
