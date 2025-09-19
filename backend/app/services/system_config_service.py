@@ -15,20 +15,20 @@ class SystemConfigService:
         "mysql_password": "mysql_password",
         "mysql_database": "mysql_database",
         "mysql_root_password": "mysql_root_password",
-        
+
         # Redis配置
         "redis_url": "redis_url",
-        
+
         # MinIO配置
         "minio_endpoint": "minio_endpoint",
         "minio_public_endpoint": "minio_public_endpoint",
         "minio_access_key": "minio_access_key",
         "minio_secret_key": "minio_secret_key",
         "minio_bucket_name": "minio_bucket_name",
-        
+
         # 安全配置
         "secret_key": "secret_key",
-        
+
         # 其他服务配置
         "asr_service_url": "asr_service_url",
         "asr_model_type": "asr_model_type",
@@ -53,6 +53,21 @@ class SystemConfigService:
         "llm_system_prompt": "llm_system_prompt",
         "llm_temperature": "llm_temperature",
         "llm_max_tokens": "llm_max_tokens",
+    }
+
+    # 类型转换映射：定义配置项的数据类型
+    TYPE_MAPPING = {
+        # 整数类型
+        "mysql_port": int,
+        "tus_callback_port": int,
+        "tus_file_size_threshold_mb": int,
+        "tus_max_retries": int,
+        "tus_timeout_seconds": int,
+        "llm_temperature": float,
+        "llm_max_tokens": int,
+
+        # 布尔类型
+        "tus_enable_routing": lambda x: str(x).lower() in ('true', '1', 'yes', 'on'),
     }
     
     @staticmethod
@@ -149,7 +164,20 @@ class SystemConfigService:
         # 更新其他配置项
         for db_key, settings_attr in SystemConfigService.CONFIG_MAPPING.items():
             if db_key in db_configs and db_configs[db_key].strip():
-                setattr(settings, settings_attr, db_configs[db_key])
+                # 获取原始值
+                raw_value = db_configs[db_key]
+                converted_value = raw_value
+
+                # 进行类型转换
+                if db_key in SystemConfigService.TYPE_MAPPING:
+                    try:
+                        converter = SystemConfigService.TYPE_MAPPING[db_key]
+                        converted_value = converter(raw_value)
+                        #print(f"DEBUG: 类型转换 {db_key}: '{raw_value}' -> {converted_value} ({type(converted_value).__name__})")
+                    except Exception as conv_error:
+                        print(f"WARNING: 配置项 {db_key} 类型转换失败: {raw_value} -> {conv_error}，使用原值")
+
+                setattr(settings, settings_attr, converted_value)
     
     @staticmethod
     def update_settings_from_db_sync(db: Session):
@@ -169,8 +197,20 @@ class SystemConfigService:
         # 更新其他配置项
         for db_key, settings_attr in SystemConfigService.CONFIG_MAPPING.items():
             if db_key in db_configs and db_configs[db_key].strip():
-                #print(f"DEBUG: 更新配置项 {db_key} 从 '{getattr(settings, settings_attr, None)}' 到 '{db_configs[db_key]}'")
-                setattr(settings, settings_attr, db_configs[db_key])
+                # 获取原始值
+                raw_value = db_configs[db_key]
+                converted_value = raw_value
+
+                # 进行类型转换
+                if db_key in SystemConfigService.TYPE_MAPPING:
+                    try:
+                        converter = SystemConfigService.TYPE_MAPPING[db_key]
+                        converted_value = converter(raw_value)
+                        #print(f"DEBUG: 类型转换 {db_key}: '{raw_value}' -> {converted_value} ({type(converted_value).__name__})")
+                    except Exception as conv_error:
+                        print(f"WARNING: 配置项 {db_key} 类型转换失败: {raw_value} -> {conv_error}，使用原值")
+
+                setattr(settings, settings_attr, converted_value)
         
         print(f"DEBUG: 更新后settings.minio_public_endpoint: {settings.minio_public_endpoint}")
     

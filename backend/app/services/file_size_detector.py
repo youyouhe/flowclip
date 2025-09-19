@@ -33,6 +33,13 @@ class FileSizeDetector:
         if threshold_mb is None:
             threshold_mb = getattr(settings, 'tus_file_size_threshold_mb', 10)
 
+        # 确保 threshold_mb 是整数类型（从数据库读取可能是字符串）
+        try:
+            threshold_mb = int(threshold_mb)
+        except (ValueError, TypeError):
+            logger.warning(f"无效的阈值配置：{threshold_mb}，使用默认值10")
+            threshold_mb = 10
+
         self.threshold_bytes = threshold_mb * 1024 * 1024
         self.threshold_mb = threshold_mb
 
