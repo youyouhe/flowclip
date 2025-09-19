@@ -52,6 +52,10 @@ class TusASRClient:
         self.max_retries = max_retries or settings.tus_max_retries
         self.timeout_seconds = timeout_seconds or settings.tus_timeout_seconds
 
+        # 自动为每个客户端分配不同的端口，避免冲突
+        if not callback_port:
+            self.callback_port = self._get_unique_callback_port()
+
         # 然后尝试从数据库动态更新配置
         self._load_config_from_database()
 
@@ -59,8 +63,9 @@ class TusASRClient:
         self.completed_tasks = {}
         self.running = True
         self.callback_thread = None
+        self.process_id = os.getpid()  # 记录进程ID用于日志
 
-        logger.info(f"TUS ASR客户端初始化完成:")
+        logger.info(f"TUS ASR客户端初始化完成 (PID: {self.process_id}):")
         logger.info(f"  API URL: {self.api_url}")
         logger.info(f"  TUS URL: {self.tus_url}")
         logger.info(f"  回调端口: {self.callback_port}")
@@ -153,6 +158,49 @@ class TusASRClient:
             raise RuntimeError(f"TUS ASR处理失败: {str(e)}") from e
         finally:
             self.running = False
+
+    def _get_unique_callback_port(self) -> int:
+        """获取唯一的回调端口，避免多进程冲突"""
+        base_port = getattr(self, '__class__', TusASRClient)._base_port if hasattr(TusASRClient, '_base_port') else 9090
+        process_id = os.getpid()
+
+        # 使用进程ID作为端口偏移，确保每个进程使用不同的端口
+        # 端口范围: base_port 到 base_port + 99
+        port = base_port + (process_id % 100)
+
+        logger.info(f"为进程 {process_id} 分配唯一回调端口: {port}")
+        return port
+
+    def _get_available_port(self) -> int:
+        """动态查找可用的回调端口"""
+        base_port = 9090
+        max_ports = 100  # 最多尝试100个端口
+
+        for offset in range(max_ports):
+            port = base_port + offset
+            try:
+                import socket
+                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                result = sock.connect_ex(('127.0.0.1', port))
+                sock.close()
+
+                if result != 0:  # 端口可用
+                    logger.info(f"找到可用端口: {port}")
+                    return port
+                else:
+                    logger.debug(f"端口 {port} 被占用，尝试下一个")
+            except Exception as e:
+                logger.debug(f"检查端口 {port} 时出错: {e}")
+                continue
+
+        # 如果都不可用，返回一个尽量唯一的端口
+        import random
+        fallback_port = 10000 + random.randint(0, 999)
+        logger.warning(f"无法找到可用端口，使用随机端口: {fallback_port}")
+        return fallback_port
+
+    # 类变量
+    _base_port = 9090
 
     async def _execute_tus_pipeline(
         self,
@@ -477,10 +525,32 @@ class TusASRClient:
             return f"http://{self.callback_host}:{self.callback_port}/callback"
 
     def _start_callback_server(self):
-        """启动回调服务器"""
+        """启动回调服务器，自动处理端口冲突"""
         if self.callback_thread and self.callback_thread.is_alive():
-            logger.info("回调服务器已在运行")
+            logger.info(f"回调服务器已在运行 (PID: {self.process_id}, 端口: {self.callback_port})")
             return
+
+        # 如果端口被占用，尝试更换端口
+        while True:
+            try:
+                # 检查端口是否被占用
+                import socket
+                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                result = sock.connect_ex(('127.0.0.1', self.callback_port))
+                sock.close()
+
+                if result == 0:
+                    # 端口被占用
+                    logger.warning(f"端口 {self.callback_port} 被占用，尝试更换端口")
+                    self.callback_port = self._get_available_port()
+                    logger.info(f"更换到新端口: {self.callback_port}")
+                else:
+                    # 端口可用
+                    break
+
+            except Exception as e:
+                logger.error(f"检查端口占用状态失败: {e}")
+                break
 
         self.callback_thread = threading.Thread(target=self._run_callback_server)
         self.callback_thread.daemon = True
