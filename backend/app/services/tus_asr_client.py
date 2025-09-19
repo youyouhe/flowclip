@@ -469,7 +469,9 @@ class TusASRClient:
                 local_ip = s.getsockname()[0]
                 s.close()
             except Exception:
+                logger.warning(f"无法检测本地IP，使用localhost")
                 local_ip = "localhost"
+                logger.info(f"检测本地IP失败，使用默认: {local_ip}")
             return f"http://{local_ip}:{self.callback_port}/callback"
         else:
             return f"http://{self.callback_host}:{self.callback_port}/callback"

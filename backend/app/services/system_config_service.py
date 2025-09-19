@@ -36,7 +36,17 @@ class SystemConfigService:
         "capcut_api_url": "capcut_api_url",
         "capcut_api_key": "capcut_api_key",
         "capcut_draft_folder": "capcut_draft_folder",
-        
+
+        # TUS配置
+        "tus_api_url": "tus_api_url",
+        "tus_upload_url": "tus_upload_url",
+        "tus_callback_port": "tus_callback_port",
+        "tus_callback_host": "tus_callback_host",
+        "tus_file_size_threshold_mb": "tus_file_size_threshold_mb",
+        "tus_enable_routing": "tus_enable_routing",
+        "tus_max_retries": "tus_max_retries",
+        "tus_timeout_seconds": "tus_timeout_seconds",
+
         # LLM配置
         "llm_base_url": "llm_base_url",
         "llm_model_type": "llm_model_type",
