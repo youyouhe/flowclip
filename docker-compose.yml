@@ -120,7 +120,7 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     container_name: flowclip-celery
-    command: python start_celery.py worker --loglevel=info --concurrency=4
+    command: python start_celery.py worker --loglevel=info --concurrency=5
     environment:
       - DATABASE_URL=mysql+aiomysql://youtube_user:youtube_password@mysql:3306/youtube_slicer?charset=utf8mb4
       - REDIS_URL=redis://redis:6379
@@ -146,8 +146,8 @@ services:
     logging:
       driver: "json-file"
       options:
-        max-size: "20m"
-        max-file: "2"
+        max-size: "1m"
+        max-file: "10"
 
   # Celery Beat (for scheduled tasks)
   celery-beat:

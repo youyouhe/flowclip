@@ -310,6 +310,59 @@ const Videos: React.FC = () => {
     setUrlInputs(newUrlInputs);
   };
 
+  const parseYouTubeUrls = (text: string): string[] => {
+    const lines = text.split(/\r?\n/).map(line => line.trim()).filter(line => line);
+    const validUrls: string[] = [];
+    const seen = new Set<string>();
+
+    for (const line of lines) {
+      const url = line.trim();
+      if (/youtube\.com|youtu\.be/.test(url) && (url.startsWith('http://') || url.startsWith('https://'))) {
+        const decodedUrl = decodeURIComponent(url);
+        if (!seen.has(decodedUrl)) {
+          seen.add(decodedUrl);
+          validUrls.push(decodedUrl);
+        }
+      }
+      if (validUrls.length >= 5) break; // Limit to 5 URLs
+    }
+
+    return validUrls;
+  };
+
+  const handleUrlPaste = (index: number, pasteEvent: React.ClipboardEvent<HTMLInputElement>) => {
+    const pastedText = pasteEvent.clipboardData.getData('text');
+    const currentValues = urlInputs.filter(url => url && url.trim() !== '');
+
+    // Check if pasted text contains multiple lines (potential multiple URLs)
+    if (pastedText.includes('\n') || pastedText.includes('\r')) {
+      const parsedUrls = parseYouTubeUrls(pastedText);
+
+      if (parsedUrls.length > 1) {
+        pasteEvent.preventDefault(); // Prevent default paste behavior
+
+        // Combine existing non-empty URLs with new parsed URLs, avoiding duplicates
+        const combinedUrls = [...currentValues];
+        for (const newUrl of parsedUrls) {
+          if (!combinedUrls.some(existing => existing === newUrl)) {
+            combinedUrls.push(newUrl);
+          }
+        }
+
+        // Limit to 5 URLs total
+        const finalUrls = combinedUrls.slice(0, 5);
+
+        // Pad with empty strings if needed
+        while (finalUrls.length < 5) {
+          finalUrls.push('');
+        }
+
+        setUrlInputs(finalUrls);
+        return;
+      }
+    }
+  };
+
   const handleAddUrl = () => {
     if (urlInputs.length < 5) {
       setUrlInputs([...urlInputs, '']);
@@ -932,6 +985,7 @@ const Videos: React.FC = () => {
                     placeholder="https://youtube.com/watch?v=..."
                     value={url}
                     onChange={(e) => handleUrlChange(index, e.target.value)}
+                    onPaste={(e) => handleUrlPaste(index, e)}
                     allowClear
                     style={{ width: 'calc(100% - 32px)' }}
                   />
