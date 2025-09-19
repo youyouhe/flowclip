@@ -3,6 +3,7 @@ import os
 import tempfile
 import asyncio
 import logging
+import time
 from pathlib import Path
 from typing import Dict, Any, Optional
 from app.core.config import settings
@@ -828,7 +829,7 @@ class AudioProcessor:
                     'processing_info': {
                         'model_type': asr_model_type,
                         'final_api_url': final_api_url,
-                        'total_processing_time': time.time() - start_time if 'start_time' in locals() else 0
+                        'total_processing_time': time.time() - start_time if start_time is not None else 0
                     }
                 }
                 
