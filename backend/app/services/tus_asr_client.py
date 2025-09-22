@@ -209,25 +209,42 @@ class TusASRClient:
 
         try:
             # 启动回调服务器
+            logger.info("开始启动回调服务器...")
             self._start_callback_server()
-            await asyncio.sleep(1.0)  # 等待回调服务器启动
+            await asyncio.sleep(2.0)  # 等待回调服务器启动（延长等待时间）
 
-            # 验证回调服务器是否启动
-            await asyncio.sleep(1.0)  # 给服务器更多时间启动
-            import socket
-            try:
-                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                sock.settimeout(1.0)  # 设置超时时间
-                result = sock.connect_ex(('127.0.0.1', self.callback_port))
-                sock.close()
-                if result == 0:
-                    logger.info(f"验证回调服务器已在端口 {self.callback_port} 启动并接受连接")
-                else:
-                    logger.warning(f"回调服务器可能未在端口 {self.callback_port} 启动或未接受连接")
-                    # 再等待一段时间
-                    await asyncio.sleep(1.0)
-            except Exception as e:
-                logger.warning(f"验证回调服务器状态时出错: {e}")
+            # 验证回调服务器是否启动 - 多次尝试
+            logger.info("开始验证回调服务器启动状态...")
+            port_ready = False
+            for attempt in range(5):
+                try:
+                    import socket
+                    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                    sock.settimeout(1.0)  # 设置超时时间
+                    result = sock.connect_ex(('127.0.0.1', self.callback_port))
+                    sock.close()
+
+                    if result == 0:
+                        port_ready = True
+                        logger.info(f"✅ 验证成功：回调服务器已在端口 {self.callback_port} 启动并接受连接")
+                        break
+                    else:
+                        logger.warning(f"验证尝试 {attempt + 1}/5：回调服务器可能还未启动或未接受连接，端口 {self.callback_port}，等待重试...")
+                        await asyncio.sleep(2.0)
+                except Exception as e:
+                    logger.warning(f"验证尝试 {attempt + 1}/5 出错: {e}")
+                    await asyncio.sleep(2.0)
+
+            if not port_ready:
+                logger.error(f"❌ 回调服务器启动验证失败，端口 {self.callback_port} 无法连接")
+                raise RuntimeError(f"回调服务器启动失败，端口 {self.callback_port} 无法访问")
+
+            # 检查回调服务器线程是否仍在运行
+            if self.callback_thread and self.callback_thread.is_alive():
+                logger.info("回调服务器线程状态：正在运行")
+            else:
+                logger.error("回调服务器线程状态：已停止运行")
+                raise RuntimeError("回调服务器线程异常停止")
 
             # 执行TUS处理流程
             result = await self._execute_tus_pipeline(audio_file_path, metadata or {})
@@ -762,9 +779,14 @@ class TusASRClient:
             self.callback_port = self._get_available_port()
             logger.info(f"更换到新端口: {self.callback_port}")
 
-        self.callback_thread = threading.Thread(target=self._run_callback_server)
+        logger.info(f"准备启动回调服务器线程，端口: {self.callback_port}")
+        self.callback_thread = threading.Thread(target=self._run_callback_server, name=f"CallbackServer-{self.callback_port}")
         self.callback_thread.daemon = True
         self.callback_thread.start()
+        logger.info(f"回调服务器线程已启动，线程ID: {self.callback_thread.ident}")
+
+        # 小睡一会儿确保线程开始执行
+        time.sleep(0.5)
 
     def _run_callback_server(self):
         """运行回调服务器"""
