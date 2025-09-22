@@ -152,11 +152,11 @@ class TusASRClient:
         logger.info(f"开始TUS ASR处理: {audio_file_path}")
         logger.info(f"文件大小: {audio_path.stat().st_size} bytes")
 
-        # 启动回调服务器
-        self._start_callback_server()
-        await asyncio.sleep(0.5)  # 等待回调服务器启动
-
         try:
+            # 启动回调服务器
+            self._start_callback_server()
+            await asyncio.sleep(0.5)  # 等待回调服务器启动
+
             # 执行TUS处理流程
             result = await self._execute_tus_pipeline(audio_file_path, metadata or {})
             return result
@@ -247,6 +247,7 @@ class TusASRClient:
 
             # 步骤3: 等待ASR处理结果
             logger.info("🎧 步骤3: 等待ASR处理...")
+            logger.info(f"准备等待任务 {task_id} 的结果")
             srt_content = await self._wait_for_tus_results(task_id)
             logger.info("✅ ASR处理完成")
 
@@ -295,7 +296,11 @@ class TusASRClient:
         for attempt in range(self.max_retries):
             try:
                 logger.info(f"尝试创建TUS任务 (尝试 {attempt + 1}/{self.max_retries})")
+                logger.info(f"API请求URL: {self.api_url}/api/v1/asr-tasks")
+                logger.info(f"API请求载荷: {json.dumps(payload, indent=2)}")
+
                 async with aiohttp.ClientSession() as session:
+                    logger.info("创建aiohttp客户端会话")
                     async with session.post(
                         f"{self.api_url}/api/v1/asr-tasks",
                         json=payload,
@@ -303,6 +308,7 @@ class TusASRClient:
                     ) as response:
                         logger.info(f"API响应状态码: {response.status}")
                         if response.status == 200:
+                            logger.info("开始解析API响应JSON")
                             result = await response.json()
                             logger.info(f"API响应内容: {json.dumps(result, indent=2)}")
                             if 'task_id' not in result or 'upload_url' not in result:
@@ -469,6 +475,7 @@ class TusASRClient:
 
     async def _wait_for_tus_results(self, task_id: str) -> str:
         """等待TUS ASR处理结果"""
+        logger.info(f"开始等待TUS结果，任务ID: {task_id}")
         callback_future = asyncio.Future()
         self.completed_tasks[task_id] = callback_future
 
@@ -477,7 +484,7 @@ class TusASRClient:
         safe_timeout = min(self.timeout_seconds, 1700)  # 留出100秒的缓冲时间
 
         logger.info(f"等待任务 {task_id} 的结果 (超时: {safe_timeout}s)")
-        logger.info(f"添加任务前的完成任务键: {list(self.completed_tasks.keys())}")
+        logger.info(f"任务已注册到完成任务列表，当前任务键: {list(self.completed_tasks.keys())}")
 
         try:
             # 等待回调或超时
@@ -491,17 +498,23 @@ class TusASRClient:
 
                 # 检查回调是否完成
                 if callback_future.done():
+                    logger.info(f"任务 {task_id} 的回调Future已完成")
                     result = callback_future.result()
+                    logger.info(f"回调结果: {result}")
                     # 如果结果是带有完成信息的字典，下载SRT内容
                     if isinstance(result, dict) and result.get('status') == 'completed':
                         task_id = result.get('task_id')
                         srt_url = result.get('srt_url', f"{self.api_url}/api/v1/tasks/{task_id}/download")
+                        logger.info(f"准备下载SRT内容，URL: {srt_url}")
                         # 如果srt_url是相对路径（不以http开头），转换为完整URL
                         if srt_url and not srt_url.startswith('http'):
                             srt_url = f"{self.api_url}{srt_url}"
+                            logger.info(f"转换后的SRT URL: {srt_url}")
                         srt_content = await self._download_srt_content(srt_url)
+                        logger.info(f"SRT内容下载完成，长度: {len(srt_content) if srt_content else 0}")
                         return srt_content
                     else:
+                        logger.info(f"返回非完成状态的结果: {result}")
                         return result
 
                 await asyncio.sleep(check_interval)
@@ -739,6 +752,8 @@ class TusASRClient:
                             logger.info(f"任务 {task_id} 失败，错误: {error_msg}")
                             future.set_exception(RuntimeError(error_msg))
                             logger.info(f"为任务 {task_id} 设置异常")
+                    else:
+                        logger.info(f"任务 {task_id} 的Future已完成")
 
                     # 清理
                     logger.info(f"从完成任务中清理任务 {task_id}")
