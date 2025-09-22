@@ -155,7 +155,20 @@ class TusASRClient:
         try:
             # 启动回调服务器
             self._start_callback_server()
-            await asyncio.sleep(0.5)  # 等待回调服务器启动
+            await asyncio.sleep(1.0)  # 等待回调服务器启动
+
+            # 验证回调服务器是否启动
+            import socket
+            try:
+                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                result = sock.connect_ex(('127.0.0.1', self.callback_port))
+                sock.close()
+                if result == 0:
+                    logger.info(f"验证回调服务器已在端口 {self.callback_port} 启动")
+                else:
+                    logger.warning(f"回调服务器可能未在端口 {self.callback_port} 启动")
+            except Exception as e:
+                logger.warning(f"验证回调服务器状态时出错: {e}")
 
             # 执行TUS处理流程
             result = await self._execute_tus_pipeline(audio_file_path, metadata or {})
@@ -757,7 +770,8 @@ class TusASRClient:
 
                     # 清理
                     logger.info(f"从完成任务中清理任务 {task_id}")
-                    del self.completed_tasks[task_id]
+                    if task_id in self.completed_tasks:
+                        del self.completed_tasks[task_id]
                     logger.info(f"任务 {task_id} 已从完成任务中移除")
 
                 else:
@@ -792,9 +806,13 @@ class TusASRClient:
                 await asyncio.sleep(1)
 
         try:
-            asyncio.run(create_app())
+            # 创建新的事件循环用于回调服务器
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            loop.run_until_complete(create_app())
         except Exception as e:
             logger.error(f"回调服务器失败: {e}")
+            logger.exception(e)
 
 
 # 全局实例
