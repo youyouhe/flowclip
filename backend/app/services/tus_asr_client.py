@@ -48,7 +48,6 @@ class TusASRClient:
         # 首先使用提供的参数或settings中的默认值
         self.api_url = (api_url or settings.tus_api_url).rstrip('/')
         self.tus_url = (tus_url or settings.tus_upload_url).rstrip('/')
-        self.callback_port = callback_port or settings.tus_callback_port
         self.callback_host = callback_host or settings.tus_callback_host
         self.max_retries = max_retries or settings.tus_max_retries
 
@@ -57,11 +56,13 @@ class TusASRClient:
         self.timeout_seconds = min(configured_timeout, 1700)  # 限制在1700秒以内
 
         # 自动为每个客户端分配不同的端口，避免冲突
-        if not callback_port:
+        if callback_port:
+            self.callback_port = callback_port
+        else:
             self.callback_port = self._get_unique_callback_port()
 
-        # 然后尝试从数据库动态更新配置
-        self._load_config_from_database()
+        # 然后尝试从数据库动态更新配置（但不覆盖端口）
+        self._load_config_from_database_without_port()
 
         # 内部状态
         self.completed_tasks = {}
@@ -122,6 +123,46 @@ class TusASRClient:
         except Exception as e:
             logger.warning(f"从数据库加载TUS配置失败: {e}，使用默认配置")
 
+    def _load_config_from_database_without_port(self):
+        """从数据库动态加载TUS配置，但不覆盖端口设置"""
+        try:
+            import asyncio
+            from app.core.database import get_sync_db
+            from app.services.system_config_service import SystemConfigService
+
+            # 使用同步数据库连接
+            with get_sync_db() as db:
+                # 从数据库获取所有配置
+                db_configs = SystemConfigService.get_all_configs_sync(db)
+
+                # 更新TUS配置（不包括端口）
+                for config_key, config_value in db_configs.items():
+                    if config_key == 'tus_api_url':
+                        self.api_url = config_value.rstrip('/')
+                        logger.info(f"从数据库加载TUS API URL: {self.api_url}")
+                    elif config_key == 'tus_upload_url':
+                        self.tus_url = config_value.rstrip('/')
+                        logger.info(f"从数据库加载TUS上传URL: {self.tus_url}")
+                    elif config_key == 'tus_callback_host':
+                        self.callback_host = config_value
+                        logger.info(f"从数据库加载TUS回调主机: {self.callback_host}")
+                    elif config_key == 'tus_max_retries':
+                        self.max_retries = int(config_value)
+                        logger.info(f"从数据库加载TUS最大重试次数: {self.max_retries}")
+                    elif config_key == 'tus_timeout_seconds':
+                        self.timeout_seconds = int(config_value)
+                        logger.info(f"从数据库加载TUS超时时间: {self.timeout_seconds}")
+                    elif config_key == 'tus_file_size_threshold_mb':
+                        # 更新文件大小检测器的阈值
+                        from app.services.file_size_detector import file_size_detector
+                        threshold_mb = int(config_value)
+                        file_size_detector.threshold_mb = threshold_mb
+                        file_size_detector.threshold_bytes = threshold_mb * 1024 * 1024
+                        logger.info(f"从数据库加载TUS文件大小阈值: {threshold_mb}MB")
+
+        except Exception as e:
+            logger.warning(f"从数据库加载TUS配置失败: {e}，使用默认配置")
+
     def _signal_handler(self, signum, frame):
         """处理关闭信号"""
         logger.info(f"收到信号 {signum}，正在关闭...")
@@ -130,6 +171,7 @@ class TusASRClient:
     def _is_port_available(self, port):
         """检查端口是否可用"""
         try:
+            import socket
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             result = sock.connect_ex(('127.0.0.1', port))
