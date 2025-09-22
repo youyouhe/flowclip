@@ -558,28 +558,56 @@ class TusASRClient:
                         url = f"{self.tus_url}/files/{upload_id}"
                         logger.info(f"上传数据块: offset={offset}, size={len(chunk)}, 进度 {offset/file_size*100:.1f}%")
 
-                        try:
-                            async with session.patch(url, data=chunk, headers=headers) as response:
-                                logger.info(f"TUS块上传响应状态码: {response.status}")
+                        # 为每个数据块添加重试机制
+                        chunk_upload_success = False
+                        last_chunk_error = None
 
-                                if response.status not in [200, 204]:  # TUS块上传应该返回200或204
-                                    error_text = await response.text()
-                                    logger.error(f"TUS块上传失败，状态码: {response.status}, 响应: {error_text}")
-                                    raise RuntimeError(f"TUS块上传失败，状态码: {response.status}, 响应: {error_text}")
+                        for chunk_attempt in range(3):  # 最多重试3次
+                            try:
+                                logger.info(f"上传数据块尝试 {chunk_attempt + 1}/3: offset={offset}, size={len(chunk)}")
 
-                                # 验证offset
-                                new_offset = int(response.headers.get('Upload-Offset', offset + len(chunk)))
-                                if new_offset != offset + len(chunk):
-                                    raise ValueError(f"Offset不匹配: 期望 {offset + len(chunk)}, 实际 {new_offset}")
+                                async with session.patch(url, data=chunk, headers=headers) as response:
+                                    logger.info(f"TUS块上传响应状态码: {response.status}")
 
-                                offset = new_offset
+                                    if response.status not in [200, 204]:  # TUS块上传应该返回200或204
+                                        error_text = await response.text()
+                                        logger.error(f"TUS块上传失败，状态码: {response.status}, 响应: {error_text}")
+                                        # HTTP错误不重试，直接失败
+                                        raise RuntimeError(f"TUS块上传失败，状态码: {response.status}, 响应: {error_text}")
 
-                        except aiohttp.ClientError as e:
-                            logger.error(f"HTTP客户端错误: {e}")
-                            raise RuntimeError(f"HTTP客户端错误: {str(e)}") from e
-                        except Exception as e:
-                            logger.error(f"上传数据块时出错: {e}")
-                            raise RuntimeError(f"上传数据块时出错: {str(e)}") from e
+                                    # 验证offset
+                                    new_offset = int(response.headers.get('Upload-Offset', offset + len(chunk)))
+                                    if new_offset != offset + len(chunk):
+                                        raise ValueError(f"Offset不匹配: 期望 {offset + len(chunk)}, 实际 {new_offset}")
+
+                                    offset = new_offset
+                                    chunk_upload_success = True
+                                    logger.info(f"✅ 数据块上传成功，当前进度 {offset/file_size*100:.1f}%")
+                                    break  # 成功则跳出重试循环
+
+                            except aiohttp.ClientError as e:
+                                last_chunk_error = e
+                                logger.warning(f"数据块网络错误 (尝试 {chunk_attempt + 1}/3): {e}")
+                                if chunk_attempt < 2:  # 还有重试次数
+                                    wait_time = 1 * (chunk_attempt + 1)  # 等待1秒、2秒
+                                    logger.info(f"等待 {wait_time} 秒后重试数据块上传...")
+                                    await asyncio.sleep(wait_time)
+                                else:
+                                    logger.error(f"数据块上传失败，已重试3次，最后错误: {e}")
+
+                            except Exception as e:
+                                last_chunk_error = e
+                                logger.error(f"数据块上传未知错误 (尝试 {chunk_attempt + 1}/3): {e}")
+                                # 非网络异常不重试，直接失败
+                                raise RuntimeError(f"数据块上传失败: {str(e)}") from e
+
+                        # 检查数据块是否上传成功
+                        if not chunk_upload_success:
+                            error_msg = "数据块上传失败，已达到最大重试次数"
+                            if last_chunk_error:
+                                error_msg = f"数据块上传失败，已达到最大重试次数。最后错误: {str(last_chunk_error)}"
+                            logger.error(error_msg)
+                            raise RuntimeError(error_msg) from last_chunk_error
 
             logger.info(f"TUS分块上传完成: 最终offset={offset}")
         except Exception as e:
