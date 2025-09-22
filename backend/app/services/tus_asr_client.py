@@ -740,7 +740,7 @@ class TusASRClient:
                     try:
                         if 'application/json' in content_type:
                             result = await response.json()
-                            logger.info(f"JSON响应: {json.dumps(result, indent=2)}")
+                            # logger.info(f"JSON响应: {json.dumps(result, indent=2)}")
                             if result.get("code") == 0 and result.get("data"):
                                 srt_content = result["data"]
                                 logger.info(f"下载SRT内容成功 (JSON格式, {len(srt_content)} 字符)")
