@@ -10,6 +10,7 @@ import json
 import time
 import threading
 import logging
+import signal
 from pathlib import Path
 from typing import Dict, Any, Optional
 from aiohttp import web
@@ -68,6 +69,10 @@ class TusASRClient:
         self.callback_thread = None
         self.process_id = os.getpid()  # 记录进程ID用于日志
 
+        # 信号处理
+        signal.signal(signal.SIGINT, self._signal_handler)
+        signal.signal(signal.SIGTERM, self._signal_handler)
+
         logger.info(f"TUS ASR客户端初始化完成 (PID: {self.process_id}):")
         logger.info(f"  API URL: {self.api_url}")
         logger.info(f"  TUS URL: {self.tus_url}")
@@ -117,6 +122,11 @@ class TusASRClient:
         except Exception as e:
             logger.warning(f"从数据库加载TUS配置失败: {e}，使用默认配置")
 
+    def _signal_handler(self, signum, frame):
+        """处理关闭信号"""
+        logger.info(f"收到信号 {signum}，正在关闭...")
+        self.running = False
+
     async def process_audio_file(
         self,
         audio_file_path: str,
@@ -136,18 +146,24 @@ class TusASRClient:
         if not audio_path.exists():
             raise FileNotFoundError(f"音频文件不存在: {audio_file_path}")
 
+        if not audio_path.is_file():
+            raise ValueError(f"路径不是文件: {audio_file_path}")
+
         logger.info(f"开始TUS ASR处理: {audio_file_path}")
         logger.info(f"文件大小: {audio_path.stat().st_size} bytes")
 
         # 启动回调服务器
         self._start_callback_server()
-        time.sleep(0.5)  # 等待回调服务器启动
+        await asyncio.sleep(0.5)  # 等待回调服务器启动
 
         try:
             # 执行TUS处理流程
             result = await self._execute_tus_pipeline(audio_file_path, metadata or {})
             return result
 
+        except KeyboardInterrupt:
+            logger.info("用户中断处理")
+            raise
         except Exception as e:
             logger.error(f"TUS ASR处理失败: {e}", exc_info=True)
             # 提供更详细的错误信息
@@ -214,35 +230,40 @@ class TusASRClient:
         audio_path = Path(audio_file_path)
         start_time = time.time()  # 记录开始时间用于统计
 
-        # 步骤1: 创建ASR任务
-        logger.info("📝 步骤1: 创建ASR任务...")
-        task_info = await self._create_tus_task(audio_file_path, metadata)
-        task_id = task_info['task_id']
-        upload_url = task_info['upload_url']
+        try:
+            # 步骤1: 创建ASR任务
+            logger.info("📝 步骤1: 创建ASR任务...")
+            task_info = await self._create_tus_task(audio_file_path, metadata)
+            task_id = task_info['task_id']
+            upload_url = task_info['upload_url']
 
-        logger.info(f"✅ 任务创建: {task_id}")
-        logger.info(f"📤 上传URL: {upload_url}")
+            logger.info(f"✅ 任务创建: {task_id}")
+            logger.info(f"📤 上传URL: {upload_url}")
 
-        # 步骤2: TUS文件上传
-        logger.info("📤 步骤2: TUS文件上传...")
-        await self._upload_file_via_tus(audio_file_path, upload_url)
-        logger.info("✅ 文件上传完成")
+            # 步骤2: TUS文件上传
+            logger.info("📤 步骤2: TUS文件上传...")
+            await self._upload_file_via_tus(audio_file_path, upload_url)
+            logger.info("✅ 文件上传完成")
 
-        # 步骤3: 等待ASR处理结果
-        logger.info("🎧 步骤3: 等待ASR处理...")
-        srt_content = await self._wait_for_tus_results(task_id)
-        logger.info("✅ ASR处理完成")
+            # 步骤3: 等待ASR处理结果
+            logger.info("🎧 步骤3: 等待ASR处理...")
+            srt_content = await self._wait_for_tus_results(task_id)
+            logger.info("✅ ASR处理完成")
 
-        return {
-            'success': True,
-            'strategy': 'tus',
-            'task_id': task_id,
-            'srt_content': srt_content,
-            'file_path': audio_file_path,
-            'metadata': metadata,
-            'processing_time': time.time() - start_time if 'start_time' in locals() else 0,
-            'file_size': audio_path.stat().st_size if 'audio_path' in locals() else 0
-        }
+            return {
+                'success': True,
+                'strategy': 'tus',
+                'task_id': task_id,
+                'srt_content': srt_content,
+                'file_path': audio_file_path,
+                'metadata': metadata,
+                'processing_time': time.time() - start_time if 'start_time' in locals() else 0,
+                'file_size': audio_path.stat().st_size if 'audio_path' in locals() else 0
+            }
+        except Exception as e:
+            logger.error(f"TUS处理流水线执行失败: {e}", exc_info=True)
+            elapsed_time = time.time() - start_time if 'start_time' in locals() else 0
+            raise RuntimeError(f"TUS处理流水线执行失败: {str(e)} (已处理 {elapsed_time:.1f} 秒)") from e
 
     async def _create_tus_task(
         self,
@@ -273,14 +294,17 @@ class TusASRClient:
         last_error = None
         for attempt in range(self.max_retries):
             try:
+                logger.info(f"尝试创建TUS任务 (尝试 {attempt + 1}/{self.max_retries})")
                 async with aiohttp.ClientSession() as session:
                     async with session.post(
                         f"{self.api_url}/api/v1/asr-tasks",
                         json=payload,
                         timeout=aiohttp.ClientTimeout(total=30)
                     ) as response:
+                        logger.info(f"API响应状态码: {response.status}")
                         if response.status == 200:
                             result = await response.json()
+                            logger.info(f"API响应内容: {json.dumps(result, indent=2)}")
                             if 'task_id' not in result or 'upload_url' not in result:
                                 raise ValueError(f"无效的API响应: {result}")
 
@@ -290,6 +314,7 @@ class TusASRClient:
                             return result
                         else:
                             error_text = await response.text()
+                            logger.warning(f"API请求失败，状态码: {response.status}, 响应: {error_text}")
                             raise RuntimeError(f"API请求失败，状态码: {response.status}, 响应: {error_text}")
 
             except Exception as e:
@@ -319,16 +344,20 @@ class TusASRClient:
 
         logger.info(f"开始TUS上传: {audio_path.name} ({file_size} bytes)")
 
-        # 从upload_url提取upload_id
-        upload_id = upload_url.split('/')[-1]
+        try:
+            # 从upload_url提取upload_id
+            upload_id = upload_url.split('/')[-1]
 
-        # 创建TUS上传会话
-        tus_upload_id = await self._create_tus_upload_session(upload_id, file_size, audio_path.name)
+            # 创建TUS上传会话
+            tus_upload_id = await self._create_tus_upload_session(upload_id, file_size, audio_path.name)
 
-        # 分块上传文件数据
-        await self._upload_tus_chunks(tus_upload_id, audio_path)
+            # 分块上传文件数据
+            await self._upload_tus_chunks(tus_upload_id, audio_path)
 
-        logger.info(f"TUS上传完成: {audio_path.name}")
+            logger.info(f"TUS上传完成: {audio_path.name}")
+        except Exception as e:
+            logger.error(f"TUS文件上传失败: {e}", exc_info=True)
+            raise RuntimeError(f"TUS文件上传失败: {str(e)}") from e
 
     async def _create_tus_upload_session(
         self,
@@ -350,61 +379,93 @@ class TusASRClient:
             'Upload-Metadata': ', '.join(metadata_parts)
         }
 
-        async with aiohttp.ClientSession() as session:
-            url = f"{self.tus_url}/files"
-            logger.info(f"创建TUS上传会话: {url}")
+        try:
+            async with aiohttp.ClientSession() as session:
+                url = f"{self.tus_url}/files"
+                logger.info(f"创建TUS上传会话: {url}")
+                logger.info(f"请求头: {headers}")
 
-            async with session.post(url, headers=headers) as response:
-                response.raise_for_status()
+                async with session.post(url, headers=headers) as response:
+                    logger.info(f"TUS响应状态码: {response.status}")
+                    logger.info(f"TUS响应头: {dict(response.headers)}")
 
-                # 从Location头获取上传URL
-                location = response.headers.get('Location', '')
-                if not location:
-                    raise ValueError("TUS响应中缺少Location头")
+                    if response.status != 201:  # TUS创建上传会话应该返回201
+                        error_text = await response.text()
+                        logger.error(f"TUS上传会话创建失败，状态码: {response.status}, 响应: {error_text}")
+                        raise RuntimeError(f"TUS上传会话创建失败，状态码: {response.status}, 响应: {error_text}")
 
-                # 提取实际的upload_id
-                actual_upload_id = location.split('/')[-1]
-                logger.info(f"TUS上传会话创建成功: {actual_upload_id}")
+                    # 从Location头获取上传URL
+                    location = response.headers.get('Location', '')
+                    if not location:
+                        raise ValueError("TUS响应中缺少Location头")
 
-                return actual_upload_id
+                    # 提取实际的upload_id
+                    actual_upload_id = location.split('/')[-1]
+                    logger.info(f"TUS上传会话创建成功: {actual_upload_id}")
+
+                    return actual_upload_id
+        except Exception as e:
+            logger.error(f"创建TUS上传会话失败: {e}", exc_info=True)
+            raise RuntimeError(f"创建TUS上传会话失败: {str(e)}") from e
 
     async def _upload_tus_chunks(self, upload_id: str, file_path: Path) -> None:
         """分块上传文件数据"""
         chunk_size = 1024 * 1024  # 1MB chunks
         offset = 0
+        file_size = file_path.stat().st_size
 
-        with open(file_path, 'rb') as f:
-            async with aiohttp.ClientSession() as session:
-                while offset < file_path.stat().st_size:
-                    # 定位到offset位置
-                    f.seek(offset)
+        logger.info(f"开始分块上传: 文件大小 {file_size} bytes, 块大小 {chunk_size} bytes")
 
-                    # 读取数据块
-                    chunk = f.read(chunk_size)
-                    if not chunk:
-                        break
+        try:
+            with open(file_path, 'rb') as f:
+                async with aiohttp.ClientSession() as session:
+                    while offset < file_size:
+                        # 定位到offset位置
+                        f.seek(offset)
 
-                    # 上传数据块
-                    headers = {
-                        'Tus-Resumable': '1.0.0',
-                        'Upload-Offset': str(offset),
-                        'Content-Type': 'application/offset+octet-stream'
-                    }
+                        # 读取数据块
+                        chunk = f.read(chunk_size)
+                        if not chunk:
+                            logger.warning(f"读取数据块为空，offset={offset}")
+                            break
 
-                    url = f"{self.tus_url}/files/{upload_id}"
-                    logger.debug(f"上传数据块: offset={offset}, size={len(chunk)}")
+                        # 上传数据块
+                        headers = {
+                            'Tus-Resumable': '1.0.0',
+                            'Upload-Offset': str(offset),
+                            'Content-Type': 'application/offset+octet-stream'
+                        }
 
-                    async with session.patch(url, data=chunk, headers=headers) as response:
-                        response.raise_for_status()
+                        url = f"{self.tus_url}/files/{upload_id}"
+                        logger.info(f"上传数据块: offset={offset}, size={len(chunk)}, 进度 {offset/file_size*100:.1f}%")
 
-                        # 验证offset
-                        new_offset = int(response.headers['Upload-Offset'])
-                        if new_offset != offset + len(chunk):
-                            raise ValueError(f"Offset不匹配: 期望 {offset + len(chunk)}, 实际 {new_offset}")
+                        try:
+                            async with session.patch(url, data=chunk, headers=headers) as response:
+                                logger.info(f"TUS块上传响应状态码: {response.status}")
 
-                        offset = new_offset
+                                if response.status not in [200, 204]:  # TUS块上传应该返回200或204
+                                    error_text = await response.text()
+                                    logger.error(f"TUS块上传失败，状态码: {response.status}, 响应: {error_text}")
+                                    raise RuntimeError(f"TUS块上传失败，状态码: {response.status}, 响应: {error_text}")
 
-        logger.info(f"TUS分块上传完成: 最终offset={offset}")
+                                # 验证offset
+                                new_offset = int(response.headers.get('Upload-Offset', offset + len(chunk)))
+                                if new_offset != offset + len(chunk):
+                                    raise ValueError(f"Offset不匹配: 期望 {offset + len(chunk)}, 实际 {new_offset}")
+
+                                offset = new_offset
+
+                        except aiohttp.ClientError as e:
+                            logger.error(f"HTTP客户端错误: {e}")
+                            raise RuntimeError(f"HTTP客户端错误: {str(e)}") from e
+                        except Exception as e:
+                            logger.error(f"上传数据块时出错: {e}")
+                            raise RuntimeError(f"上传数据块时出错: {str(e)}") from e
+
+            logger.info(f"TUS分块上传完成: 最终offset={offset}")
+        except Exception as e:
+            logger.error(f"分块上传失败: {e}", exc_info=True)
+            raise RuntimeError(f"分块上传失败: {str(e)}") from e
 
     async def _wait_for_tus_results(self, task_id: str) -> str:
         """等待TUS ASR处理结果"""
@@ -415,25 +476,64 @@ class TusASRClient:
         # 设置一个安全的超时缓冲区，确保在Celery超时之前完成
         safe_timeout = min(self.timeout_seconds, 1700)  # 留出100秒的缓冲时间
 
+        logger.info(f"等待任务 {task_id} 的结果 (超时: {safe_timeout}s)")
+        logger.info(f"添加任务前的完成任务键: {list(self.completed_tasks.keys())}")
+
         try:
             # 等待回调或超时
-            while time.time() - start_time < safe_timeout:
-                if not self.running:
-                    raise KeyboardInterrupt("用户请求停止")
+            check_interval = 1.0  # 每秒检查一次
+            waited_time = 0
 
+            while waited_time < safe_timeout:
+                # 检查是否被中断
+                if not self.running:
+                    raise KeyboardInterrupt("用户请求关闭")
+
+                # 检查回调是否完成
                 if callback_future.done():
                     result = callback_future.result()
+                    # 如果结果是带有完成信息的字典，下载SRT内容
                     if isinstance(result, dict) and result.get('status') == 'completed':
-                        srt_url = result.get('srt_url')
+                        task_id = result.get('task_id')
+                        srt_url = result.get('srt_url', f"{self.api_url}/api/v1/tasks/{task_id}/download")
+                        # 如果srt_url是相对路径（不以http开头），转换为完整URL
                         if srt_url and not srt_url.startswith('http'):
                             srt_url = f"{self.api_url}{srt_url}"
-                        return await self._download_srt_content(srt_url)
+                        srt_content = await self._download_srt_content(srt_url)
+                        return srt_content
                     else:
                         return result
 
-                await asyncio.sleep(1.0)
+                await asyncio.sleep(check_interval)
+                waited_time += check_interval
 
             # 超时处理
+            elapsed_time = time.time() - start_time
+            logger.warning(f"回调超时，回退到轮询任务 {task_id} (已等待 {elapsed_time:.1f} 秒，超时设置 {safe_timeout} 秒)")
+
+            # 回退到轮询
+            while time.time() - start_time < safe_timeout and self.running:
+                try:
+                    status = await self._get_task_status(task_id)
+
+                    if status['status'] == 'completed':
+                        srt_url = f"{self.api_url}/api/v1/tasks/{task_id}/download"
+                        srt_content = await self._download_srt_content(srt_url)
+                        return srt_content
+                    elif status['status'] == 'failed':
+                        error_msg = status.get('error_message', '任务失败')
+                        raise RuntimeError(f"任务失败: {error_msg}")
+
+                    logger.info(f"任务状态: {status['status']}, 等待中...")
+                    await asyncio.sleep(5)
+
+                except Exception as e:
+                    logger.error(f"轮询任务状态出错: {e}")
+                    await asyncio.sleep(5)
+
+            raise TimeoutError(f"等待任务 {task_id} 完成超时")
+
+        except asyncio.TimeoutError:
             elapsed_time = time.time() - start_time
             logger.warning(f"TUS等待超时: 已等待 {elapsed_time:.1f} 秒，超时设置 {safe_timeout} 秒")
             raise TimeoutError(f"TUS任务等待超时: {task_id}，已等待 {elapsed_time:.1f} 秒")
@@ -476,16 +576,21 @@ class TusASRClient:
         try:
             async with aiohttp.ClientSession() as session:
                 url = f"{self.api_url}/api/v1/asr-tasks/{task_id}/status"
+                logger.info(f"轮询任务状态: {url}")
 
                 async with session.get(url, timeout=aiohttp.ClientTimeout(total=10)) as response:
+                    logger.info(f"任务状态API响应状态码: {response.status}")
                     if response.status == 200:
-                        return await response.json()
+                        result = await response.json()
+                        logger.info(f"任务状态响应: {json.dumps(result, indent=2)}")
+                        return result
                     else:
-                        logger.warning(f"状态API返回状态码: {response.status}")
+                        error_text = await response.text()
+                        logger.warning(f"状态API返回状态码: {response.status}, 响应: {error_text}")
                         return {"status": "unknown"}
 
         except Exception as e:
-            logger.error(f"获取任务状态失败: {e}")
+            logger.error(f"获取任务状态失败: {e}", exc_info=True)
             return {"status": "unknown"}
 
     async def _download_srt_content(self, srt_url: str) -> str:
@@ -495,44 +600,69 @@ class TusASRClient:
 
             async with aiohttp.ClientSession() as session:
                 async with session.get(srt_url, timeout=aiohttp.ClientTimeout(total=60)) as response:
-                    response.raise_for_status()
+                    logger.info(f"SRT下载响应状态码: {response.status}")
+
+                    if response.status != 200:
+                        error_text = await response.text()
+                        logger.error(f"SRT下载失败，状态码: {response.status}, 响应: {error_text}")
+                        raise RuntimeError(f"SRT下载失败，状态码: {response.status}, 响应: {error_text}")
 
                     # 尝试解析JSON响应
+                    content_type = response.headers.get('Content-Type', '').lower()
+                    logger.info(f"响应内容类型: {content_type}")
+
                     try:
-                        result = await response.json()
-                        if result.get("code") == 0 and result.get("data"):
-                            srt_content = result["data"]
-                            logger.info(f"下载SRT内容成功 (JSON格式, {len(srt_content)} 字符)")
-                            return srt_content
+                        if 'application/json' in content_type:
+                            result = await response.json()
+                            logger.info(f"JSON响应: {json.dumps(result, indent=2)}")
+                            if result.get("code") == 0 and result.get("data"):
+                                srt_content = result["data"]
+                                logger.info(f"下载SRT内容成功 (JSON格式, {len(srt_content)} 字符)")
+                                return srt_content
+                            else:
+                                raise ValueError(f"无效的JSON响应: {result}")
                         else:
-                            raise ValueError(f"无效的JSON响应: {result}")
-                    except aiohttp.ContentTypeError:
-                        # 如果不是JSON，尝试纯文本
+                            # 如果不是JSON，尝试纯文本
+                            srt_content = await response.text()
+                            logger.info(f"下载SRT内容成功 (纯文本格式, {len(srt_content)} 字符)")
+                            return srt_content
+                    except aiohttp.ContentTypeError as e:
+                        # 如果Content-Type解析失败，尝试纯文本
+                        logger.warning(f"Content-Type解析失败: {e}，尝试纯文本")
                         srt_content = await response.text()
                         logger.info(f"下载SRT内容成功 (纯文本格式, {len(srt_content)} 字符)")
                         return srt_content
 
         except Exception as e:
-            logger.error(f"下载SRT内容失败: {e}")
-            raise
+            logger.error(f"下载SRT内容失败: {e}", exc_info=True)
+            raise RuntimeError(f"下载SRT内容失败: {str(e)}") from e
 
     def _generate_callback_url(self) -> Optional[str]:
         """生成回调URL"""
-        if self.callback_host == "auto":
-            # 自动检测本地IP
-            try:
-                import socket
-                s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-                s.connect(("8.8.8.8", 80))
-                local_ip = s.getsockname()[0]
-                s.close()
-            except Exception:
-                logger.warning(f"无法检测本地IP，使用localhost")
-                local_ip = "localhost"
-                logger.info(f"检测本地IP失败，使用默认: {local_ip}")
-            return f"http://{local_ip}:{self.callback_port}/callback"
-        else:
-            return f"http://{self.callback_host}:{self.callback_port}/callback"
+        try:
+            if self.callback_host == "auto":
+                # 自动检测本地IP
+                logger.info("自动检测本地IP地址用于回调URL")
+                try:
+                    import socket
+                    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                    s.connect(("8.8.8.8", 80))
+                    local_ip = s.getsockname()[0]
+                    s.close()
+                    logger.info(f"检测到本地IP: {local_ip}")
+                except Exception as e:
+                    logger.warning(f"无法检测本地IP: {e}，使用localhost")
+                    local_ip = "localhost"
+                    logger.info(f"检测本地IP失败，使用默认: {local_ip}")
+                callback_url = f"http://{local_ip}:{self.callback_port}/callback"
+            else:
+                callback_url = f"http://{self.callback_host}:{self.callback_port}/callback"
+
+            logger.info(f"生成回调URL: {callback_url}")
+            return callback_url
+        except Exception as e:
+            logger.error(f"生成回调URL失败: {e}", exc_info=True)
+            return None
 
     def _start_callback_server(self):
         """启动回调服务器，自动处理端口冲突"""
@@ -570,36 +700,61 @@ class TusASRClient:
         """运行回调服务器"""
         async def callback_handler(request):
             try:
+                logger.info("回调处理程序被触发")
+                logger.info(f"请求方法: {request.method}")
+                logger.info(f"请求头: {dict(request.headers)}")
+                logger.info(f"请求远程地址: {request.remote}")
+
+                # 检查内容类型
+                content_type = request.headers.get('Content-Type', '')
+                logger.info(f"内容类型: {content_type}")
+
                 payload = await request.json()
                 logger.info(f"收到回调: {json.dumps(payload, indent=2)}")
 
                 task_id = payload.get('task_id')
+                logger.info(f"处理任务ID: {task_id}")
+                logger.info(f"当前完成任务键: {list(self.completed_tasks.keys())}")
+
                 if task_id in self.completed_tasks:
+                    logger.info(f"在完成任务中找到任务 {task_id}")
                     future = self.completed_tasks[task_id]
 
                     if not future.done():
+                        logger.info(f"任务 {task_id} 的Future未完成，正在处理...")
                         if payload.get('status') == 'completed':
+                            logger.info(f"任务 {task_id} 完成，设置结果")
+                            # 对于完成的任务，稍后下载SRT内容
+                            # 标记完成并让轮询回退处理下载
+                            # 确保srt_url是完整URL（如果不是相对URL）
                             srt_url = payload.get('srt_url')
+                            logger.info(f"原始srt_url: {srt_url}")
                             if srt_url and not srt_url.startswith('http'):
                                 srt_url = f"{self.api_url}{srt_url}"
-                            # 传递完整的回调负载，包含更多统计信息
-                            future.set_result({
-                                'status': 'completed',
-                                'task_id': task_id,
-                                'srt_url': srt_url,
-                                'payload': payload  # 包含所有回调数据
-                            })
+                                logger.info(f"修改后的srt_url: {srt_url}")
+                            future.set_result({'status': 'completed', 'task_id': task_id, 'srt_url': srt_url})
+                            logger.info(f"为任务 {task_id} 设置结果")
                         else:
                             error_msg = payload.get('error_message', '任务失败')
+                            logger.info(f"任务 {task_id} 失败，错误: {error_msg}")
                             future.set_exception(RuntimeError(error_msg))
+                            logger.info(f"为任务 {task_id} 设置异常")
 
-                    # 清理任务
+                    # 清理
+                    logger.info(f"从完成任务中清理任务 {task_id}")
                     del self.completed_tasks[task_id]
+                    logger.info(f"任务 {task_id} 已从完成任务中移除")
 
+                else:
+                    logger.warning(f"在完成任务中未找到任务 {task_id}")
+                    logger.info(f"可用任务ID: {list(self.completed_tasks.keys())}")
+
+                logger.info("返回OK响应")
                 return web.Response(text='OK')
 
             except Exception as e:
-                logger.error(f"回调处理失败: {e}")
+                logger.error(f"回调错误: {e}")
+                logger.exception(e)  # 记录完整回溯
                 return web.Response(status=500, text=str(e))
 
         async def create_app():
@@ -611,9 +766,9 @@ class TusASRClient:
             site = web.TCPSite(runner, '0.0.0.0', self.callback_port)
             await site.start()
 
-            logger.info(f"回调服务器启动: 端口 {self.callback_port}")
+            logger.info(f"回调服务器启动于端口 {self.callback_port}")
             if self.callback_host == "auto":
-                logger.info(f"回调URL (自动检测): http://[本地IP]:{self.callback_port}/callback")
+                logger.info(f"回调URL (自动检测): http://[YOUR_LOCAL_IP]:{self.callback_port}/callback")
             else:
                 logger.info(f"回调URL: http://{self.callback_host}:{self.callback_port}/callback")
 
@@ -624,7 +779,7 @@ class TusASRClient:
         try:
             asyncio.run(create_app())
         except Exception as e:
-            logger.error(f"回调服务器运行失败: {e}")
+            logger.error(f"回调服务器失败: {e}")
 
 
 # 全局实例
