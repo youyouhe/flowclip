@@ -284,6 +284,7 @@ def export_slice_to_capcut(self, slice_id: int, draft_folder: str, user_id: int 
 
                 # 数据库中的resource.file_path是MinIO对象名称，直接生成预签名URL
                 # 这样避免重复调用_getget_proxy_url导致的双重编码问题
+                from app.services.minio_client import minio_service
                 proxy_url = minio_service.get_file_url_sync(resource.file_path)
                 print(f"DEBUG: 生成的资源代理URL: {proxy_url}")
                 return proxy_url
