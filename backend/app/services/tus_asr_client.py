@@ -268,20 +268,19 @@ class TusASRClient:
             self.running = False
 
     def _get_unique_callback_port(self) -> int:
-        """获取唯一的回调端口，避免多进程冲突"""
-        base_port = getattr(self, '__class__', TusASRClient)._base_port if hasattr(TusASRClient, '_base_port') else 9090
+        """获取唯一的回调端口，使用Docker映射的端口范围"""
+        base_port = getattr(self, '__class__', TusASRClient)._base_port if hasattr(TusASRClient, '_base_port') else 9100
         process_id = os.getpid()
 
-        # 使用进程ID作为端口偏移，确保每个进程使用不同的端口
-        # 端口范围: base_port 到 base_port + 99
-        port = base_port + (process_id % 100)
+        # 在Docker映射的9000-9200范围内选择唯一端口
+        port = base_port + (process_id % 101)  # 9100 + 0-100 = 9100-9200
 
-        logger.info(f"为进程 {process_id} 分配唯一回调端口: {port}")
+        logger.info(f"为进程 {process_id} 分配唯一回调端口: {port} (Docker映射范围: 9100-9200)")
         return port
 
     def _get_available_port(self) -> int:
         """动态查找可用的回调端口"""
-        base_port = 9090
+        base_port = 9100
         max_ports = 100  # 最多尝试100个端口
 
         for offset in range(max_ports):
@@ -308,7 +307,7 @@ class TusASRClient:
         return fallback_port
 
     # 类变量
-    _base_port = 9090
+    _base_port = 9100
 
     async def _execute_tus_pipeline(
         self,
@@ -740,27 +739,35 @@ class TusASRClient:
             raise RuntimeError(f"下载SRT内容失败: {str(e)}") from e
 
     def _generate_callback_url(self) -> Optional[str]:
-        """生成回调URL"""
+        """生成回调URL，使用host上的公開IP地址"""
         try:
-            if self.callback_host == "auto":
-                # 自动检测本地IP
-                logger.info("自动检测本地IP地址用于回调URL")
-                try:
-                    import socket
-                    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-                    s.connect(("8.8.8.8", 80))
-                    local_ip = s.getsockname()[0]
-                    s.close()
-                    logger.info(f"检测到本地IP: {local_ip}")
-                except Exception as e:
-                    logger.warning(f"无法检测本地IP: {e}，使用localhost")
-                    local_ip = "localhost"
-                    logger.info(f"检测本地IP失败，使用默认: {local_ip}")
-                callback_url = f"http://{local_ip}:{self.callback_port}/callback"
+            import os
+            # 从环境变量获取public IP，如果没有则使用当前主机IP
+            public_ip = os.getenv('PUBLIC_IP')
+            if public_ip:
+                logger.info(f"使用PUBLIC_IP环境变量: {public_ip}")
+                callback_url = f"http://{public_ip}:{self.callback_port}/callback"
             else:
-                callback_url = f"http://{self.callback_host}:{self.callback_port}/callback"
+                # 回退到自动检测
+                if self.callback_host == "auto":
+                    logger.info("PUBLIC_IP环境变量未设置，自动检测本地IP地址用于回调URL")
+                    try:
+                        import socket
+                        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                        s.connect(("8.8.8.8", 80))
+                        local_ip = s.getsockname()[0]
+                        s.close()
+                        logger.info(f"检测到本地IP: {local_ip}")
+                        callback_url = f"http://{local_ip}:{self.callback_port}/callback"
+                    except Exception as e:
+                        logger.warning(f"无法检测本地IP: {e}，使用localhost")
+                        local_ip = "localhost"
+                        callback_url = f"http://localhost:{self.callback_port}/callback"
+                        logger.info(f"检测本地IP失败，使用默认: {callback_url}")
+                else:
+                    callback_url = f"http://{self.callback_host}:{self.callback_port}/callback"
 
-            logger.info(f"生成回调URL: {callback_url}")
+            logger.info(f"生成的回调URL: {callback_url}")
             return callback_url
         except Exception as e:
             logger.error(f"生成回调URL失败: {e}", exc_info=True)

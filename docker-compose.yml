@@ -121,6 +121,8 @@ services:
       dockerfile: Dockerfile
     container_name: flowclip-celery
     command: python start_celery.py worker --loglevel=info --concurrency=5
+    ports:
+      - "9100-9200:9100-9200"  # 暴露端口范围用于TUS回调服务器
     environment:
       - DATABASE_URL=mysql+aiomysql://youtube_user:youtube_password@mysql:3306/youtube_slicer?charset=utf8mb4
       - REDIS_URL=redis://redis:6379
@@ -130,6 +132,8 @@ services:
       - MINIO_SECRET_KEY=TcFA+qUwvCnikxANs7k/HX7oZz2zEjLo3RakL1kZt5k=
       - MINIO_BUCKET_NAME=youtube-videos
       - SECRET_KEY=your-secret-key-change-in-production
+      - PUBLIC_IP=${PUBLIC_IP}
+      - DEBUG=true
     depends_on:
       - mysql
       - redis

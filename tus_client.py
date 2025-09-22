@@ -284,9 +284,7 @@ class TusClient:
         start_time = time.time()
 
         logger.info(f"Waiting for results on task {task_id} (timeout: {timeout_seconds}s)")
-
-        # Create a future for timeout
-        timeout_future = asyncio.sleep(timeout_seconds)
+        logger.info(f"Current completed_tasks keys before adding: {list(self.completed_tasks.keys())}")
 
         # Create a future for callback
         callback_future = asyncio.Future()
@@ -294,32 +292,46 @@ class TusClient:
         # Set up callback handler
         async def callback_handler(request):
             try:
+                logger.info(f"Callback handler triggered for task {task_id}")
                 payload = await request.json()
+                logger.info(f"Received callback payload: {json.dumps(payload, indent=2)}")
 
-                if payload.get('task_id') == task_id:
+                received_task_id = payload.get('task_id')
+                logger.info(f"Received task_id: {received_task_id}, expected task_id: {task_id}")
+
+                if received_task_id == task_id:
                     logger.info(f"✅ Received callback for task {task_id}")
-                    logger.info(f"Status: {payload.get('status')}")
+                    status = payload.get('status')
+                    logger.info(f"Status: {status}")
 
-                    if payload.get('status') == 'completed':
+                    if status == 'completed':
+                        logger.info(f"Task {task_id} completed, processing...")
                         # Get SRT content from download URL
                         srt_url = payload.get('srt_url', f"{self.api_url}/api/v1/tasks/{task_id}/download")
+                        logger.info(f"srt_url: {srt_url}")
                         srt_content = await self._download_srt(srt_url)
+                        logger.info(f"Downloaded SRT content length: {len(srt_content) if srt_content else 0}")
                         callback_future.set_result(srt_content)
+                        logger.info(f"Set result for task {task_id}")
                     else:
                         error_msg = payload.get('error_message', 'Unknown error')
                         logger.error(f"Task failed: {error_msg}")
                         callback_future.set_exception(RuntimeError(error_msg))
+                        logger.info(f"Set exception for task {task_id}")
                 else:
-                    logger.warning(f"Received callback for different task: {payload.get('task_id')}")
+                    logger.warning(f"Received callback for different task: {received_task_id}")
 
                 return web.Response(text='OK')
 
             except Exception as e:
                 logger.error(f"Error handling callback: {e}")
+                logger.exception(e)  # Log full traceback
                 return web.Response(status=500, text=str(e))
 
         # Store callback reference for polling fallback
+        logger.info(f"Storing callback future for task {task_id}")
         self.completed_tasks[task_id] = callback_future
+        logger.info(f"Current completed_tasks keys after adding: {list(self.completed_tasks.keys())}")
 
         try:
             # Custom wait mechanism that can be interrupted
@@ -426,32 +438,61 @@ class TusClient:
         """Start callback HTTP server in background thread"""
         async def callback_handler(request):
             try:
+                logger.info("Callback handler triggered")
+                logger.info(f"Request method: {request.method}")
+                logger.info(f"Request headers: {dict(request.headers)}")
+                logger.info(f"Request remote: {request.remote}")
+
+                # Check content type
+                content_type = request.headers.get('Content-Type', '')
+                logger.info(f"Content-Type: {content_type}")
+
                 payload = await request.json()
                 logger.info(f"Received callback: {json.dumps(payload, indent=2)}")
 
                 task_id = payload.get('task_id')
+                logger.info(f"Processing callback for task_id: {task_id}")
+                logger.info(f"Current completed_tasks keys: {list(self.completed_tasks.keys())}")
+
                 if task_id in self.completed_tasks:
+                    logger.info(f"Found task {task_id} in completed_tasks")
                     future = self.completed_tasks[task_id]
 
                     if not future.done():
+                        logger.info(f"Future for task {task_id} is not done, processing...")
                         if payload.get('status') == 'completed':
+                            logger.info(f"Task {task_id} completed, setting result")
                             # For completed tasks, we'll download SRT content later
                             # Mark completion and let polling fallback handle download
                             # Ensure srt_url is a full URL if it's relative
                             srt_url = payload.get('srt_url')
+                            logger.info(f"Original srt_url: {srt_url}")
                             if srt_url and not srt_url.startswith('http'):
                                 srt_url = f"{self.api_url}{srt_url}"
+                                logger.info(f"Modified srt_url: {srt_url}")
                             future.set_result({'status': 'completed', 'task_id': task_id, 'srt_url': srt_url})
+                            logger.info(f"Set result for task {task_id}")
                         else:
-                            future.set_exception(RuntimeError(payload.get('error_message', 'Task failed')))
+                            error_msg = payload.get('error_message', 'Task failed')
+                            logger.info(f"Task {task_id} failed with error: {error_msg}")
+                            future.set_exception(RuntimeError(error_msg))
+                            logger.info(f"Set exception for task {task_id}")
 
                     # Clean up
+                    logger.info(f"Cleaning up task {task_id} from completed_tasks")
                     del self.completed_tasks[task_id]
+                    logger.info(f"Task {task_id} removed from completed_tasks")
 
+                else:
+                    logger.warning(f"Task {task_id} not found in completed_tasks")
+                    logger.info(f"Available task IDs: {list(self.completed_tasks.keys())}")
+
+                logger.info("Returning OK response")
                 return web.Response(text='OK')
 
             except Exception as e:
                 logger.error(f"Callback error: {e}")
+                logger.exception(e)  # Log full traceback
                 return web.Response(status=500, text=str(e))
 
         async def create_app():
