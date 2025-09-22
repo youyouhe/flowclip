@@ -23,6 +23,33 @@ logger = logging.getLogger(__name__)
 class TusASRClient:
     """TUS ASR客户端，为FlowClip系统提供TUS协议支持"""
 
+    # 进程级别回调服务器状态管理
+    _callback_running = False
+    _callback_server_thread = None
+
+    @classmethod
+    def _process_signal_handler(cls, signum, frame):
+        """处理进程级别的关闭信号"""
+        logger.info(f"收到进程信号 {signum}，正在关闭回调服务器...")
+        cls._callback_running = False
+
+    @classmethod
+    def _ensure_callback_server_running(cls):
+        """确保进程级别的回调服务器正在运行"""
+        if cls._callback_running and cls._callback_server_thread and cls._callback_server_thread.is_alive():
+            logger.info("进程级别回调服务器已在运行")
+            return
+
+        # 如果服务器线程存在但不活跃，重置状态
+        if cls._callback_server_thread and not cls._callback_server_thread.is_alive():
+            logger.warning("检测到进程级别回调服务器线程已退出，重置状态")
+            cls._callback_running = False
+            cls._callback_server_thread = None
+
+        # 如果需要重新启动服务器，由调用方处理
+        # 这里只做检查，不启动服务器
+        logger.info("进程级别回调服务器检查完成")
+
     def __init__(
         self,
         api_url: str = None,
@@ -64,15 +91,16 @@ class TusASRClient:
         # 然后尝试从数据库动态更新配置（但不覆盖端口）
         self._load_config_from_database_without_port()
 
-        # 内部状态
+        # 内部状态 - 回调服务器的状态在进程级别管理
         self.completed_tasks = {}
-        self.running = True
-        self.callback_thread = None
         self.process_id = os.getpid()  # 记录进程ID用于日志
 
+        # 检查进程级别回调服务器是否已启动
+        TusASRClient._ensure_callback_server_running()
+
         # 信号处理
-        signal.signal(signal.SIGINT, self._signal_handler)
-        signal.signal(signal.SIGTERM, self._signal_handler)
+        signal.signal(signal.SIGINT, TusASRClient._process_signal_handler)
+        signal.signal(signal.SIGTERM, TusASRClient._process_signal_handler)
 
         logger.info(f"TUS ASR客户端初始化完成 (PID: {self.process_id}):")
         logger.info(f"  API URL: {self.api_url}")
@@ -163,10 +191,6 @@ class TusASRClient:
         except Exception as e:
             logger.warning(f"从数据库加载TUS配置失败: {e}，使用默认配置")
 
-    def _signal_handler(self, signum, frame):
-        """处理关闭信号"""
-        logger.info(f"收到信号 {signum}，正在关闭...")
-        self.running = False
 
     def _is_port_available(self, port):
         """检查端口是否可用"""
@@ -239,8 +263,8 @@ class TusASRClient:
                 logger.error(f"❌ 回调服务器启动验证失败，端口 {self.callback_port} 无法连接")
                 raise RuntimeError(f"回调服务器启动失败，端口 {self.callback_port} 无法访问")
 
-            # 检查回调服务器线程是否仍在运行
-            if self.callback_thread and self.callback_thread.is_alive():
+            # 检查进程级别回调服务器线程是否仍在运行
+            if self.__class__._callback_server_thread and self.__class__._callback_server_thread.is_alive():
                 logger.info("回调服务器线程状态：正在运行")
             else:
                 logger.error("回调服务器线程状态：已停止运行")
@@ -263,9 +287,10 @@ class TusASRClient:
                 'timestamp': time.time()
             }
             logger.error(f"TUS ASR处理失败详情: {json.dumps(error_info, indent=2)}")
+            # 清理当前任务的completed_tasks
+            if hasattr(self, 'current_task_id') and self.current_task_id in self.completed_tasks:
+                del self.completed_tasks[self.current_task_id]
             raise RuntimeError(f"TUS ASR处理失败: {str(e)}") from e
-        finally:
-            self.running = False
 
     def _get_unique_callback_port(self) -> int:
         """获取唯一的回调端口，使用Docker映射的端口范围"""
@@ -581,7 +606,7 @@ class TusASRClient:
 
             while waited_time < safe_timeout:
                 # 检查是否被中断
-                if not self.running:
+                if not self.__class__._callback_running:
                     raise KeyboardInterrupt("用户请求关闭")
 
                 # 检查回调是否完成
@@ -613,7 +638,7 @@ class TusASRClient:
             logger.warning(f"回调超时，回退到轮询任务 {task_id} (已等待 {elapsed_time:.1f} 秒，超时设置 {safe_timeout} 秒)")
 
             # 回退到轮询
-            while time.time() - start_time < safe_timeout and self.running:
+            while time.time() - start_time < safe_timeout and self.__class__._callback_running:
                 try:
                     status = await self._get_task_status(task_id)
 
@@ -775,8 +800,9 @@ class TusASRClient:
 
     def _start_callback_server(self):
         """启动回调服务器，自动处理端口冲突"""
-        if self.callback_thread and self.callback_thread.is_alive():
-            logger.info(f"回调服务器已在运行 (PID: {self.process_id}, 端口: {self.callback_port})")
+        # 检查进程级别回调服务器是否已启动
+        if self.__class__._callback_running and self.__class__._callback_server_thread and self.__class__._callback_server_thread.is_alive():
+            logger.info(f"进程级别回调服务器已在运行 (PID: {self.process_id}, 端口: {self.callback_port})")
             return
 
         # 检查端口是否可用
@@ -786,11 +812,14 @@ class TusASRClient:
             self.callback_port = self._get_available_port()
             logger.info(f"更换到新端口: {self.callback_port}")
 
+        # 设置进程级别服务器状态
+        self.__class__._callback_running = True
+
         logger.info(f"准备启动回调服务器线程，端口: {self.callback_port}")
-        self.callback_thread = threading.Thread(target=self._run_callback_server, name=f"CallbackServer-{self.callback_port}")
-        self.callback_thread.daemon = True
-        self.callback_thread.start()
-        logger.info(f"回调服务器线程已启动，线程ID: {self.callback_thread.ident}")
+        self.__class__._callback_server_thread = threading.Thread(target=self._run_callback_server, name=f"CallbackServer-{self.callback_port}")
+        self.__class__._callback_server_thread.daemon = True
+        self.__class__._callback_server_thread.start()
+        logger.info(f"回调服务器线程已启动，线程ID: {self.__class__._callback_server_thread.ident}")
 
         # 小睡一会儿确保线程开始执行
         time.sleep(0.5)
@@ -875,7 +904,7 @@ class TusASRClient:
                 logger.info(f"回调URL: http://{self.callback_host}:{self.callback_port}/callback")
 
             # 保持运行
-            while self.running:
+            while self.__class__._callback_running:
                 await asyncio.sleep(1)
 
         try:
