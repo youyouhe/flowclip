@@ -127,6 +127,19 @@ class TusASRClient:
         logger.info(f"收到信号 {signum}，正在关闭...")
         self.running = False
 
+    def _is_port_available(self, port):
+        """检查端口是否可用"""
+        try:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            result = sock.connect_ex(('127.0.0.1', port))
+            sock.close()
+            # 如果连接成功，说明端口被占用
+            return result != 0
+        except Exception as e:
+            logger.error(f"检查端口 {port} 可用性时出错: {e}")
+            return False
+
     async def process_audio_file(
         self,
         audio_file_path: str,
@@ -158,15 +171,19 @@ class TusASRClient:
             await asyncio.sleep(1.0)  # 等待回调服务器启动
 
             # 验证回调服务器是否启动
+            await asyncio.sleep(1.0)  # 给服务器更多时间启动
             import socket
             try:
                 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                sock.settimeout(1.0)  # 设置超时时间
                 result = sock.connect_ex(('127.0.0.1', self.callback_port))
                 sock.close()
                 if result == 0:
-                    logger.info(f"验证回调服务器已在端口 {self.callback_port} 启动")
+                    logger.info(f"验证回调服务器已在端口 {self.callback_port} 启动并接受连接")
                 else:
-                    logger.warning(f"回调服务器可能未在端口 {self.callback_port} 启动")
+                    logger.warning(f"回调服务器可能未在端口 {self.callback_port} 启动或未接受连接")
+                    # 再等待一段时间
+                    await asyncio.sleep(1.0)
             except Exception as e:
                 logger.warning(f"验证回调服务器状态时出错: {e}")
 
@@ -696,27 +713,12 @@ class TusASRClient:
             logger.info(f"回调服务器已在运行 (PID: {self.process_id}, 端口: {self.callback_port})")
             return
 
-        # 如果端口被占用，尝试更换端口
-        while True:
-            try:
-                # 检查端口是否被占用
-                import socket
-                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                result = sock.connect_ex(('127.0.0.1', self.callback_port))
-                sock.close()
-
-                if result == 0:
-                    # 端口被占用
-                    logger.warning(f"端口 {self.callback_port} 被占用，尝试更换端口")
-                    self.callback_port = self._get_available_port()
-                    logger.info(f"更换到新端口: {self.callback_port}")
-                else:
-                    # 端口可用
-                    break
-
-            except Exception as e:
-                logger.error(f"检查端口占用状态失败: {e}")
-                break
+        # 检查端口是否可用
+        port_available = self._is_port_available(self.callback_port)
+        if not port_available:
+            logger.warning(f"端口 {self.callback_port} 不可用，尝试更换端口")
+            self.callback_port = self._get_available_port()
+            logger.info(f"更换到新端口: {self.callback_port}")
 
         self.callback_thread = threading.Thread(target=self._run_callback_server)
         self.callback_thread.daemon = True
