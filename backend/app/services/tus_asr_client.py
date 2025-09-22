@@ -50,7 +50,10 @@ class TusASRClient:
         self.callback_port = callback_port or settings.tus_callback_port
         self.callback_host = callback_host or settings.tus_callback_host
         self.max_retries = max_retries or settings.tus_max_retries
-        self.timeout_seconds = timeout_seconds or settings.tus_timeout_seconds
+
+        # 确保超时设置不超过安全限制
+        configured_timeout = timeout_seconds or settings.tus_timeout_seconds
+        self.timeout_seconds = min(configured_timeout, 1700)  # 限制在1700秒以内
 
         # 自动为每个客户端分配不同的端口，避免冲突
         if not callback_port:
@@ -409,10 +412,12 @@ class TusASRClient:
         self.completed_tasks[task_id] = callback_future
 
         start_time = time.time()
+        # 设置一个安全的超时缓冲区，确保在Celery超时之前完成
+        safe_timeout = min(self.timeout_seconds, 1700)  # 留出100秒的缓冲时间
 
         try:
             # 等待回调或超时
-            while time.time() - start_time < self.timeout_seconds:
+            while time.time() - start_time < safe_timeout:
                 if not self.running:
                     raise KeyboardInterrupt("用户请求停止")
 
@@ -428,9 +433,10 @@ class TusASRClient:
 
                 await asyncio.sleep(1.0)
 
-            # 超时后切换到轮询
-            logger.warning("回调超时，切换到轮询模式")
-            return await self._poll_tus_results(task_id)
+            # 超时处理
+            elapsed_time = time.time() - start_time
+            logger.warning(f"TUS等待超时: 已等待 {elapsed_time:.1f} 秒，超时设置 {safe_timeout} 秒")
+            raise TimeoutError(f"TUS任务等待超时: {task_id}，已等待 {elapsed_time:.1f} 秒")
 
         finally:
             # 清理任务
@@ -440,8 +446,10 @@ class TusASRClient:
     async def _poll_tus_results(self, task_id: str) -> str:
         """轮询TUS任务结果"""
         start_time = time.time()
+        # 设置一个安全的超时缓冲区，确保在Celery超时之前完成
+        safe_timeout = min(self.timeout_seconds, 1700)  # 留出100秒的缓冲时间
 
-        while time.time() - start_time < self.timeout_seconds:
+        while time.time() - start_time < safe_timeout:
             try:
                 status = await self._get_task_status(task_id)
 
@@ -459,7 +467,9 @@ class TusASRClient:
                 logger.error(f"轮询任务状态失败: {e}")
                 await asyncio.sleep(5)
 
-        raise TimeoutError(f"TUS任务超时: {task_id}")
+        elapsed_time = time.time() - start_time
+        logger.warning(f"TUS轮询超时: 已等待 {elapsed_time:.1f} 秒，超时设置 {safe_timeout} 秒")
+        raise TimeoutError(f"TUS任务轮询超时: {task_id}，已等待 {elapsed_time:.1f} 秒")
 
     async def _get_task_status(self, task_id: str) -> Dict[str, Any]:
         """获取任务状态"""

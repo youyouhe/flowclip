@@ -59,7 +59,7 @@ class Settings(BaseSettings):
     tus_file_size_threshold_mb: int = 10  # TUS使用阈值(MB)
     tus_enable_routing: bool = True  # 启用TUS路由
     tus_max_retries: int = 3  # TUS最大重试次数
-    tus_timeout_seconds: int = 1800  # TUS超时时间(秒)
+    tus_timeout_seconds: int = 1500  # TUS超时时间(秒) - 设置为小于Celery硬时间限制
     
     # LLM Configuration
     openrouter_api_key: Optional[str] = None

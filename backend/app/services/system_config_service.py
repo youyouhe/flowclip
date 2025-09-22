@@ -254,7 +254,7 @@ class SystemConfigService:
             {"key": "tus_file_size_threshold_mb", "label": "TUS文件大小阈值(MB)", "category": "其他服务配置", "default": str(settings.tus_file_size_threshold_mb), "description": "TUS协议使用的文件大小阈值(MB)"},
             {"key": "tus_enable_routing", "label": "启用TUS路由", "category": "其他服务配置", "default": str(settings.tus_enable_routing).lower(), "description": "是否启用TUS自动路由功能"},
             {"key": "tus_max_retries", "label": "TUS最大重试次数", "category": "其他服务配置", "default": str(settings.tus_max_retries), "description": "TUS操作的最大重试次数"},
-            {"key": "tus_timeout_seconds", "label": "TUS超时时间(秒)", "category": "其他服务配置", "default": str(settings.tus_timeout_seconds), "description": "TUS操作的超时时间(秒)"},
+            {"key": "tus_timeout_seconds", "label": "TUS超时时间(秒)", "category": "其他服务配置", "default": str(settings.tus_timeout_seconds), "description": "TUS操作的超时时间(秒) - 应设置为小于Celery任务硬时间限制(1800秒)"},
             
             # LLM配置
             {"key": "openrouter_api_key", "label": "OpenRouter API密钥", "category": "LLM配置", "default": settings.openrouter_api_key or "", "sensitive": True},
