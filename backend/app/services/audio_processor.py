@@ -579,6 +579,7 @@ class AudioProcessor:
 
                     # 上传SRT内容到MinIO
                     import tempfile
+                    import os
                     tmp_srt_path = None
                     srt_url = None
                     try:

@@ -379,6 +379,7 @@ class TusASRClient:
                 # 上传到MinIO
                 try:
                     import tempfile
+                    import os
                     tmp_srt_path = None
                     try:
                         with tempfile.NamedTemporaryFile(mode='w', suffix='.srt', delete=False, encoding='utf-8') as tmp_srt_file:
