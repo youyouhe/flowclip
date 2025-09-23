@@ -305,7 +305,7 @@ def extract_sub_slice_audio(self, video_id: str, project_id: int, user_id: int, 
                         user_id=user_id,
                         split_files=[],
                         sub_slice_id=sub_slice_id,
-                        create_processing_task=False
+                        create_processing_task=True
                     )
                     print(f"SRT生成任务已提交: task_id={srt_task.id}")
                 except Exception as srt_error:

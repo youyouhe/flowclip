@@ -263,7 +263,7 @@ def extract_video_audio(self, video_id: str, project_id: int, user_id: int, vide
                             project_id=project_id,
                             user_id=user_id,
                             split_files=[],
-                            create_processing_task=False
+                            create_processing_task=True
                         )
                         print(f"SRT生成任务已提交: task_id={srt_task.id}")
                     except Exception as srt_error:
