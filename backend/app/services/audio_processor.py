@@ -217,10 +217,9 @@ class AudioProcessor:
         min_silence_len: int = 500
     ) -> Dict[str, Any]:
         """切割音频文件"""
-        
+
         import os
         import sys
-        import tempfile
         from pathlib import Path
         
         logger.info(f"开始切割音频文件: {audio_path}")
@@ -392,9 +391,8 @@ class AudioProcessor:
     async def _simple_audio_split(self, audio_path: str, video_id: str, max_segment_len: int, min_segment_len: int) -> list:
         """简单的音频分割方案，使用ffmpeg作为备选"""
         logger.info("使用简单的ffmpeg分割方案")
-        
+
         import subprocess
-        import tempfile
         import os
         
         # 获取音频时长
@@ -453,7 +451,6 @@ class AudioProcessor:
     ) -> str:
         """根据时间范围分割音频文件"""
         import subprocess
-        import tempfile
         import os
         from pathlib import Path
         

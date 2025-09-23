@@ -393,13 +393,17 @@ class TusASRClient:
                         )
 
                         # 清理临时文件
-                        if tmp_srt_path and os.path.exists(tmp_srt_path):
-                            os.unlink(tmp_srt_path)
+                        if tmp_srt_path:
+                            import os
+                            if os.path.exists(tmp_srt_path):
+                                os.unlink(tmp_srt_path)
                     except Exception as upload_error:
                         logger.error(f"SRT文件上传失败: {upload_error}")
                         # 清理临时文件
-                        if tmp_srt_path and os.path.exists(tmp_srt_path):
-                            os.unlink(tmp_srt_path)
+                        if tmp_srt_path:
+                            import os
+                            if os.path.exists(tmp_srt_path):
+                                os.unlink(tmp_srt_path)
                         raise
                 except Exception as e:
                     logger.error(f"上传SRT到MinIO失败: {e}")
