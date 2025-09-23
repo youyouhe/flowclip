@@ -660,7 +660,6 @@ class AudioProcessor:
             # 导入SRT生成模块和工具
             import sys
             import os
-            import tempfile
             import shutil
             sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
             from wav_to_srt_direct_updated import process_directory
