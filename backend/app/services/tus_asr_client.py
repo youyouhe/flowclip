@@ -837,7 +837,6 @@ class TusASRClient:
     def _generate_callback_url(self) -> Optional[str]:
         """生成回调URL，使用host上的公開IP地址"""
         try:
-            import os
             # 从环境变量获取public IP，如果没有则使用当前主机IP
             public_ip = os.getenv('PUBLIC_IP')
             if public_ip:
