@@ -146,9 +146,9 @@ def extract_sub_slice_audio(self, video_id: str, project_id: int, user_id: int, 
                     for chunk in response.iter_content(chunk_size=8192):
                         f.write(chunk)
                 
-                _update_task_status(celery_task_id, ProcessingTaskStatus.RUNNING, 70, "正在提取音频")
-                self.update_state(state='PROGRESS', meta={'progress': 70, 'stage': ProcessingStage.EXTRACT_AUDIO, 'message': '正在提取音频'})
-                
+                _update_task_status(celery_task_id, ProcessingTaskStatus.RUNNING, 65, "正在提取音频")
+                self.update_state(state='PROGRESS', meta={'progress': 65, 'stage': ProcessingStage.EXTRACT_AUDIO, 'message': '正在提取音频'})
+
                 result = run_async(
                     audio_processor.extract_audio_from_video(
                         video_path=str(video_path),
@@ -158,42 +158,59 @@ def extract_sub_slice_audio(self, video_id: str, project_id: int, user_id: int, 
                         custom_filename=f"{video_id}_subslice_{sub_slice_id}"
                     )
                 )
-        
-        # 检查并转换音频采样率（如果需要）
-        if result.get('success'):
-                try:
-                    # 音频文件已经在临时目录中，直接检查本地文件
-                    audio_filename = result['audio_filename']
-                    audio_temp_path = temp_path / audio_filename
-                    
-                    # 检查并转换采样率
-                    converted_audio_path = run_async(
-                        audio_processor.convert_audio_sample_rate(str(audio_temp_path), 16000)
-                    )
-                    
-                    # 如果采样率被转换，需要重新上传文件
-                    if converted_audio_path != str(audio_temp_path):
-                        # 重新上传转换后的音频文件
-                        audio_url = run_async(
-                            minio_service.upload_file(
-                                converted_audio_path,
-                                result['object_name'],
-                                f"audio/{result['audio_format']}"
-                            )
+
+                # 检查并转换音频采样率（在临时目录上下文内执行）
+                if result.get('success'):
+                    try:
+                        # 音频文件需要在临时目录上下文中进行采样率检查
+                        # 将音频文件复制到当前临时目录以便后续操作
+                        import shutil
+
+                        # 从MinIO下载刚上传的音频文件到本地临时目录
+                        audio_url = run_async(minio_service.get_file_url(result['object_name'], expiry=3600))
+                        if not audio_url:
+                            raise Exception("无法获取刚上传的音频文件URL")
+
+                        audio_temp_path = temp_path / result['audio_filename']
+
+                        import requests
+                        response = requests.get(audio_url, stream=True)
+                        response.raise_for_status()
+
+                        with open(audio_temp_path, 'wb') as f:
+                            for chunk in response.iter_content(chunk_size=8192):
+                                f.write(chunk)
+
+                        _update_task_status(celery_task_id, ProcessingTaskStatus.RUNNING, 85, "正在检查音频采样率")
+                        self.update_state(state='PROGRESS', meta={'progress': 85, 'stage': ProcessingStage.EXTRACT_AUDIO, 'message': '正在检查音频采样率'})
+
+                        # 检查并转换采样率
+                        converted_audio_path = run_async(
+                            audio_processor.convert_audio_sample_rate(str(audio_temp_path), 16000)
                         )
-                        
-                        if audio_url:
-                            # 更新结果中的音频路径和文件大小
-                            result['minio_path'] = audio_url
-                            result['file_size'] = Path(converted_audio_path).stat().st_size
-                            logger.info(f"子切片音频采样率已转换并重新上传: {audio_url}")
-                        else:
-                            logger.error("转换后的音频文件上传失败")
-                            raise Exception("转换后的音频文件上传失败")
-                except Exception as e:
-                    logger.error(f"子切片音频采样率检查/转换失败: {str(e)}")
-                    # 不中断整个流程，继续使用原始音频
-        
+
+                        # 如果采样率被转换，需要重新上传文件
+                        if converted_audio_path != str(audio_temp_path):
+                            # 重新上传转换后的音频文件
+                            audio_url = run_async(
+                                minio_service.upload_file(
+                                    converted_audio_path,
+                                    result['object_name'],
+                                    f"audio/{result['audio_format']}"
+                                )
+                            )
+
+                            if audio_url:
+                                # 更新结果中的音频路径和文件大小
+                                result['minio_path'] = audio_url
+                                result['file_size'] = Path(converted_audio_path).stat().st_size
+                                logger.info(f"子切片音频采样率已转换并重新上传: {audio_url}")
+                            else:
+                                logger.error("转换后的音频文件上传失败")
+                                raise Exception("转换后的音频文件上传失败")
+                    except Exception as e:
+                        logger.error(f"子切片音频采样率检查/转换失败: {str(e)}")
+                        # 不中断整个流程，继续使用原始音频
         # 处理成功逻辑
         if result.get('success'):
             try:
