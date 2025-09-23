@@ -173,7 +173,6 @@ def extract_sub_slice_audio(self, video_id: str, project_id: int, user_id: int, 
 
                         audio_temp_path = temp_path / result['audio_filename']
 
-                        import requests
                         response = requests.get(audio_url, stream=True)
                         response.raise_for_status()
 
