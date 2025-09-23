@@ -578,8 +578,6 @@ class AudioProcessor:
                     srt_object_name = f"users/{user_id}/projects/{project_id}/subtitles/{srt_filename}"
 
                     # 上传SRT内容到MinIO
-                    import tempfile
-                    import os
                     tmp_srt_path = None
                     srt_url = None
                     try:
@@ -636,11 +634,11 @@ class AudioProcessor:
         else:
             from app.core.config import settings
             base_url = settings.asr_service_url.rstrip('/')
-        
+
         # 确保URL格式正确
         if not base_url.startswith(('http://', 'https://')):
             base_url = f"http://{base_url}"
-        
+
         # 根据模型类型确定正确的端点路径
         if asr_model_type == "whisper":
             # Whisper模型使用/inference路径
@@ -656,17 +654,19 @@ class AudioProcessor:
             else:
                 final_api_url = f"{base_url}/asr"
             logger.info(f"使用Sense模型的ASR服务URL: {final_api_url}")
-        
-        
+
+
         try:
             # 导入SRT生成模块和工具
             import sys
             import os
+            import tempfile
+            import shutil
             sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
             from wav_to_srt_direct_updated import process_directory
             from app.services.asr_timestamp_utils import (
-                adjust_timestamps_with_duration, 
-                create_srt_content, 
+                adjust_timestamps_with_duration,
+                create_srt_content,
                 validate_segments,
                 get_wav_duration
             )
