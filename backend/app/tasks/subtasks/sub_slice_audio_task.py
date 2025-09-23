@@ -163,8 +163,7 @@ def extract_sub_slice_audio(self, video_id: str, project_id: int, user_id: int, 
                 if result.get('success'):
                     try:
                         # 音频文件需要在临时目录上下文中进行采样率检查
-                        # 将音频文件复制到当前临时目录以便后续操作
-                        import shutil
+                        # 从MinIO下载音频文件到当前临时目录
 
                         # 从MinIO下载刚上传的音频文件到本地临时目录
                         audio_url = run_async(minio_service.get_file_url(result['object_name'], expiry=3600))
