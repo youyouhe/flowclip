@@ -29,19 +29,41 @@ class FileSizeDetector:
         """
         from app.core.config import settings
 
-        # 从配置读取阈值，如果没有提供则使用配置文件中的值
-        if threshold_mb is None:
-            threshold_mb = getattr(settings, 'tus_file_size_threshold_mb', 10)
+        self._fixed_threshold_mb = threshold_mb  # 保存固定的阈值（如果提供）
+        self._settings = settings  # 保存settings引用以支持动态读取
 
-        # 确保 threshold_mb 是整数类型（从数据库读取可能是字符串）
+        # 如果没有提供固定的阈值，则使用配置中的值
+        if threshold_mb is None:
+            threshold_mb = self._get_current_threshold()
+        else:
+            # 确保 threshold_mb 是整数类型
+            try:
+                threshold_mb = int(threshold_mb)
+            except (ValueError, TypeError):
+                logger.warning(f"无效的阈值配置：{threshold_mb}，使用默认值10")
+                threshold_mb = 10
+
+        self.threshold_bytes = threshold_mb * 1024 * 1024
+        self.threshold_mb = threshold_mb
+
+    def _get_current_threshold(self) -> int:
+        """获取当前的阈值配置"""
+        from app.core.config import settings
+        # 优先使用固定阈值，否则从配置读取
+        if self._fixed_threshold_mb is not None:
+            return self._fixed_threshold_mb
+
+        # 从配置读取阈值
+        threshold_mb = getattr(settings, 'tus_file_size_threshold_mb', 10)
+
+        # 确保 threshold_mb 是整数类型
         try:
             threshold_mb = int(threshold_mb)
         except (ValueError, TypeError):
             logger.warning(f"无效的阈值配置：{threshold_mb}，使用默认值10")
             threshold_mb = 10
 
-        self.threshold_bytes = threshold_mb * 1024 * 1024
-        self.threshold_mb = threshold_mb
+        return threshold_mb
 
     def detect_file_size(self, file_path: str) -> Dict[str, Any]:
         """
@@ -66,25 +88,29 @@ class FileSizeDetector:
             # 获取文件大小
             file_size = path.stat().st_size
 
+            # 动态获取当前阈值（支持运行时配置更新）
+            current_threshold_mb = self._get_current_threshold()
+            current_threshold_bytes = current_threshold_mb * 1024 * 1024
+
             # 判断策略
-            use_tus = file_size >= self.threshold_bytes
+            use_tus = file_size >= current_threshold_bytes
             strategy = ASRStrategy.TUS if use_tus else ASRStrategy.STANDARD
 
             result = {
                 'file_path': file_path,
                 'file_size': file_size,
                 'file_size_mb': file_size / (1024 * 1024),
-                'threshold_bytes': self.threshold_bytes,
-                'threshold_mb': self.threshold_mb,
+                'threshold_bytes': current_threshold_bytes,
+                'threshold_mb': current_threshold_mb,
                 'use_tus': use_tus,
                 'strategy': strategy.value,
-                'size_category': self._get_size_category(file_size),
+                'size_category': self._get_size_category(file_size, current_threshold_mb),
                 'recommended_action': self._get_recommended_action(strategy)
             }
 
             logger.info(f"文件大小检测结果: {result['file_size_mb']:.2f}MB, "
                        f"策略: {strategy.value}, "
-                       f"阈值: {self.threshold_mb}MB")
+                       f"阈值: {current_threshold_mb}MB")
 
             return result
 
@@ -138,13 +164,17 @@ class FileSizeDetector:
         result = self.detect_file_size(file_path)
         return ASRStrategy(result['strategy'])
 
-    def _get_size_category(self, file_size: int) -> str:
+    def _get_size_category(self, file_size: int, threshold_mb: int = None) -> str:
         """获取文件大小分类"""
+        # 如果没有提供阈值，则使用实例的阈值
+        if threshold_mb is None:
+            threshold_mb = self.threshold_mb
+
         mb = file_size / (1024 * 1024)
 
         if mb < 1:
             return "small"
-        elif mb < self.threshold_mb:
+        elif mb < threshold_mb:
             return "medium"
         elif mb < 50:
             return "large"
@@ -170,6 +200,18 @@ class ASRStrategySelector:
             threshold_mb: 文件大小阈值(MB)，默认从配置读取
         """
         self.detector = FileSizeDetector(threshold_mb)
+        self._fixed_threshold_mb = threshold_mb  # 保存固定的阈值（如果提供）
+
+    def update_threshold(self, threshold_mb: int = None):
+        """
+        更新文件大小阈值配置
+
+        Args:
+            threshold_mb: 新的文件大小阈值(MB)，如果为None则从配置中重新读取
+        """
+        # 重新创建detector实例以应用新的阈值
+        self.detector = FileSizeDetector(threshold_mb)
+        self._fixed_threshold_mb = threshold_mb
 
     async def select_and_execute_asr(
         self,
@@ -284,3 +326,15 @@ class ASRStrategySelector:
 # 全局实例，供其他模块使用
 file_size_detector = FileSizeDetector()
 asr_strategy_selector = ASRStrategySelector()
+
+
+def update_global_threshold(threshold_mb: int = None):
+    """
+    更新全局实例的文件大小阈值配置
+
+    Args:
+        threshold_mb: 新的文件大小阈值(MB)，如果为None则从配置中重新读取
+    """
+    global file_size_detector, asr_strategy_selector
+    file_size_detector = FileSizeDetector(threshold_mb)
+    asr_strategy_selector.update_threshold(threshold_mb)

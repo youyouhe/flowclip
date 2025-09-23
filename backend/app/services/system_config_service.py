@@ -145,8 +145,48 @@ class SystemConfigService:
                 db.add(config)
             db.commit()
             db.refresh(config)
+
+        # 如果更新的是TUS阈值配置，则自动更新全局阈值
+        if key == "tus_file_size_threshold_mb":
+            from app.services.file_size_detector import update_global_threshold
+            try:
+                threshold_mb = int(value)
+                update_global_threshold(threshold_mb)
+            except (ValueError, TypeError):
+                pass  # 如果转换失败，保持原有配置
+
         return config
-    
+
+    @staticmethod
+    def set_config_sync(db: Session, key: str, value: str, description: str = "", category: str = "") -> SystemConfig:
+        """设置配置项的同步版本"""
+        config = db.query(SystemConfig).filter(SystemConfig.key == key).first()
+        if config:
+            config.value = value
+            config.description = description
+            config.category = category
+        else:
+            config = SystemConfig(
+                key=key,
+                value=value,
+                description=description,
+                category=category
+            )
+            db.add(config)
+        db.commit()
+        db.refresh(config)
+
+        # 如果更新的是TUS阈值配置，则自动更新全局阈值
+        if key == "tus_file_size_threshold_mb":
+            from app.services.file_size_detector import update_global_threshold
+            try:
+                threshold_mb = int(value)
+                update_global_threshold(threshold_mb)
+            except (ValueError, TypeError):
+                pass  # 如果转换失败，保持原有配置
+
+        return config
+
     @staticmethod
     async def update_settings_from_db(db: Session):
         """从数据库更新settings配置"""
