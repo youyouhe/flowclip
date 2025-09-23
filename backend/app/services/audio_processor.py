@@ -610,14 +610,25 @@ class AudioProcessor:
                         'srt_filename': srt_filename,
                         'minio_path': srt_url,
                         'object_name': srt_object_name,
+                        'json_result_path': None,
+                        'total_segments': srt_content.count('\n\n') if srt_content else 0,
+                        'processing_stats': {
+                            'success_count': 1,
+                            'fail_count': 0,
+                            'total_files': 1
+                        },
+                        'asr_params': {
+                            'api_url': None,
+                            'lang': lang,
+                            'max_workers': max_workers
+                        },
                         'task_id': tus_result.get('task_id'),
                         'video_id': video_id,
                         'project_id': project_id,
                         'user_id': user_id,
                         'file_size_info': size_info,
                         'processing_info': tus_result.get('processing_info', {}),
-                        'audio_path': audio_path,
-                        'total_segments': srt_content.count('\n\n') if srt_content else 0  # 粗略计算字幕段落数
+                        'audio_path': audio_path
                     }
                 else:
                     logger.info(f"文件大小在阈值范围内，使用标准ASR处理")
