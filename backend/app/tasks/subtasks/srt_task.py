@@ -463,58 +463,9 @@ def generate_srt(self, video_id: str, project_id: int, user_id: int, split_files
 
                         # 为TUS处理构建标准返回结果
                         srt_content = result['srt_content']
-
-                        # 构造metadata用于处理统计
-                        metadata = {
-                            'language': 'auto',
-                            'model': asr_model_type  # 使用从数据库获取的模型类型
-                        }
-
-                        # 构造文件名和对象名称（使用标准路径，与其他处理保持一致）
-                        srt_filename = f"{video_id}.srt"
-                        srt_object_name = f"users/{user_id}/projects/{project_id}/subtitles/{srt_filename}"
-
-                        # 创建临时文件来保存SRT内容
-                        tmp_srt_path = None
-                        try:
-                            with tempfile.NamedTemporaryFile(mode='w', suffix='.srt', delete=False, encoding='utf-8') as tmp_srt_file:
-                                tmp_srt_file.write(srt_content)
-                                tmp_srt_path = tmp_srt_file.name
-
-                            # 检查临时文件是否正确创建
-                            if not tmp_srt_path or not os.path.exists(tmp_srt_path):
-                                raise Exception("临时SRT文件创建失败")
-
-                            # 检查SRT内容是否写入
-                            if os.path.getsize(tmp_srt_path) == 0:
-                                raise Exception("SRT内容写入失败")
-
-                            print(f"DEBUG: SRT临时文件创建成功: {tmp_srt_path}, 大小: {os.path.getsize(tmp_srt_path)} bytes")
-
-                            # 上传SRT文件到MinIO
-                            srt_url = run_async(
-                                minio_service.upload_file(
-                                    tmp_srt_path,
-                                    srt_object_name,
-                                    "text/srt"
-                                )
-                            )
-
-                            if not srt_url:
-                                raise Exception("SRT文件上传到MinIO失败")
-
-                            print(f"DEBUG: SRT文件上传成功: {srt_url}")
-
-                        finally:
-                            # 清理临时文件
-                            if tmp_srt_path and os.path.exists(tmp_srt_path):
-                                try:
-                                    os.unlink(tmp_srt_path)
-                                    print(f"DEBUG: 临时SRT文件清理成功: {tmp_srt_path}")
-                                except Exception as cleanup_error:
-                                    print(f"DEBUG: 临时SRT文件清理失败: {cleanup_error}")
-
-                        # 上传成功检查已经在try块中完成
+                        srt_url = result.get('minio_path', result.get('srt_url'))
+                        srt_filename = result.get('srt_filename', f"{video_id}.srt")
+                        srt_object_name = result.get('object_name', f"users/{user_id}/projects/{project_id}/subtitles/{srt_filename}")
 
                         # 更新任务状态
                         self.update_state(state='SUCCESS', meta={'progress': 100, 'stage': ProcessingStage.GENERATE_SRT, 'message': '字幕生成完成'})
@@ -562,7 +513,7 @@ def generate_srt(self, video_id: str, project_id: int, user_id: int, split_files
                                             'processing_stats': processing_stats,
                                             'asr_params': {
                                                 'strategy': 'tus',
-                                                'model': metadata.get('model', 'whisper'),
+                                                'model': result.get('asr_params', {}).get('model', asr_model_type),
                                                 'processing_time': time.time() - processing_start_time if 'processing_start_time' in locals() else 0
                                             },
                                             'strategy': 'tus',
@@ -596,6 +547,24 @@ def generate_srt(self, video_id: str, project_id: int, user_id: int, split_files
                                     except Exception as status_error:
                                         print(f"更新processing_status失败: {status_error}")
 
+                                    # 如果是子切片处理，更新子切片记录
+                                    if sub_slice_id:
+                                        try:
+                                            from app.models import VideoSubSlice
+                                            sub_slice_record = db.query(VideoSubSlice).filter(VideoSubSlice.id == sub_slice_id).first()
+                                            if sub_slice_record:
+                                                sub_slice_record.srt_url = srt_url
+                                                sub_slice_record.srt_processing_status = "completed"
+                                                print(f"DEBUG: 设置子切片SRT URL: sub_slice_id={sub_slice_id}, srt_url={srt_url}")
+                                                print(f"已更新子切片: sub_slice_id={sub_slice_id}, srt_url={srt_url}")
+                                            else:
+                                                print(f"DEBUG: 未找到子切片记录: sub_slice_id={sub_slice_id}")
+                                                print(f"未找到子切片记录: sub_slice_id={sub_slice_id}")
+                                        except Exception as slice_error:
+                                            print(f"更新子切片srt_url失败: {slice_error}")
+                                            import traceback
+                                            print(f"详细错误信息: {traceback.format_exc()}")
+
                         except Exception as db_error:
                             print(f"更新数据库任务状态失败: {db_error}")
 
@@ -610,7 +579,7 @@ def generate_srt(self, video_id: str, project_id: int, user_id: int, split_files
                             'processing_stats': processing_stats,
                             'asr_params': {
                                 'strategy': 'tus',
-                                'model': metadata.get('model', 'whisper'),
+                                'model': result.get('asr_params', {}).get('model', asr_model_type),
                                 'processing_time': time.time() - processing_start_time if 'processing_start_time' in locals() else 0
                             },
                             'srt_content': srt_content,

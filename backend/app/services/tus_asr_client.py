@@ -364,11 +364,54 @@ class TusASRClient:
             srt_content = await self._wait_for_tus_results(task_id)
             logger.info("✅ ASR处理完成")
 
+            # 上传SRT内容到MinIO（如果需要的话）
+            srt_url = None
+            if srt_content:
+                # 从metadata中获取用户和项目信息
+                user_id = metadata.get('user_id', 1)
+                project_id = metadata.get('project_id', 1)
+                video_id = metadata.get('video_id', 'unknown')
+
+                # 生成对象名称
+                srt_filename = f"{video_id}.srt"
+                srt_object_name = f"users/{user_id}/projects/{project_id}/subtitles/{srt_filename}"
+
+                # 上传到MinIO
+                try:
+                    import tempfile
+                    tmp_srt_path = None
+                    try:
+                        with tempfile.NamedTemporaryFile(mode='w', suffix='.srt', delete=False, encoding='utf-8') as tmp_srt_file:
+                            tmp_srt_file.write(srt_content)
+                            tmp_srt_path = tmp_srt_file.name
+
+                        from app.services.minio_client import minio_service
+                        srt_url = await minio_service.upload_file(
+                            tmp_srt_path,
+                            srt_object_name,
+                            "text/srt"
+                        )
+
+                        # 清理临时文件
+                        if tmp_srt_path and os.path.exists(tmp_srt_path):
+                            os.unlink(tmp_srt_path)
+                    except Exception as upload_error:
+                        logger.error(f"SRT文件上传失败: {upload_error}")
+                        # 清理临时文件
+                        if tmp_srt_path and os.path.exists(tmp_srt_path):
+                            os.unlink(tmp_srt_path)
+                        raise
+                except Exception as e:
+                    logger.error(f"上传SRT到MinIO失败: {e}")
+
             return {
                 'success': True,
                 'strategy': 'tus',
                 'task_id': task_id,
                 'srt_content': srt_content,
+                'srt_url': srt_url,  # 添加SRT URL
+                'minio_path': srt_url,  # 兼容性字段
+                'object_name': srt_object_name if 'srt_object_name' in locals() else None,
                 'file_path': audio_file_path,
                 'metadata': metadata,
                 'processing_time': time.time() - start_time if 'start_time' in locals() else 0,

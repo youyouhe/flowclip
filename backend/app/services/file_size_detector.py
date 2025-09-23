@@ -308,6 +308,28 @@ class ASRStrategySelector:
                 metadata=metadata or {}
             )
 
+            # 如果是子切片处理，更新子切片记录
+            sub_slice_id = metadata.get('sub_slice_id') if metadata else None
+            if sub_slice_id:
+                try:
+                    from app.core.database import get_sync_db
+                    from app.models import VideoSubSlice
+
+                    with get_sync_db() as db:
+                        sub_slice_record = db.query(VideoSubSlice).filter(VideoSubSlice.id == sub_slice_id).first()
+                        if sub_slice_record:
+                            # 更新子切片的srt_url和其他相关信息
+                            srt_url = result.get('minio_path', result.get('srt_url'))
+                            if srt_url:
+                                sub_slice_record.srt_url = srt_url
+                                sub_slice_record.srt_processing_status = "completed"
+                                db.commit()
+                                logger.info(f"已更新子切片记录: sub_slice_id={sub_slice_id}, srt_url={srt_url}")
+                        else:
+                            logger.warning(f"未找到子切片记录: sub_slice_id={sub_slice_id}")
+                except Exception as update_error:
+                    logger.error(f"更新子切片记录失败: {update_error}")
+
             return {
                 'strategy': 'tus',
                 'status': 'completed' if result.get('success') else 'failed',

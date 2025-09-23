@@ -566,17 +566,58 @@ class AudioProcessor:
                     # 使用TUS客户端处理
                     tus_result = await asr_strategy_selector._execute_tus_asr(audio_path, metadata)
 
+                    # 从TUS结果中提取SRT内容
+                    srt_content = tus_result.get('srt_content', '')
+
+                    # 生成SRT文件名和对象名称
+                    if custom_filename:
+                        srt_filename = custom_filename
+                    else:
+                        srt_filename = f"{video_id}.srt"
+
+                    srt_object_name = f"users/{user_id}/projects/{project_id}/subtitles/{srt_filename}"
+
+                    # 上传SRT内容到MinIO
+                    import tempfile
+                    tmp_srt_path = None
+                    srt_url = None
+                    try:
+                        with tempfile.NamedTemporaryFile(mode='w', suffix='.srt', delete=False, encoding='utf-8') as tmp_srt_file:
+                            tmp_srt_file.write(srt_content)
+                            tmp_srt_path = tmp_srt_file.name
+
+                        # 上传到MinIO
+                        srt_url = await minio_service.upload_file(
+                            tmp_srt_path,
+                            srt_object_name,
+                            "text/srt"
+                        )
+
+                        # 清理临时文件
+                        if tmp_srt_path and os.path.exists(tmp_srt_path):
+                            os.unlink(tmp_srt_path)
+                    except Exception as upload_error:
+                        logger.error(f"SRT文件上传失败: {upload_error}")
+                        # 清理临时文件
+                        if tmp_srt_path and os.path.exists(tmp_srt_path):
+                            os.unlink(tmp_srt_path)
+                        raise
+
                     return {
-                        'success': tus_result.get('success', False),
+                        'success': True,
                         'strategy': 'tus',
-                        'srt_content': tus_result.get('srt_content', ''),
+                        'srt_content': srt_content,
+                        'srt_filename': srt_filename,
+                        'minio_path': srt_url,
+                        'object_name': srt_object_name,
                         'task_id': tus_result.get('task_id'),
                         'video_id': video_id,
                         'project_id': project_id,
                         'user_id': user_id,
                         'file_size_info': size_info,
                         'processing_info': tus_result.get('processing_info', {}),
-                        'audio_path': audio_path
+                        'audio_path': audio_path,
+                        'total_segments': srt_content.count('\n\n') if srt_content else 0  # 粗略计算字幕段落数
                     }
                 else:
                     logger.info(f"文件大小在阈值范围内，使用标准ASR处理")
