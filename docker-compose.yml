@@ -36,14 +36,22 @@ services:
       - "6379:6379"
     volumes:
       - redis_data:/data
-    command: redis-server --appendonly yes
+    command: redis-server --appendonly yes --maxmemory 1gb --maxmemory-policy allkeys-lru
     networks:
       - flowclip-network
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       timeout: 5s
-      retries: 5
-      interval: 5s
+      retries: 10
+      interval: 10s
+      start_period: 30s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 256M
     logging:
       driver: "json-file"
       options:
@@ -68,8 +76,16 @@ services:
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
       timeout: 5s
-      retries: 5
+      retries: 10
       interval: 10s
+      start_period: 30s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 256M
     logging:
       driver: "json-file"
       options:
@@ -135,10 +151,14 @@ services:
       - PUBLIC_IP=${PUBLIC_IP}
       - DEBUG=true
     depends_on:
-      - mysql
-      - redis
-      - minio
-      - backend
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      backend:
+        condition: service_started
     volumes:
       - ./backend:/app
       - ./.env:/app/.env:ro
@@ -147,6 +167,7 @@ services:
       - /tmp:/tmp
     networks:
       - flowclip-network
+    restart: unless-stopped
     logging:
       driver: "json-file"
       options:
@@ -170,15 +191,20 @@ services:
       - MINIO_BUCKET_NAME=youtube-videos
       - SECRET_KEY=your-secret-key-change-in-production
     depends_on:
-      - mysql
-      - redis
-      - minio
-      - backend
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      backend:
+        condition: service_started
     volumes:
       - ./backend:/app
       - ./.env:/app/.env:ro
     networks:
       - flowclip-network
+    restart: unless-stopped
     logging:
       driver: "json-file"
       options:
