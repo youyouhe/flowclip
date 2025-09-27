@@ -487,9 +487,9 @@ class TusASRClient:
                 last_error = e
                 logger.warning(f"TUS任务创建失败 (尝试 {attempt + 1}/{self.max_retries}): {e}")
                 if attempt < self.max_retries - 1:
-                    # 指数退避等待
-                    wait_time = 2 ** attempt
-                    logger.info(f"等待 {wait_time} 秒后重试...")
+                    # 使用指数退避算法，基础等待时间为1秒，最大等待时间为30秒
+                    wait_time = min(1 * (2 ** attempt), 30)
+                    logger.info(f"等待 {wait_time} 秒后重试 (指数退避)...")
                     await asyncio.sleep(wait_time)
                 else:
                     break
@@ -545,34 +545,49 @@ class TusASRClient:
             'Upload-Metadata': ', '.join(metadata_parts)
         }
 
-        try:
-            async with aiohttp.ClientSession() as session:
-                url = f"{self.tus_url}/files"
-                logger.info(f"创建TUS上传会话: {url}")
-                logger.info(f"请求头: {headers}")
+        # 添加重试机制
+        last_error = None
+        for attempt in range(3):  # 最多重试3次
+            try:
+                async with aiohttp.ClientSession() as session:
+                    url = f"{self.tus_url}/files"
+                    logger.info(f"创建TUS上传会话: {url}")
+                    logger.info(f"请求头: {headers}")
 
-                async with session.post(url, headers=headers) as response:
-                    logger.info(f"TUS响应状态码: {response.status}")
-                    logger.info(f"TUS响应头: {dict(response.headers)}")
+                    async with session.post(url, headers=headers) as response:
+                        logger.info(f"TUS响应状态码: {response.status}")
+                        logger.info(f"TUS响应头: {dict(response.headers)}")
 
-                    if response.status != 201:  # TUS创建上传会话应该返回201
-                        error_text = await response.text()
-                        logger.error(f"TUS上传会话创建失败，状态码: {response.status}, 响应: {error_text}")
-                        raise RuntimeError(f"TUS上传会话创建失败，状态码: {response.status}, 响应: {error_text}")
+                        if response.status != 201:  # TUS创建上传会话应该返回201
+                            error_text = await response.text()
+                            logger.error(f"TUS上传会话创建失败，状态码: {response.status}, 响应: {error_text}")
+                            raise RuntimeError(f"TUS上传会话创建失败，状态码: {response.status}, 响应: {error_text}")
 
-                    # 从Location头获取上传URL
-                    location = response.headers.get('Location', '')
-                    if not location:
-                        raise ValueError("TUS响应中缺少Location头")
+                        # 从Location头获取上传URL
+                        location = response.headers.get('Location', '')
+                        if not location:
+                            raise ValueError("TUS响应中缺少Location头")
 
-                    # 提取实际的upload_id
-                    actual_upload_id = location.split('/')[-1]
-                    logger.info(f"TUS上传会话创建成功: {actual_upload_id}")
+                        # 提取实际的upload_id
+                        actual_upload_id = location.split('/')[-1]
+                        logger.info(f"TUS上传会话创建成功: {actual_upload_id}")
 
-                    return actual_upload_id
-        except Exception as e:
-            logger.error(f"创建TUS上传会话失败: {e}", exc_info=True)
-            raise RuntimeError(f"创建TUS上传会话失败: {str(e)}") from e
+                        return actual_upload_id
+            except Exception as e:
+                last_error = e
+                logger.warning(f"TUS上传会话创建失败 (尝试 {attempt + 1}/3): {e}")
+                if attempt < 2:  # 还有重试次数
+                    # 使用指数退避算法，基础等待时间为1秒，最大等待时间为30秒
+                    wait_time = min(1 * (2 ** attempt), 30)
+                    logger.info(f"等待 {wait_time} 秒后重试TUS上传会话创建 (指数退避)...")
+                    await asyncio.sleep(wait_time)
+                else:
+                    logger.error(f"TUS上传会话创建失败，已重试3次，最后错误: {e}")
+
+        # 所有重试都失败
+        error_msg = f"TUS上传会话创建失败，已重试3次。最后错误: {str(last_error)}"
+        logger.error(error_msg)
+        raise RuntimeError(error_msg) from last_error
 
     async def _upload_tus_chunks(self, upload_id: str, file_path: Path) -> None:
         """分块上传文件数据"""
@@ -636,8 +651,9 @@ class TusASRClient:
                                 last_chunk_error = e
                                 logger.warning(f"数据块网络错误 (尝试 {chunk_attempt + 1}/3): {e}")
                                 if chunk_attempt < 2:  # 还有重试次数
-                                    wait_time = 1 * (chunk_attempt + 1)  # 等待1秒、2秒
-                                    logger.info(f"等待 {wait_time} 秒后重试数据块上传...")
+                                    # 使用指数退避算法，基础等待时间为1秒，最大等待时间为30秒
+                                    wait_time = min(1 * (2 ** chunk_attempt), 30)
+                                    logger.info(f"等待 {wait_time} 秒后重试数据块上传 (指数退避)...")
                                     await asyncio.sleep(wait_time)
                                 else:
                                     logger.error(f"数据块上传失败，已重试3次，最后错误: {e}")
