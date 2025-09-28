@@ -268,7 +268,7 @@ services:
       - /tmp:/tmp
     networks:
       - flowclip-network
-    command: python run_mcp_server_fixed.py
+    command: python run_mcp_server_simple.py
     logging:
       driver: "json-file"
       options:
