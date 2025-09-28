@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
         },
         503: {"description": "服务不可用"}
     }
-)
+, operation_id="asr_status")
 async def get_asr_status():
     """
     获取ASR服务状态

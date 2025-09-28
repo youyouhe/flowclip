@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-@router.post("/validate-slice-data", response_model=SliceValidationResponse)
+@router.post("/validate-slice-data", response_model=SliceValidationResponse, operation_id="validate_slices")
 async def validate_slice_data(
     request: SliceValidationRequest,
     current_user: User = Depends(get_current_user),
@@ -185,7 +185,7 @@ async def validate_slice_data(
             detail=f"验证失败: {str(e)}"
         )
 
-@router.post("/process-slices", response_model=SliceProcessResponse)
+@router.post("/process-slices", response_model=SliceProcessResponse, operation_id="process_slices")
 async def process_slices(
     request: SliceProcessRequest,
     current_user: User = Depends(get_current_user),

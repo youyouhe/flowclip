@@ -57,7 +57,7 @@ router = APIRouter()
         404: {"description": "视频不存在或无权限访问"},
         500: {"description": "服务器内部错误"}
     }
-)
+, operation_id="get_logs")
 async def get_processing_logs(
     video_id: Optional[int] = Query(None, description="视频ID过滤"),
     task_id: Optional[int] = Query(None, description="任务ID过滤"),
@@ -282,7 +282,7 @@ async def get_processing_logs(
         404: {"description": "任务不存在或无权限访问"},
         500: {"description": "服务器内部错误"}
     }
-)
+, operation_id="get_task_logs")
 async def get_task_logs(
     task_id: int,
     current_user: User = Depends(get_current_user),
@@ -378,7 +378,7 @@ async def get_task_logs(
         404: {"description": "视频不存在或无权限访问"},
         500: {"description": "服务器内部错误"}
     }
-)
+, operation_id="get_video_logs")
 async def get_video_logs_summary(
     video_id: int,
     current_user: User = Depends(get_current_user),
@@ -523,7 +523,7 @@ async def get_video_logs_summary(
         404: {"description": "日志不存在或无权限访问"},
         500: {"description": "服务器内部错误"}
     }
-)
+, operation_id="delete_log")
 async def delete_log(
     log_id: int,
     current_user: User = Depends(get_current_user),
@@ -594,7 +594,7 @@ async def delete_log(
         404: {"description": "任务不存在或无权限访问"},
         500: {"description": "服务器内部错误"}
     }
-)
+, operation_id="delete_task_logs")
 async def delete_task_logs(
     task_id: int,
     current_user: User = Depends(get_current_user),
@@ -673,7 +673,7 @@ async def delete_task_logs(
         404: {"description": "视频不存在或无权限访问"},
         500: {"description": "服务器内部错误"}
     }
-)
+, operation_id="delete_video_logs")
 async def delete_video_logs(
     video_id: int,
     current_user: User = Depends(get_current_user),
@@ -772,7 +772,7 @@ async def delete_video_logs(
         404: {"description": "视频不存在或无权限访问"},
         500: {"description": "服务器内部错误"}
     }
-)
+, operation_id="get_logs_stats")
 async def get_logs_statistics(
     video_id: Optional[int] = Query(None, description="视频ID过滤"),
     start_date: Optional[datetime] = Query(None, description="开始日期"),

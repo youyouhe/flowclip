@@ -13,7 +13,7 @@ from app.schemas.video import VideoResponse
 
 router = APIRouter()
 
-@router.get("/", response_model=List[ProjectWithStats], summary="获取项目列表", description="获取当前用户的所有项目，支持多种筛选和分页功能")
+@router.get("/", response_model=List[ProjectWithStats], summary="获取项目列表", description="获取当前用户的所有项目，支持多种筛选和分页功能", operation_id="list_projects")
 async def get_projects(
     status: Optional[str] = Query(None, description="项目状态筛选 (active, completed, archived)"),
     search: Optional[str] = Query(None, description="搜索项目名称或描述"),
@@ -159,7 +159,7 @@ async def get_projects(
     
     return projects_with_stats
 
-@router.post("/", response_model=ProjectResponse, summary="创建项目", description="创建一个新的项目")
+@router.post("/", response_model=ProjectResponse, summary="创建项目", description="创建一个新的项目", operation_id="create_project")
 async def create_project(
     project: ProjectCreate,
     current_user: User = Depends(get_current_user),
@@ -202,7 +202,7 @@ async def create_project(
     await db.refresh(new_project)
     return new_project
 
-@router.get("/{project_id}", response_model=ProjectWithStats)
+@router.get("/{project_id}", response_model=ProjectWithStats, operation_id="get_project")
 async def get_project(
     project_id: int,
     current_user: User = Depends(get_current_user),
@@ -250,7 +250,7 @@ async def get_project(
     
     return project_with_stats
 
-@router.put("/{project_id}", response_model=ProjectResponse, summary="更新项目", description="更新指定项目的名称或描述信息")
+@router.put("/{project_id}", response_model=ProjectResponse, summary="更新项目", description="更新指定项目的名称或描述信息", operation_id="update_project")
 async def update_project(
     project_id: int,
     project_update: ProjectUpdate,
@@ -311,7 +311,7 @@ async def update_project(
     await db.refresh(project)
     return project
 
-@router.delete("/{project_id}", summary="删除项目", description="删除指定项目及其关联的所有视频和数据1")
+@router.delete("/{project_id}", summary="删除项目", description="删除指定项目及其关联的所有视频和数据1", operation_id="delete_project")
 async def delete_project(
     project_id: int,
     current_user: User = Depends(get_current_user),
@@ -354,7 +354,7 @@ async def delete_project(
     await db.commit()
     return {"message": "Project deleted successfully"}
 
-@router.get("/{project_id}/videos", response_model=List[VideoResponse])
+@router.get("/{project_id}/videos", response_model=List[VideoResponse], operation_id="get_project_videos")
 async def get_project_videos(
     project_id: int,
     current_user: User = Depends(get_current_user),

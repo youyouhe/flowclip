@@ -21,7 +21,7 @@ from app.schemas.processing import (
 
 router = APIRouter(tags=["status"])
 
-@router.get("/videos/{video_id}", response_model=VideoProcessingStatusResponse)
+@router.get("/videos/{video_id}", response_model=VideoProcessingStatusResponse, operation_id="get_video_status")
 async def get_video_processing_status(
     video_id: int,
     current_user: User = Depends(get_current_user),
@@ -84,7 +84,7 @@ async def get_video_processing_status(
         "overall_status": overall_status or {}
     }
 
-@router.get("/tasks/{task_id}", response_model=ProcessingTaskResponse)
+@router.get("/tasks/{task_id}", response_model=ProcessingTaskResponse, operation_id="get_task_status_detail")
 async def get_processing_task(
     task_id: int,
     current_user: User = Depends(get_current_user),
@@ -289,7 +289,7 @@ async def get_video_status_summary(
         "last_error": status_record.last_error
     }
 
-@router.get("/dashboard")
+@router.get("/dashboard", operation_id="get_dashboard")
 async def get_dashboard_stats(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
@@ -399,7 +399,7 @@ async def get_dashboard_stats(
         "recent_activities": recent_activities
     }
 
-@router.get("/videos/running", response_model=List[int])
+@router.get("/videos/running", response_model=List[int], operation_id="get_running_videos")
 async def get_running_video_ids(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)

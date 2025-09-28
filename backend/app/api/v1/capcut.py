@@ -536,7 +536,7 @@ capcut_service = CapCutServiceAPI()
         404: {"description": "切片不存在"},
         500: {"description": "服务器内部错误"}
     }
-)
+, operation_id="export_slice")
 async def export_slice_to_capcut(
     slice_id: int,
     request: ExportSliceRequest,
@@ -700,7 +700,7 @@ async def proxy_minio_resource(resource_path: str):
         },
         503: {"description": "服务不可用"}
     }
-)
+, operation_id="capcut_status")
 async def get_capcut_status():
     """
     获取CapCut服务状态

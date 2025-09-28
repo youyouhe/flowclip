@@ -58,7 +58,7 @@ class Token(BaseModel):
             }
         }
 
-@router.post("/register", response_model=UserResponse, summary="用户注册", description="注册新用户账户")
+@router.post("/register", response_model=UserResponse, summary="用户注册", description="注册新用户账户", operation_id="register")
 async def register(user_data: UserCreate, db: AsyncSession = Depends(get_db)):
     """注册新用户
     
@@ -111,7 +111,7 @@ async def register(user_data: UserCreate, db: AsyncSession = Depends(get_db)):
     
     return user
 
-@router.post("/login", response_model=Token, summary="用户登录", description="使用用户名和密码登录系统")
+@router.post("/login", response_model=Token, summary="用户登录", description="使用用户名和密码登录系统", operation_id="login")
 async def login(login_data: UserLogin, db: AsyncSession = Depends(get_db)):
     """用户登录
     
@@ -153,7 +153,7 @@ async def login(login_data: UserLogin, db: AsyncSession = Depends(get_db)):
     access_token = create_access_token(data={"sub": str(user.id)})
     return {"access_token": access_token, "token_type": "bearer"}
 
-@router.get("/me", response_model=UserResponse, summary="获取当前用户信息", description="获取当前已认证用户的信息")
+@router.get("/me", response_model=UserResponse, summary="获取当前用户信息", description="获取当前已认证用户的信息", operation_id="get_current_user")
 async def get_current_user_info(current_user: User = Depends(get_current_user)):
     """获取当前用户信息
     

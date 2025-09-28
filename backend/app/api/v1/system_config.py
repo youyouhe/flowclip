@@ -34,7 +34,7 @@ class ConfigResponse(BaseModel):
     category: str = ""
     default: str = ""
 
-@router.get("/system-config", response_model=List[ConfigResponse])
+@router.get("/system-config", response_model=List[ConfigResponse], operation_id="get_system_config")
 async def get_system_configs(
     db: Session = Depends(get_db),
     current_user = Depends(get_current_active_user)
@@ -61,7 +61,7 @@ async def get_system_configs(
     
     return result
 
-@router.post("/system-config", response_model=ConfigItem)
+@router.post("/system-config", response_model=ConfigItem, operation_id="update_system_config")
 async def update_system_config(
     config: ConfigItem,
     db: Session = Depends(get_db),
@@ -160,7 +160,7 @@ async def reload_system_configs(
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-@router.get("/system-config/service-status/{service_name}", response_model=ServiceStatus)
+@router.get("/system-config/service-status/{service_name}", response_model=ServiceStatus, operation_id="service_status")
 async def check_service_status(
     service_name: str,
     db: Session = Depends(get_db),
@@ -413,7 +413,7 @@ class AsrTestResponse(BaseModel):
     error: Optional[str] = None
 
 
-@router.post("/test-asr", response_model=AsrTestResponse)
+@router.post("/test-asr", response_model=AsrTestResponse, operation_id="test_asr")
 async def test_asr_service(
     file: UploadFile = File(...),
     model_type: str = Form("whisper"),

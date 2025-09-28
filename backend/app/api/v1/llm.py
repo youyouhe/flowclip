@@ -66,7 +66,7 @@ class SystemPromptResponse(BaseModel):
         404: {"description": "视频未找到"},
         500: {"description": "服务器内部错误"}
     }
-)
+, operation_id="llm_chat")
 async def chat_with_llm(
     request: ChatRequest,
     current_user: User = Depends(get_current_user),
@@ -236,7 +236,7 @@ async def chat_with_llm(
         },
         500: {"description": "服务器内部错误"}
     }
-)
+, operation_id="update_system_prompt")
 async def update_system_prompt(
     request: SystemPromptRequest,
     current_user: User = Depends(get_current_user)
@@ -290,7 +290,7 @@ async def update_system_prompt(
         },
         500: {"description": "服务器内部错误"}
     }
-)
+, operation_id="get_system_prompt")
 async def get_current_system_prompt():
     """
     获取当前系统提示词
@@ -341,7 +341,7 @@ async def get_current_system_prompt():
         },
         500: {"description": "服务器内部错误"}
     }
-)
+, operation_id="get_models")
 async def get_available_models():
     """
     获取可用的模型列表

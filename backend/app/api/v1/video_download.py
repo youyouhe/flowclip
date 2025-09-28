@@ -101,7 +101,7 @@ async def download_video_task(
                 logger.warning(f"清理cookie文件失败: {cleanup_error}")
 
 
-@router.post("/download", response_model=VideoResponse, summary="下载YouTube视频", description="下载指定URL的YouTube视频到项目中")
+@router.post("/download", response_model=VideoResponse, summary="下载YouTube视频", description="下载指定URL的YouTube视频到项目中", operation_id="download_video")
 async def download_video(
     url: str = Form(..., description="YouTube视频URL"),
     project_id: int = Form(..., description="目标项目ID"),
@@ -287,7 +287,7 @@ async def download_video(
     return video_dict
 
 
-@router.get("/{video_id}/download-url")
+@router.get("/{video_id}/download-url", operation_id="get_video_download_url")
 async def get_video_download_url(
     video_id: int,
     expiry: int = 3600,

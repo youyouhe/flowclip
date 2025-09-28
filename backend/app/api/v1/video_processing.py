@@ -17,7 +17,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-@router.post("/{video_id}/extract-audio", summary="提取视频音频", description="从指定视频中提取音频文件")
+@router.post("/{video_id}/extract-audio", summary="提取视频音频", description="从指定视频中提取音频文件", operation_id="extract_audio")
 async def extract_audio_endpoint(
     video_id: int,
     current_user: User = Depends(get_current_user),
@@ -115,7 +115,7 @@ async def extract_audio_endpoint(
     return response_data
 
 
-@router.post("/{video_id}/generate-srt", summary="生成SRT字幕文件", description="为指定视频生成SRT字幕文件")
+@router.post("/{video_id}/generate-srt", summary="生成SRT字幕文件", description="为指定视频生成SRT字幕文件", operation_id="generate_srt")
 async def generate_srt_endpoint(
     video_id: int,
     current_user: User = Depends(get_current_user),
@@ -193,7 +193,7 @@ async def generate_srt_endpoint(
     }
 
 
-@router.get("/{video_id}/task-status/{task_id}")
+@router.get("/{video_id}/task-status/{task_id}", operation_id="get_task_status")
 async def get_task_status(
     video_id: int,
     task_id: str,
@@ -266,7 +266,7 @@ async def get_task_status(
     }
 
 
-@router.get("/{video_id}/processing-status")
+@router.get("/{video_id}/processing-status", operation_id="get_processing_status")
 async def get_video_processing_status(
     video_id: int,
     current_user: User = Depends(get_current_user),

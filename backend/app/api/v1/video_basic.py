@@ -18,7 +18,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-@router.get("/active", response_model=List[VideoResponse], summary="获取活动视频列表", description="获取当前用户所有非完成状态的视频")
+@router.get("/active", response_model=List[VideoResponse], summary="获取活动视频列表", description="获取当前用户所有非完成状态的视频", operation_id="list_active_videos")
 async def get_active_videos(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
@@ -102,7 +102,7 @@ async def get_active_videos(
     return videos
 
 
-@router.get("/", response_model=PaginatedVideoResponse, summary="获取视频列表", description="获取当前用户的所有视频，支持多种筛选和分页功能")
+@router.get("/", response_model=PaginatedVideoResponse, summary="获取视频列表", description="获取当前用户的所有视频，支持多种筛选和分页功能", operation_id="list_videos")
 async def get_videos(
     project_id: Optional[int] = Query(None, description="项目ID筛选"),
     status: Optional[str] = Query(None, description="视频状态筛选 (pending, downloading, downloaded, processing, completed, failed)"),
@@ -321,7 +321,7 @@ async def get_videos(
     }
 
 
-@router.get("/{video_id}", response_model=VideoResponse)
+@router.get("/{video_id}", response_model=VideoResponse, operation_id="get_video")
 async def get_video(
     video_id: int,
     current_user: User = Depends(get_current_user),
@@ -363,7 +363,7 @@ async def get_video(
     return video_dict
 
 
-@router.delete("/{video_id}")
+@router.delete("/{video_id}", operation_id="delete_video")
 async def delete_video(
     video_id: int,
     current_user: User = Depends(get_current_user),
@@ -446,7 +446,7 @@ async def delete_video(
     return {"message": "Video and all related files deleted successfully"}
 
 
-@router.put("/{video_id}", response_model=VideoResponse)
+@router.put("/{video_id}", response_model=VideoResponse, operation_id="update_video")
 async def update_video(
     video_id: int,
     video_update: VideoResponse,  # 注意：这里应该是VideoUpdate而不是VideoResponse
