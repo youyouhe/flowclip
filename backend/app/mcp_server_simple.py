@@ -31,6 +31,8 @@ def setup_mcp_operation_ids(app):
         
         # 认证相关
         ('POST', '/api/v1/auth/login'): 'login',
+        ('POST', '/api/v1/auth/register'): 'register',
+        ('GET', '/api/v1/auth/me'): 'get_current_user',
         
         # CapCut集成
         ('GET', '/api/v1/capcut/status'): 'capcut_status',
@@ -71,6 +73,7 @@ def setup_mcp_operation_ids(app):
                             route.operation_id = operation_id_map[key]
     
     logger.info(f"已为 {len(operation_id_map)} 个路由设置operation_id")
+    return list(operation_id_map.values())  # 返回所有operation_id用于include_operations
 
 # 定义核心标签，用于过滤MCP工具 - 基于用户筛选
 CORE_TAGS = [
@@ -84,15 +87,16 @@ CORE_TAGS = [
     "video-slice",   # 视频切片
 ]
 
-# 设置所有路由的operation_id
-setup_mcp_operation_ids(app)
+# 设置所有路由的operation_id并获取列表
+ALLOWED_OPERATIONS = setup_mcp_operation_ids(app)
 
-# 创建MCP服务器，只包含核心功能标签
+# 创建MCP服务器，使用精确的操作控制
 mcp = FastApiMCP(
     app,
     name="Flowclip API",
-    description="Flowclip视频处理平台 - 14个精选API工具",
-    include_tags=CORE_TAGS,
+    description="Flowclip视频处理平台 - 精选API工具",
+    include_operations=ALLOWED_OPERATIONS,  # 精确控制包含的操作
+    include_tags=CORE_TAGS,  # 双重保险，也使用标签过滤
     describe_all_responses=False,  # 简化响应描述
     describe_full_response_schema=False,  # 简化响应架构
 )
