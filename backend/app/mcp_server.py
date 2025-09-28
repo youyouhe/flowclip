@@ -86,7 +86,6 @@ CORE_TAGS = [
     "video-slice",   # 视频切片
 ]
 
-# 延迟导入应用以避免循环依赖
 def create_mcp_server():
     """创建MCP服务器"""
     try:
@@ -110,6 +109,9 @@ def create_mcp_server():
         
     except Exception as e:
         logger.error(f"创建MCP服务器失败: {e}")
+        import traceback
+        traceback.print_exc()
+        
         # 如果无法导入完整应用，创建一个简单的测试应用
         logger.info("使用简化测试应用创建MCP服务器")
         
@@ -136,6 +138,9 @@ def create_mcp_server():
 
 # 创建MCP服务器实例  
 mcp = create_mcp_server()
+
+# 导出app以便外部导入
+app = mcp.fastapi if hasattr(mcp, 'fastapi') else None
 
 if __name__ == "__main__":
     # Run the MCP server with HTTP transport
