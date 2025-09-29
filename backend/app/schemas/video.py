@@ -35,6 +35,12 @@ class VideoDownloadRequest(BaseModel):
     url: str
     project_id: int
 
+class VideoDownloadJsonRequest(BaseModel):
+    url: str
+    project_id: int
+    quality: str = "best"
+    cookies_file: Optional[str] = None  # base64编码的cookies内容
+
 class VideoUploadRequest(BaseModel):
     title: str
     description: Optional[str] = None

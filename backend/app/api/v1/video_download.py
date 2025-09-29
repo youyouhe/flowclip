@@ -3,6 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 import uuid
 import os
+import base64
 from app.core.database import get_db
 from app.core.security import get_current_user
 from app.core.config import settings
@@ -10,7 +11,7 @@ from app.models.user import User
 from app.models.video import Video
 from app.models.project import Project
 from app.models.processing_task import ProcessingTask
-from app.schemas.video import VideoResponse, VideoDownloadRequest
+from app.schemas.video import VideoResponse, VideoDownloadRequest, VideoDownloadJsonRequest
 from app.services.youtube_downloader_minio import downloader_minio
 from app.services.minio_client import minio_service
 from app.services.state_manager import get_state_manager
@@ -101,58 +102,15 @@ async def download_video_task(
                 logger.warning(f"清理cookie文件失败: {cleanup_error}")
 
 
-@router.post("/download", response_model=VideoResponse, summary="下载YouTube视频", description="下载指定URL的YouTube视频到项目中", operation_id="download_video")
-async def download_video(
-    url: str = Form(..., description="YouTube视频URL"),
-    project_id: int = Form(..., description="目标项目ID"),
-    quality: str = Form('best', description="视频质量 (best, 720p, 480p等)"),
-    cookies_file: UploadFile = File(None, description="可选的cookies文件，用于访问需要登录的视频"),
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
+async def _process_video_download(
+    url: str,
+    project_id: int,
+    quality: str,
+    cookies_path: str,
+    current_user: User,
+    db: AsyncSession
 ):
-    """下载YouTube视频
-    
-    下载指定URL的YouTube视频到项目中，支持指定视频质量和使用cookies文件访问需要登录的视频。
-    
-    Args:
-        url (str): YouTube视频URL
-        project_id (int): 目标项目ID
-        quality (str): 视频质量，可选值: "best", "720p", "480p"等，默认为"best"
-        cookies_file (UploadFile): 可选的cookies文件，用于访问需要登录的视频
-        current_user (User): 当前认证用户依赖
-        db (AsyncSession): 数据库会话依赖
-    
-    Returns:
-        VideoResponse: 创建的视频信息
-            - id (int): 视频ID
-            - project_id (int): 项目ID
-            - title (str): 视频标题
-            - description (Optional[str]): 视频描述
-            - url (Optional[str]): 视频URL
-            - filename (Optional[str]): 视频文件名
-            - file_path (Optional[str]): 视频文件路径
-            - duration (Optional[float]): 视频时长（秒）
-            - file_size (Optional[int]): 文件大小（字节）
-            - thumbnail_url (Optional[str]): 缩略图URL
-            - status (str): 视频处理状态
-            - download_progress (float): 下载进度（0-100）
-            - created_at (datetime): 创建时间
-            - updated_at (Optional[datetime]): 更新时间
-            - project_name (str): 项目名称
-    
-    Raises:
-        HTTPException:
-            - 400: 无效的视频URL或文件类型
-            - 404: 项目不存在
-            - 422: 请求参数验证失败
-    
-    Examples:
-        下载视频: POST /api/v1/videos/download
-        Form Data:
-        - url: https://www.youtube.com/watch?v=xxxxxx
-        - project_id: 1
-        - quality: 720p
-    """
+    """处理视频下载的核心逻辑"""
     # 验证项目属于当前用户
     stmt = select(Project).where(
         Project.id == project_id,
@@ -165,37 +123,6 @@ async def download_video(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Project not found"
         )
-    
-    # 处理cookie文件
-    cookies_path = None
-    logger.info(f"收到cookie_file: {cookies_file}")
-    
-    if cookies_file:
-        # 保存上传的cookie文件
-        cookies_dir = "/tmp/cookies"
-        os.makedirs(cookies_dir, exist_ok=True)
-        cookies_path = os.path.join(cookies_dir, f"cookies_{current_user.id}_{uuid.uuid4()}.txt")
-        
-        try:
-            content = await cookies_file.read()
-            with open(cookies_path, "wb") as f:
-                f.write(content)
-            logger.info(f"已保存上传的cookie文件到: {cookies_path}, 大小: {len(content)} bytes")
-            
-            # 验证文件是否存在
-            if os.path.exists(cookies_path):
-                logger.info(f"cookie文件验证成功: {cookies_path}")
-            else:
-                logger.error(f"cookie文件保存失败: {cookies_path}")
-                
-        except Exception as e:
-            logger.error(f"保存cookie文件失败: {str(e)}")
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"保存cookie文件失败: {str(e)}"
-            )
-    else:
-        logger.info("未上传cookie文件")
 
     # 获取视频信息
     try:
@@ -285,6 +212,181 @@ async def download_video(
     }
     
     return video_dict
+
+
+@router.post("/download", response_model=VideoResponse, summary="下载YouTube视频", description="下载指定URL的YouTube视频到项目中", operation_id="download_video")
+async def download_video(
+    url: str = Form(..., description="YouTube视频URL"),
+    project_id: int = Form(..., description="目标项目ID"),
+    quality: str = Form('best', description="视频质量 (best, 720p, 480p等)"),
+    cookies_file: UploadFile = File(None, description="可选的cookies文件，用于访问需要登录的视频"),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """下载YouTube视频
+    
+    下载指定URL的YouTube视频到项目中，支持指定视频质量和使用cookies文件访问需要登录的视频。
+    
+    Args:
+        url (str): YouTube视频URL
+        project_id (int): 目标项目ID
+        quality (str): 视频质量，可选值: "best", "720p", "480p"等，默认为"best"
+        cookies_file (UploadFile): 可选的cookies文件，用于访问需要登录的视频
+        current_user (User): 当前认证用户依赖
+        db (AsyncSession): 数据库会话依赖
+    
+    Returns:
+        VideoResponse: 创建的视频信息
+            - id (int): 视频ID
+            - project_id (int): 项目ID
+            - title (str): 视频标题
+            - description (Optional[str]): 视频描述
+            - url (Optional[str]): 视频URL
+            - filename (Optional[str]): 视频文件名
+            - file_path (Optional[str]): 视频文件路径
+            - duration (Optional[float]): 视频时长（秒）
+            - file_size (Optional[int]): 文件大小（字节）
+            - thumbnail_url (Optional[str]): 缩略图URL
+            - status (str): 视频处理状态
+            - download_progress (float): 下载进度（0-100）
+            - created_at (datetime): 创建时间
+            - updated_at (Optional[datetime]): 更新时间
+            - project_name (str): 项目名称
+    
+    Raises:
+        HTTPException:
+            - 400: 无效的视频URL或文件类型
+            - 404: 项目不存在
+            - 422: 请求参数验证失败
+    
+    Examples:
+        下载视频: POST /api/v1/videos/download
+        Form Data:
+        - url: https://www.youtube.com/watch?v=xxxxxx
+        - project_id: 1
+        - quality: 720p
+    """
+    # 处理cookie文件
+    cookies_path = None
+    logger.info(f"收到cookie_file: {cookies_file}")
+    
+    if cookies_file:
+        # 保存上传的cookie文件
+        cookies_dir = "/tmp/cookies"
+        os.makedirs(cookies_dir, exist_ok=True)
+        cookies_path = os.path.join(cookies_dir, f"cookies_{current_user.id}_{uuid.uuid4()}.txt")
+        
+        try:
+            content = await cookies_file.read()
+            with open(cookies_path, "wb") as f:
+                f.write(content)
+            logger.info(f"已保存上传的cookie文件到: {cookies_path}, 大小: {len(content)} bytes")
+            
+            # 验证文件是否存在
+            if os.path.exists(cookies_path):
+                logger.info(f"cookie文件验证成功: {cookies_path}")
+            else:
+                logger.error(f"cookie文件保存失败: {cookies_path}")
+                
+        except Exception as e:
+            logger.error(f"保存cookie文件失败: {str(e)}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"保存cookie文件失败: {str(e)}"
+            )
+    else:
+        logger.info("未上传cookie文件")
+
+    # 使用公共函数处理下载
+    return await _process_video_download(url, project_id, quality, cookies_path, current_user, db)
+
+
+@router.post("/download-json", response_model=VideoResponse, summary="下载YouTube视频(JSON)", description="使用JSON格式下载YouTube视频到项目中", operation_id="download_video_json")
+async def download_video_json(
+    request: VideoDownloadJsonRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """下载YouTube视频 (JSON格式)
+    
+    使用JSON格式下载指定URL的YouTube视频到项目中，支持指定视频质量和使用base64编码的cookies文件访问需要登录的视频。
+    
+    Args:
+        request (VideoDownloadJsonRequest): JSON请求体
+            - url (str): YouTube视频URL
+            - project_id (int): 目标项目ID
+            - quality (str): 视频质量，可选值: "best", "720p", "480p"等，默认为"best"
+            - cookies_file (str): 可选的base64编码的cookies文件内容
+        current_user (User): 当前认证用户依赖
+        db (AsyncSession): 数据库会话依赖
+    
+    Returns:
+        VideoResponse: 创建的视频信息
+            - id (int): 视频ID
+            - project_id (int): 项目ID
+            - title (str): 视频标题
+            - description (Optional[str]): 视频描述
+            - url (Optional[str]): 视频URL
+            - filename (Optional[str]): 视频文件名
+            - file_path (Optional[str]): 视频文件路径
+            - duration (Optional[float]): 视频时长（秒）
+            - file_size (Optional[int]): 文件大小（字节）
+            - thumbnail_url (Optional[str]): 缩略图URL
+            - status (str): 视频处理状态
+            - download_progress (float): 下载进度（0-100）
+            - created_at (datetime): 创建时间
+            - updated_at (Optional[datetime]): 更新时间
+            - project_name (str): 项目名称
+    
+    Raises:
+        HTTPException:
+            - 400: 无效的视频URL、cookies格式或文件类型
+            - 404: 项目不存在
+            - 422: 请求参数验证失败
+    
+    Examples:
+        下载视频: POST /api/v1/videos/download-json
+        JSON Body:
+        {
+            "url": "https://www.youtube.com/watch?v=xxxxxx",
+            "project_id": 1,
+            "quality": "720p",
+            "cookies_file": "base64_encoded_cookies_content"
+        }
+    """
+    # 处理base64编码的cookies
+    cookies_path = None
+    logger.info(f"收到JSON请求 - URL: {request.url}, Project ID: {request.project_id}, Quality: {request.quality}")
+    
+    if request.cookies_file:
+        cookies_dir = "/tmp/cookies"
+        os.makedirs(cookies_dir, exist_ok=True)
+        cookies_path = os.path.join(cookies_dir, f"cookies_{current_user.id}_{uuid.uuid4()}.txt")
+        
+        try:
+            # 解码base64 cookies
+            cookies_data = base64.b64decode(request.cookies_file)
+            with open(cookies_path, "wb") as f:
+                f.write(cookies_data)
+            logger.info(f"已保存base64编码的cookie文件到: {cookies_path}, 大小: {len(cookies_data)} bytes")
+            
+            # 验证文件是否存在
+            if os.path.exists(cookies_path):
+                logger.info(f"cookie文件验证成功: {cookies_path}")
+            else:
+                logger.error(f"cookie文件保存失败: {cookies_path}")
+                
+        except Exception as e:
+            logger.error(f"处理base64 cookies失败: {str(e)}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"处理cookies失败: {str(e)}"
+            )
+    else:
+        logger.info("未提供cookies文件")
+
+    # 使用公共函数处理下载
+    return await _process_video_download(request.url, request.project_id, request.quality, cookies_path, current_user, db)
 
 
 @router.get("/{video_id}/download-url", operation_id="get_video_download_url")
