@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Form
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -6,7 +6,7 @@ from app.core.database import get_db
 from app.models.user import User
 from app.core.security import create_access_token, verify_password, get_password_hash, get_current_user
 from pydantic import BaseModel, EmailStr
-from typing import Optional
+from typing import Optional, Union
 
 router = APIRouter()
 
@@ -112,44 +112,64 @@ async def register(user_data: UserCreate, db: AsyncSession = Depends(get_db)):
     return user
 
 @router.post("/login", response_model=Token, summary="用户登录", description="使用用户名和密码登录系统", operation_id="login")
-async def login(login_data: UserLogin, db: AsyncSession = Depends(get_db)):
+async def login(
+    login_data: Optional[UserLogin] = None,
+    username: Optional[str] = Form(None),
+    password: Optional[str] = Form(None),
+    db: AsyncSession = Depends(get_db)
+):
     """用户登录
-    
-    使用用户名和密码进行身份验证并获取访问令牌。
-    
+
+    使用用户名和密码进行身份验证并获取访问令牌。支持JSON和表单两种格式。
+
     Args:
-        login_data (UserLogin): 登录数据
-            - username (str): 用户名
-            - password (str): 用户密码
+        login_data (Optional[UserLogin]): JSON格式的登录数据
+        username (Optional[str]): 表单格式的用户名
+        password (Optional[str]): 表单格式的密码
         db (AsyncSession): 数据库会话依赖
-    
+
     Returns:
         Token: 包含访问令牌和令牌类型的响应
             - access_token (str): JWT访问令牌
             - token_type (str): 令牌类型，通常为"bearer"
-    
+
     Raises:
         HTTPException:
             - 401: 用户名或密码错误
-            - 400: 用户账户已被禁用
+            - 400: 用户账户已被禁用或请求数据无效
     """
-    stmt = select(User).where(User.username == login_data.username)
+    # 处理JSON格式和表单格式数据
+    if login_data:
+        # JSON格式数据
+        username_val = login_data.username
+        password_val = login_data.password
+    elif username and password:
+        # 表单格式数据
+        username_val = username
+        password_val = password
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid request format. Provide username and password as JSON or form data."
+        )
+
+    stmt = select(User).where(User.username == username_val)
     result = await db.execute(stmt)
     user = result.scalar_one_or_none()
-    
-    if not user or not verify_password(login_data.password, user.hashed_password):
+
+    if not user or not verify_password(password_val, user.hashed_password):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect username or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    
+
     if not user.is_active:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Inactive user"
         )
-    
+
     access_token = create_access_token(data={"sub": str(user.id)})
     return {"access_token": access_token, "token_type": "bearer"}
 
