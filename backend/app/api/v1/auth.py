@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Form
+from fastapi import APIRouter, Depends, HTTPException, status, Form, Request
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -113,9 +113,7 @@ async def register(user_data: UserCreate, db: AsyncSession = Depends(get_db)):
 
 @router.post("/login", response_model=Token, summary="用户登录", description="使用用户名和密码登录系统", operation_id="login")
 async def login(
-    login_data: Optional[UserLogin] = None,
-    username: Optional[str] = Form(None),
-    password: Optional[str] = Form(None),
+    request: Request,
     db: AsyncSession = Depends(get_db)
 ):
     """用户登录
@@ -123,9 +121,7 @@ async def login(
     使用用户名和密码进行身份验证并获取访问令牌。支持JSON和表单两种格式。
 
     Args:
-        login_data (Optional[UserLogin]): JSON格式的登录数据
-        username (Optional[str]): 表单格式的用户名
-        password (Optional[str]): 表单格式的密码
+        request (Request): HTTP请求对象
         db (AsyncSession): 数据库会话依赖
 
     Returns:
@@ -138,19 +134,48 @@ async def login(
             - 401: 用户名或密码错误
             - 400: 用户账户已被禁用或请求数据无效
     """
-    # 处理JSON格式和表单格式数据
-    if login_data:
-        # JSON格式数据
-        username_val = login_data.username
-        password_val = login_data.password
-    elif username and password:
-        # 表单格式数据
-        username_val = username
-        password_val = password
-    else:
+    # 获取Content-Type
+    content_type = request.headers.get("content-type", "").lower()
+
+    username_val = None
+    password_val = None
+
+    try:
+        if "application/json" in content_type:
+            # 处理JSON格式
+            body = await request.json()
+            username_val = body.get("username")
+            password_val = body.get("password")
+        elif "application/x-www-form-urlencoded" in content_type:
+            # 处理表单格式
+            form = await request.form()
+            username_val = form.get("username")
+            password_val = form.get("password")
+        else:
+            # 尝试JSON格式作为默认值
+            try:
+                body = await request.json()
+                username_val = body.get("username")
+                password_val = body.get("password")
+            except Exception:
+                # 如果JSON解析失败，尝试表单格式
+                try:
+                    form = await request.form()
+                    username_val = form.get("username")
+                    password_val = form.get("password")
+                except Exception:
+                    pass
+    except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid request format. Provide username and password as JSON or form data."
+            detail=f"Failed to parse request body: {str(e)}"
+        )
+
+    # 验证必要字段
+    if not username_val or not password_val:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Username and password are required. Provide them as JSON or form data."
         )
 
     stmt = select(User).where(User.username == username_val)

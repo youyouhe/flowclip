@@ -27,7 +27,10 @@ async def test_json_login():
             ) as response:
                 result = await response.json()
                 print(f"✅ JSON登录 - 状态码: {response.status}")
-                print(f"   响应: {result}")
+                if response.status == 200:
+                    print(f"   获取到token: {result.get('access_token', 'N/A')[:20]}...")
+                else:
+                    print(f"   响应: {result}")
                 return response.status == 200
         except Exception as e:
             print(f"❌ JSON登录失败: {e}")
@@ -51,10 +54,45 @@ async def test_form_login():
             ) as response:
                 result = await response.json()
                 print(f"✅ 表单登录 - 状态码: {response.status}")
-                print(f"   响应: {result}")
+                if response.status == 200:
+                    print(f"   获取到token: {result.get('access_token', 'N/A')[:20]}...")
+                else:
+                    print(f"   响应: {result}")
                 return response.status == 200
         except Exception as e:
             print(f"❌ 表单登录失败: {e}")
+            return False
+
+async def test_frontend_like_request():
+    """测试模拟前端请求格式的登录"""
+    print("\n🔍 测试模拟前端请求格式...")
+
+    async with aiohttp.ClientSession() as session:
+        data = {
+            "username": "test_user",
+            "password": "test_password"
+        }
+
+        try:
+            # 完全模拟前端的请求方式
+            async with session.post(
+                f"{BASE_URL}/api/v1/auth/login",
+                json=data,  # 这和前端axios.post的方式一致
+                headers={
+                    "Content-Type": "application/json",
+                    "Accept": "application/json"
+                }
+            ) as response:
+                result = await response.json()
+                print(f"✅ 前端格式登录 - 状态码: {response.status}")
+                if response.status == 200:
+                    print(f"   获取到token: {result.get('access_token', 'N/A')[:20]}...")
+                    print(f"   token类型: {result.get('token_type', 'N/A')}")
+                else:
+                    print(f"   响应: {result}")
+                return response.status == 200
+        except Exception as e:
+            print(f"❌ 前端格式登录失败: {e}")
             return False
 
 async def test_invalid_request():
@@ -100,6 +138,7 @@ async def main():
     results = []
     results.append(await test_json_login())
     results.append(await test_form_login())
+    results.append(await test_frontend_like_request())
     results.append(await test_invalid_request())
 
     print("\n" + "=" * 50)
