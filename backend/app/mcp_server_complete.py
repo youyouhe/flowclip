@@ -97,8 +97,8 @@ mcp = FastApiMCP(
     name="Flowclip API",
     description="Flowclip视频处理平台 - 39个精选工具，所有工具名称都已优化",
     include_operations=ALLOWED_OPERATIONS,  # 包含所有39个已修复的操作
-    describe_all_responses=False,
-    describe_full_response_schema=False,
+    describe_all_responses=True,
+    describe_full_response_schema=True,
 )
 
 logger.info(f"🎉 完整MCP服务器创建完成！")
