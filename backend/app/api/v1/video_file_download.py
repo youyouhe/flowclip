@@ -312,7 +312,7 @@ async def download_srt_direct(
         )
 
 
-@router.get("/{video_id}/srt-content")
+@router.get("/{video_id}/srt-content", summary="获取SRT字幕文件内容", description="获取指定视频SRT字幕文件的内容", operation_id="get_srt_content")
 async def get_srt_content(
     video_id: int,
     current_user: User = Depends(get_current_user),

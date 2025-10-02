@@ -18,7 +18,7 @@ from app.main import app
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# 所有已经设置了operation_id的操作 - 37个精选工具
+# 所有已经设置了operation_id的操作 - 38个精选工具
 ALLOWED_OPERATIONS = [
     # ASR服务 (1个)
     'asr_status',
@@ -74,10 +74,11 @@ ALLOWED_OPERATIONS = [
     'update_video',
     'delete_video',
     
-    # 视频下载 (3个)
+    # 视频下载 (4个)
     'download_video',
     'download_video_json',
     'get_video_download_url',
+    'get_srt_content',
     
     # 状态查询 (4个)
     'get_video_status',
@@ -94,8 +95,8 @@ ALLOWED_OPERATIONS = [
 mcp = FastApiMCP(
     app,
     name="Flowclip API",
-    description="Flowclip视频处理平台 - 38个精选工具，所有工具名称都已优化",
-    include_operations=ALLOWED_OPERATIONS,  # 包含所有38个已修复的操作
+    description="Flowclip视频处理平台 - 39个精选工具，所有工具名称都已优化",
+    include_operations=ALLOWED_OPERATIONS,  # 包含所有39个已修复的操作
     describe_all_responses=False,
     describe_full_response_schema=False,
 )
@@ -115,7 +116,7 @@ categories = {
     '视频处理': ['extract_audio', 'generate_srt', 'get_task_status', 'get_processing_status'],
     '系统配置': ['get_system_config', 'update_system_config', 'service_status', 'test_asr'],
     '视频管理': ['list_videos', 'list_active_videos', 'get_video', 'update_video', 'delete_video'],
-    '视频下载': ['download_video', 'download_video_json', 'get_video_download_url'],
+    '视频下载': ['download_video', 'download_video_json', 'get_video_download_url', 'get_srt_content'],
     '状态查询': ['get_video_status', 'get_task_status_detail', 'get_dashboard', 'get_running_videos'],
     '视频切片': ['validate_slices', 'process_slices']
 }
