@@ -169,6 +169,9 @@ def process_audio_file(file_path, api_url, index, lang="auto", retry_count=3, re
     if asr_api_key:
         session.headers.update({'X-API-Key': asr_api_key})
 
+    # 添加ngrok绕过头
+    session.headers.update({'ngrok-skip-browser-warning': 'true'})
+
     # 设置重试策略 - 针对大文件上传优化
     from requests.adapters import HTTPAdapter
     from urllib3.util.retry import Retry
