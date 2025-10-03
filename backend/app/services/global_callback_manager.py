@@ -90,9 +90,13 @@ class GlobalCallbackManager:
                 if not old_future.done():
                     old_future.cancel()
 
-            # 创建新的Future
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
+            # 创建新的Future - 使用当前事件循环
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                # 如果没有运行中的loop，创建新的
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
             future = loop.create_future()
 
             self._task_registry[task_id] = future
