@@ -138,7 +138,7 @@ services:
     container_name: flowclip-celery
     command: python start_celery.py worker --loglevel=info --concurrency=5
     ports:
-      - "9100-9200:9100-9200"  # 暴露端口范围用于TUS回调服务器
+      - "9090:9090"  # 固定端口用于全局TUS回调服务器
     environment:
       - DATABASE_URL=mysql+aiomysql://youtube_user:youtube_password@mysql:3306/youtube_slicer?charset=utf8mb4
       - REDIS_URL=redis://redis:6379
