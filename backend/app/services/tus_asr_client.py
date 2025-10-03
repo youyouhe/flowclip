@@ -950,15 +950,15 @@ class TusASRClient:
                     logger.info(f"轮询任务状态: {url}")
 
                     async with session.get(url, headers=headers, timeout=aiohttp.ClientTimeout(total=10)) as response:
-                    logger.info(f"任务状态API响应状态码: {response.status}")
-                    if response.status == 200:
-                        result = await response.json()
-                        logger.info(f"任务状态响应: {json.dumps(result, indent=2)}")
-                        return result
-                    else:
-                        error_text = await response.text()
-                        logger.warning(f"状态API返回状态码: {response.status}, 响应: {error_text}")
-                        return {"status": "unknown"}
+                        logger.info(f"任务状态API响应状态码: {response.status}")
+                        if response.status == 200:
+                            result = await response.json()
+                            logger.info(f"任务状态响应: {json.dumps(result, indent=2)}")
+                            return result
+                        else:
+                            error_text = await response.text()
+                            logger.warning(f"状态API返回状态码: {response.status}, 响应: {error_text}")
+                            return {"status": "unknown"}
 
         except Exception as e:
             logger.error(f"获取任务状态失败: {e}", exc_info=True)
@@ -970,16 +970,16 @@ class TusASRClient:
             logger.info(f"下载SRT内容: {srt_url}")
 
             # 创建会话并添加认证头
-                headers = {}
-                # 添加认证头 - 支持从数据库配置读取
-                if hasattr(settings, 'asr_api_key') and settings.asr_api_key:
-                    headers['X-API-Key'] = settings.asr_api_key
+            headers = {}
+            # 添加认证头 - 支持从数据库配置读取
+            if hasattr(settings, 'asr_api_key') and settings.asr_api_key:
+                headers['X-API-Key'] = settings.asr_api_key
 
-                # 添加ngrok绕过头
-                headers['ngrok-skip-browser-warning'] = 'true'
+            # 添加ngrok绕过头
+            headers['ngrok-skip-browser-warning'] = 'true'
 
-                async with aiohttp.ClientSession() as session:
-                    async with session.get(srt_url, headers=headers, timeout=aiohttp.ClientTimeout(total=60)) as response:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(srt_url, headers=headers, timeout=aiohttp.ClientTimeout(total=60)) as response:
                     logger.info(f"SRT下载响应状态码: {response.status}")
 
                     if response.status != 200:
