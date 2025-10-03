@@ -283,7 +283,7 @@ class SystemConfigService:
             # 其他服务配置
             {"key": "asr_service_url", "label": "ASR服务URL", "category": "其他服务配置", "default": settings.asr_service_url},
             {"key": "asr_model_type", "label": "ASR模型类型", "category": "其他服务配置", "default": getattr(settings, 'asr_model_type', 'whisper'), "description": "选择ASR模型类型：whisper 或 sense"},
-            {"key": "asr_api_key", "label": "ASR API密钥", "category": "其他服务配置", "default": getattr(settings, 'asr_api_key', ''), "sensitive": True, "description": "ASR服务的API密钥，用于认证"},
+            {"key": "asr_api_key", "label": "ASR API密钥", "category": "其他服务配置", "default": getattr(settings, 'asr_api_key', '') or '', "sensitive": True, "description": "ASR服务的API密钥，用于认证"},
             {"key": "capcut_api_url", "label": "CapCut API URL", "category": "其他服务配置", "default": settings.capcut_api_url},
             {"key": "capcut_api_key", "label": "CapCut API密钥", "category": "其他服务配置", "default": settings.capcut_api_key or "", "sensitive": True, "description": "CapCut服务的API密钥"},
             {"key": "capcut_draft_folder", "label": "CapCut草稿文件夹路径", "category": "其他服务配置", "default": settings.capcut_draft_folder or "", "description": "CapCut草稿文件夹的完整路径"},
