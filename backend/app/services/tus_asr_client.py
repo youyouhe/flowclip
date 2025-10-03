@@ -620,6 +620,13 @@ class TusASRClient:
             'Upload-Metadata': ', '.join(metadata_parts)
         }
 
+        # 添加认证头 - 支持从数据库配置读取
+        if hasattr(settings, 'asr_api_key') and settings.asr_api_key:
+            headers['X-API-Key'] = settings.asr_api_key
+
+        # 添加ngrok绕过头
+        headers['ngrok-skip-browser-warning'] = 'true'
+
         # 添加重试机制
         last_error = None
         for attempt in range(3):  # 最多重试3次
@@ -691,6 +698,13 @@ class TusASRClient:
                             'Upload-Offset': str(offset),
                             'Content-Type': 'application/offset+octet-stream'
                         }
+
+                        # 添加认证头 - 支持从数据库配置读取
+                        if hasattr(settings, 'asr_api_key') and settings.asr_api_key:
+                            headers['X-API-Key'] = settings.asr_api_key
+
+                        # 添加ngrok绕过头
+                        headers['ngrok-skip-browser-warning'] = 'true'
 
                         url = f"{self.tus_url}/files/{upload_id}"
                         logger.info(f"上传数据块: offset={offset}, size={len(chunk)}, 进度 {offset/file_size*100:.1f}%")
