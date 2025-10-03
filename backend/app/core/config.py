@@ -50,6 +50,7 @@ class Settings(BaseSettings):
     # ASR Service Configuration
     asr_service_url: str = "http://192.168.8.107:5001"
     asr_model_type: str = "whisper"
+    asr_api_key: Optional[str] = None
 
     # TUS Configuration
     tus_api_url: str = "http://localhost:8000"  # TUS ASR API服务器URL

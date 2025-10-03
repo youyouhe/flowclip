@@ -526,9 +526,16 @@ class TusASRClient:
 
                 async with aiohttp.ClientSession() as session:
                     logger.info("创建aiohttp客户端会话")
-                    async with session.post(
+                    # 添加认证头 - 支持从数据库配置读取
+                headers = {}
+                # 优先从数据库配置读取，如果没有则使用环境变量
+                if hasattr(settings, 'asr_api_key') and settings.asr_api_key:
+                    headers['X-API-Key'] = settings.asr_api_key
+
+                async with session.post(
                         f"{self.api_url}/api/v1/asr-tasks",
                         json=payload,
+                        headers=headers,
                         timeout=aiohttp.ClientTimeout(total=30)
                     ) as response:
                         logger.info(f"API响应状态码: {response.status}")

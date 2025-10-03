@@ -155,6 +155,20 @@ def process_audio_file(file_path, api_url, index, lang="auto", retry_count=3, re
     # 创建优化的requests session
     session = requests.Session()
 
+    # 添加认证头 - 支持从数据库配置读取
+    import os
+    # 优先从环境变量读取，如果没有则尝试从配置文件读取
+    asr_api_key = os.getenv('ASR_API_KEY')
+    if not asr_api_key:
+        try:
+            from app.core.config import settings
+            asr_api_key = getattr(settings, 'asr_api_key', None)
+        except:
+            asr_api_key = None
+
+    if asr_api_key:
+        session.headers.update({'X-API-Key': asr_api_key})
+
     # 设置重试策略 - 针对大文件上传优化
     from requests.adapters import HTTPAdapter
     from urllib3.util.retry import Retry
