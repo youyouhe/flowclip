@@ -156,7 +156,6 @@ def process_audio_file(file_path, api_url, index, lang="auto", retry_count=3, re
     session = requests.Session()
 
     # 添加认证头 - 支持从数据库配置读取
-    import os
     # 优先从环境变量读取，如果没有则尝试从配置文件读取
     asr_api_key = os.getenv('ASR_API_KEY')
     if not asr_api_key:
