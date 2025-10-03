@@ -936,11 +936,20 @@ class TusASRClient:
     async def _get_task_status(self, task_id: str) -> Dict[str, Any]:
         """获取任务状态"""
         try:
-            async with aiohttp.ClientSession() as session:
-                url = f"{self.api_url}/api/v1/asr-tasks/{task_id}/status"
-                logger.info(f"轮询任务状态: {url}")
+            # 创建会话并添加认证头
+                headers = {}
+                # 添加认证头 - 支持从数据库配置读取
+                if hasattr(settings, 'asr_api_key') and settings.asr_api_key:
+                    headers['X-API-Key'] = settings.asr_api_key
 
-                async with session.get(url, timeout=aiohttp.ClientTimeout(total=10)) as response:
+                # 添加ngrok绕过头
+                headers['ngrok-skip-browser-warning'] = 'true'
+
+                async with aiohttp.ClientSession() as session:
+                    url = f"{self.api_url}/api/v1/asr-tasks/{task_id}/status"
+                    logger.info(f"轮询任务状态: {url}")
+
+                    async with session.get(url, headers=headers, timeout=aiohttp.ClientTimeout(total=10)) as response:
                     logger.info(f"任务状态API响应状态码: {response.status}")
                     if response.status == 200:
                         result = await response.json()
@@ -960,8 +969,17 @@ class TusASRClient:
         try:
             logger.info(f"下载SRT内容: {srt_url}")
 
-            async with aiohttp.ClientSession() as session:
-                async with session.get(srt_url, timeout=aiohttp.ClientTimeout(total=60)) as response:
+            # 创建会话并添加认证头
+                headers = {}
+                # 添加认证头 - 支持从数据库配置读取
+                if hasattr(settings, 'asr_api_key') and settings.asr_api_key:
+                    headers['X-API-Key'] = settings.asr_api_key
+
+                # 添加ngrok绕过头
+                headers['ngrok-skip-browser-warning'] = 'true'
+
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(srt_url, headers=headers, timeout=aiohttp.ClientTimeout(total=60)) as response:
                     logger.info(f"SRT下载响应状态码: {response.status}")
 
                     if response.status != 200:
