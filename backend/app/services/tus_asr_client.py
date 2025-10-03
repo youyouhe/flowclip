@@ -17,6 +17,7 @@ from typing import Dict, Any, Optional
 from aiohttp import web
 
 from app.core.config import settings
+from app.services.global_callback_manager import global_callback_manager
 
 logger = logging.getLogger(__name__)
 
@@ -24,9 +25,8 @@ logger = logging.getLogger(__name__)
 class TusASRClient:
     """TUS ASR客户端，为FlowClip系统提供TUS协议支持"""
 
-    # 进程级别回调服务器状态管理
-    _callback_running = False
-    _callback_server_thread = None
+    # 是否使用全局回调服务器
+    _use_global_callback = settings.tus_use_global_callback
 
     @classmethod
     def _process_signal_handler(cls, signum, frame):
@@ -83,21 +83,39 @@ class TusASRClient:
         configured_timeout = timeout_seconds or settings.tus_timeout_seconds
         self.timeout_seconds = min(configured_timeout, 1700)  # 限制在1700秒以内
 
-        # 自动为每个客户端分配不同的端口，避免冲突
-        if callback_port:
-            self.callback_port = callback_port
+        # 回调端口配置 - 支持固定端口模式
+        if self._use_global_callback:
+            # 使用全局回调服务器的固定端口
+            self.callback_port = getattr(settings, 'tus_callback_port', 9090)
+            logger.info(f"使用全局回调服务器模式，固定端口: {self.callback_port}")
         else:
-            self.callback_port = self._get_unique_callback_port()
+            # 传统模式：自动为每个客户端分配不同的端口
+            if callback_port:
+                self.callback_port = callback_port
+            else:
+                self.callback_port = self._get_unique_callback_port()
+            logger.info(f"使用传统动态端口模式，分配端口: {self.callback_port}")
 
         # 然后尝试从数据库动态更新配置（但不覆盖端口）
         self._load_config_from_database_without_port()
 
-        # 内部状态 - 回调服务器的状态在进程级别管理
-        self.completed_tasks = {}
-        self.process_id = os.getpid()  # 记录进程ID用于日志
+        # 内部状态管理
+        if self._use_global_callback:
+            # 全局模式：使用全局管理器
+            self.completed_tasks = {}  # 保留兼容性，但实际不使用
+            self.callback_manager = global_callback_manager
+            self.process_id = os.getpid()  # 记录进程ID用于日志
 
-        # 检查进程级别回调服务器是否已启动
-        TusASRClient._ensure_callback_server_running()
+            # 确保全局回调服务器正在运行
+            self.callback_manager.ensure_server_running()
+            logger.info("全局回调服务器状态检查完成")
+        else:
+            # 传统模式：进程级别管理
+            self.completed_tasks = {}
+            self.process_id = os.getpid()  # 记录进程ID用于日志
+
+            # 检查进程级别回调服务器是否已启动
+            TusASRClient._ensure_callback_server_running()
 
         # 信号处理
         signal.signal(signal.SIGINT, TusASRClient._process_signal_handler)
@@ -233,43 +251,84 @@ class TusASRClient:
         logger.info(f"文件大小: {audio_path.stat().st_size} bytes")
 
         try:
-            # 启动回调服务器
-            logger.info("开始启动回调服务器...")
-            self._start_callback_server()
-            await asyncio.sleep(2.0)  # 等待回调服务器启动（延长等待时间）
+            if self._use_global_callback:
+                # 全局模式：确保全局回调服务器正在运行
+                logger.info("全局模式：确保全局回调服务器正在运行...")
+                self.callback_manager.ensure_server_running()
+                await asyncio.sleep(1.0)  # 等待全局回调服务器启动
 
-            # 验证回调服务器是否启动 - 多次尝试
-            logger.info("开始验证回调服务器启动状态...")
-            port_ready = False
-            for attempt in range(5):
-                try:
-                    import socket
-                    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                    sock.settimeout(1.0)  # 设置超时时间
-                    result = sock.connect_ex(('127.0.0.1', self.callback_port))
-                    sock.close()
+                # 验证全局回调服务器是否启动
+                logger.info("开始验证全局回调服务器启动状态...")
+                port_ready = False
+                for attempt in range(5):
+                    try:
+                        import socket
+                        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                        sock.settimeout(1.0)  # 设置超时时间
+                        result = sock.connect_ex(('127.0.0.1', self.callback_port))
+                        sock.close()
 
-                    if result == 0:
-                        port_ready = True
-                        logger.info(f"✅ 验证成功：回调服务器已在端口 {self.callback_port} 启动并接受连接")
-                        break
-                    else:
-                        logger.warning(f"验证尝试 {attempt + 1}/5：回调服务器可能还未启动或未接受连接，端口 {self.callback_port}，等待重试...")
+                        if result == 0:
+                            port_ready = True
+                            logger.info(f"✅ 验证成功：全局回调服务器已在端口 {self.callback_port} 启动并接受连接")
+                            break
+                        else:
+                            logger.warning(f"验证尝试 {attempt + 1}/5：全局回调服务器可能还未启动或未接受连接，端口 {self.callback_port}，等待重试...")
+                            await asyncio.sleep(2.0)
+                    except Exception as e:
+                        logger.warning(f"验证尝试 {attempt + 1}/5 出错: {e}")
                         await asyncio.sleep(2.0)
-                except Exception as e:
-                    logger.warning(f"验证尝试 {attempt + 1}/5 出错: {e}")
-                    await asyncio.sleep(2.0)
 
-            if not port_ready:
-                logger.error(f"❌ 回调服务器启动验证失败，端口 {self.callback_port} 无法连接")
-                raise RuntimeError(f"回调服务器启动失败，端口 {self.callback_port} 无法访问")
+                if not port_ready:
+                    logger.error(f"❌ 全局回调服务器启动验证失败，端口 {self.callback_port} 无法连接")
+                    raise RuntimeError(f"全局回调服务器启动失败，端口 {self.callback_port} 无法访问")
 
-            # 检查进程级别回调服务器线程是否仍在运行
-            if self.__class__._callback_server_thread and self.__class__._callback_server_thread.is_alive():
-                logger.info("回调服务器线程状态：正在运行")
+                # 检查全局回调服务器状态
+                if self.callback_manager._server_running:
+                    logger.info("全局回调服务器状态：正在运行")
+                    logger.info(f"全局管理器统计: {self.callback_manager.stats}")
+                else:
+                    logger.error("全局回调服务器状态：已停止运行")
+                    raise RuntimeError("全局回调服务器异常停止")
+
             else:
-                logger.error("回调服务器线程状态：已停止运行")
-                raise RuntimeError("回调服务器线程异常停止")
+                # 传统模式：启动本地回调服务器
+                logger.info("传统模式：开始启动本地回调服务器...")
+                self._start_callback_server()
+                await asyncio.sleep(2.0)  # 等待本地回调服务器启动（延长等待时间）
+
+                # 验证本地回调服务器是否启动 - 多次尝试
+                logger.info("开始验证本地回调服务器启动状态...")
+                port_ready = False
+                for attempt in range(5):
+                    try:
+                        import socket
+                        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                        sock.settimeout(1.0)  # 设置超时时间
+                        result = sock.connect_ex(('127.0.0.1', self.callback_port))
+                        sock.close()
+
+                        if result == 0:
+                            port_ready = True
+                            logger.info(f"✅ 验证成功：本地回调服务器已在端口 {self.callback_port} 启动并接受连接")
+                            break
+                        else:
+                            logger.warning(f"验证尝试 {attempt + 1}/5：本地回调服务器可能还未启动或未接受连接，端口 {self.callback_port}，等待重试...")
+                            await asyncio.sleep(2.0)
+                    except Exception as e:
+                        logger.warning(f"验证尝试 {attempt + 1}/5 出错: {e}")
+                        await asyncio.sleep(2.0)
+
+                if not port_ready:
+                    logger.error(f"❌ 本地回调服务器启动验证失败，端口 {self.callback_port} 无法连接")
+                    raise RuntimeError(f"本地回调服务器启动失败，端口 {self.callback_port} 无法访问")
+
+                # 检查进程级别回调服务器线程是否仍在运行
+                if self.__class__._callback_server_thread and self.__class__._callback_server_thread.is_alive():
+                    logger.info("本地回调服务器线程状态：正在运行")
+                else:
+                    logger.error("本地回调服务器线程状态：已停止运行")
+                    raise RuntimeError("本地回调服务器线程异常停止")
 
             # 执行TUS处理流程
             result = await self._execute_tus_pipeline(audio_file_path, metadata or {})
@@ -288,9 +347,15 @@ class TusASRClient:
                 'timestamp': time.time()
             }
             logger.error(f"TUS ASR处理失败详情: {json.dumps(error_info, indent=2)}")
-            # 清理当前任务的completed_tasks
-            if hasattr(self, 'current_task_id') and self.current_task_id in self.completed_tasks:
-                del self.completed_tasks[self.current_task_id]
+            # 清理当前任务
+            if hasattr(self, 'current_task_id'):
+                if self._use_global_callback:
+                    # 全局模式：清理全局管理器中的任务
+                    self.callback_manager.cleanup_task(self.current_task_id)
+                else:
+                    # 传统模式：清理本地任务
+                    if self.current_task_id in self.completed_tasks:
+                        del self.completed_tasks[self.current_task_id]
             raise RuntimeError(f"TUS ASR处理失败: {str(e)}") from e
 
     def _get_unique_callback_port(self) -> int:
@@ -680,32 +745,29 @@ class TusASRClient:
     async def _wait_for_tus_results(self, task_id: str) -> str:
         """等待TUS ASR处理结果"""
         logger.info(f"开始等待TUS结果，任务ID: {task_id}")
-        callback_future = asyncio.Future()
-        self.completed_tasks[task_id] = callback_future
 
         start_time = time.time()
         # 设置一个安全的超时缓冲区，确保在Celery超时之前完成
         safe_timeout = min(self.timeout_seconds, 1700)  # 留出100秒的缓冲时间
 
-        logger.info(f"等待任务 {task_id} 的结果 (超时: {safe_timeout}s)")
-        logger.info(f"任务已注册到完成任务列表，当前任务键: {list(self.completed_tasks.keys())}")
-
         try:
-            # 等待回调或超时
-            check_interval = 1.0  # 每秒检查一次
-            waited_time = 0
+            if self._use_global_callback:
+                # 全局模式：使用全局回调管理器
+                logger.info(f"使用全局回调模式等待任务 {task_id} (超时: {safe_timeout}s)")
+                logger.info(f"全局管理器统计: {self.callback_manager.stats}")
 
-            while waited_time < safe_timeout:
-                # 检查是否被中断
-                if not self.__class__._callback_running:
-                    raise KeyboardInterrupt("用户请求关闭")
+                # 向全局管理器注册任务
+                callback_future = self.callback_manager.register_task(task_id)
 
-                # 检查回调是否完成
-                if callback_future.done():
+                logger.info(f"任务 {task_id} 已向全局管理器注册")
+
+                # 等待回调结果
+                try:
+                    result = await asyncio.wait_for(callback_future, timeout=safe_timeout)
                     logger.info(f"任务 {task_id} 的回调Future已完成")
-                    result = callback_future.result()
                     logger.info(f"回调结果: {result}")
-                    # 如果结果是带有完成信息的字典，下载SRT内容
+
+                    # 处理完成结果
                     if isinstance(result, dict) and result.get('status') == 'completed':
                         task_id = result.get('task_id')
                         srt_url = result.get('srt_url', f"{self.api_url}/api/v1/tasks/{task_id}/download")
@@ -721,15 +783,69 @@ class TusASRClient:
                         logger.info(f"返回非完成状态的结果: {result}")
                         return result
 
-                await asyncio.sleep(check_interval)
-                waited_time += check_interval
+                except asyncio.TimeoutError:
+                    elapsed_time = time.time() - start_time
+                    logger.warning(f"全局回调超时，回退到轮询任务 {task_id} (已等待 {elapsed_time:.1f} 秒)")
+                    # 清理全局管理器中的任务
+                    self.callback_manager.cleanup_task(task_id)
 
-            # 超时处理
+            else:
+                # 传统模式：使用本地回调服务器
+                logger.info(f"使用传统模式等待任务 {task_id} (超时: {safe_timeout}s)")
+                callback_future = asyncio.Future()
+                self.completed_tasks[task_id] = callback_future
+
+                logger.info(f"任务已注册到本地完成任务列表，当前任务键: {list(self.completed_tasks.keys())}")
+
+                # 等待回调或超时
+                check_interval = 1.0  # 每秒检查一次
+                waited_time = 0
+
+                while waited_time < safe_timeout:
+                    # 检查是否被中断
+                    if not self.__class__._callback_running:
+                        raise KeyboardInterrupt("用户请求关闭")
+
+                    # 检查回调是否完成
+                    if callback_future.done():
+                        logger.info(f"任务 {task_id} 的回调Future已完成")
+                        result = callback_future.result()
+                        logger.info(f"回调结果: {result}")
+                        # 如果结果是带有完成信息的字典，下载SRT内容
+                        if isinstance(result, dict) and result.get('status') == 'completed':
+                            task_id = result.get('task_id')
+                            srt_url = result.get('srt_url', f"{self.api_url}/api/v1/tasks/{task_id}/download")
+                            logger.info(f"准备下载SRT内容，URL: {srt_url}")
+                            # 如果srt_url是相对路径（不以http开头），转换为完整URL
+                            if srt_url and not srt_url.startswith('http'):
+                                srt_url = f"{self.api_url}{srt_url}"
+                                logger.info(f"转换后的SRT URL: {srt_url}")
+                            srt_content = await self._download_srt_content(srt_url)
+                            logger.info(f"SRT内容下载完成，长度: {len(srt_content) if srt_content else 0}")
+                            return srt_content
+                        else:
+                            logger.info(f"返回非完成状态的结果: {result}")
+                            return result
+
+                    await asyncio.sleep(check_interval)
+                    waited_time += check_interval
+
+                # 超时处理
+                elapsed_time = time.time() - start_time
+                logger.warning(f"本地回调超时，回退到轮询任务 {task_id} (已等待 {elapsed_time:.1f} 秒)")
+
+            # 回退到轮询（两种模式通用）
             elapsed_time = time.time() - start_time
-            logger.warning(f"回调超时，回退到轮询任务 {task_id} (已等待 {elapsed_time:.1f} 秒，超时设置 {safe_timeout} 秒)")
+            logger.warning(f"回退到轮询任务 {task_id} (已等待 {elapsed_time:.1f} 秒)")
 
-            # 回退到轮询
-            while time.time() - start_time < safe_timeout and self.__class__._callback_running:
+            while time.time() - start_time < safe_timeout:
+                # 检查全局模式是否被中断
+                if self._use_global_callback and not self.callback_manager._server_running:
+                    raise KeyboardInterrupt("全局回调服务器已关闭")
+                # 检查传统模式是否被中断
+                if not self._use_global_callback and not self.__class__._callback_running:
+                    raise KeyboardInterrupt("本地回调服务器已关闭")
+
                 try:
                     status = await self._get_task_status(task_id)
 
@@ -757,8 +873,13 @@ class TusASRClient:
 
         finally:
             # 清理任务
-            if task_id in self.completed_tasks:
-                del self.completed_tasks[task_id]
+            if self._use_global_callback:
+                # 全局模式：清理全局管理器中的任务
+                self.callback_manager.cleanup_task(task_id)
+            else:
+                # 传统模式：清理本地任务
+                if task_id in self.completed_tasks:
+                    del self.completed_tasks[task_id]
 
     async def _poll_tus_results(self, task_id: str) -> str:
         """轮询TUS任务结果"""
