@@ -50,6 +50,10 @@ class GlobalCallbackManager:
         self._task_lock = threading.RLock()  # 可重入锁
         self._process_id = None
 
+        # 结果缓存（用于处理竞态条件）
+        self._result_cache: Dict[str, Any] = {}  # {task_id: result}
+        self._cache_expiry: Dict[str, float] = {}  # {task_id: expiry_timestamp}
+
         # 统计信息
         self._registered_tasks = 0
         self._completed_tasks = 0
@@ -85,14 +89,35 @@ class GlobalCallbackManager:
             except Exception:
                 return False
 
+    def _cleanup_expired_cache(self):
+        """清理过期的缓存结果"""
+        current_time = time.time()
+        expired_tasks = []
+
+        for task_id, expiry_time in self._cache_expiry.items():
+            if current_time >= expiry_time:
+                expired_tasks.append(task_id)
+
+        for task_id in expired_tasks:
+            del self._result_cache[task_id]
+            del self._cache_expiry[task_id]
+            logger.debug(f"清理过期缓存任务: {task_id}")
+
+        if expired_tasks:
+            logger.info(f"已清理 {len(expired_tasks)} 个过期缓存任务")
+
     @property
     def stats(self) -> Dict[str, Any]:
         """获取统计信息"""
+        # 清理过期缓存
+        self._cleanup_expired_cache()
+
         return {
             "registered_tasks": self._registered_tasks,
             "completed_tasks": self._completed_tasks,
             "failed_tasks": self._failed_tasks,
             "pending_tasks": len(self._task_registry),
+            "cached_results": len(self._result_cache),
             "server_running": self._server_running,
             "port": self.callback_port,
             "server_pid": self._server_pid,
@@ -192,7 +217,10 @@ class GlobalCallbackManager:
                 self._completed_tasks += 1
                 logger.info(f"任务 {task_id} 已完成，结果已设置")
             else:
-                logger.warning(f"任务 {task_id} 不存在或已完成")
+                # 任务可能已超时清理，缓存结果供后续获取
+                self._result_cache[task_id] = result
+                self._cache_expiry[task_id] = time.time() + 300  # 5分钟缓存
+                logger.warning(f"任务 {task_id} 不存在或已完成，结果已缓存（5分钟有效期）")
 
     def fail_task(self, task_id: str, error: Exception):
         """标记任务失败"""
@@ -213,7 +241,31 @@ class GlobalCallbackManager:
                 self._failed_tasks += 1
                 logger.info(f"任务 {task_id} 已标记为失败: {error}")
             else:
-                logger.warning(f"任务 {task_id} 不存在或已完成")
+                # 任务可能已超时清理，缓存错误结果供后续获取
+                error_result = {
+                    'task_id': task_id,
+                    'status': 'failed',
+                    'error_message': str(error),
+                    'error_type': type(error).__name__
+                }
+                self._result_cache[task_id] = error_result
+                self._cache_expiry[task_id] = time.time() + 300  # 5分钟缓存
+                logger.warning(f"任务 {task_id} 不存在或已完成，错误结果已缓存（5分钟有效期）")
+
+    def get_cached_result(self, task_id: str) -> Optional[Any]:
+        """获取缓存的结果"""
+        with self._task_lock:
+            if task_id in self._result_cache:
+                # 检查是否过期
+                if time.time() < self._cache_expiry[task_id]:
+                    logger.info(f"从缓存获取任务 {task_id} 的结果")
+                    return self._result_cache[task_id]
+                else:
+                    # 清理过期缓存
+                    del self._result_cache[task_id]
+                    del self._cache_expiry[task_id]
+                    logger.info(f"任务 {task_id} 的缓存结果已过期，已清理")
+            return None
 
     def cleanup_task(self, task_id: str):
         """清理任务"""
@@ -361,12 +413,16 @@ class GlobalCallbackManager:
         # 设置服务器停止标志
         self._server_running = False
 
-        # 取消所有待处理的任务
+        # 取消所有待处理的任务并清理缓存
         with self._task_lock:
             for task_id, future in self._task_registry.items():
                 if not future.done():
                     future.cancel()
             self._task_registry.clear()
+
+            # 清理所有缓存
+            self._result_cache.clear()
+            self._cache_expiry.clear()
 
         # 等待服务器线程结束
         if self._server_thread and self._server_thread.is_alive():
