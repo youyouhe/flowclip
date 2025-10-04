@@ -86,17 +86,19 @@ ALLOWED_OPERATIONS = [
     'get_dashboard',
     'get_running_videos',
     
-    # 视频切片处理 (2个)
+    # 视频切片处理 (4个)
     'validate_slices',
-    'process_slices'
+    'process_slices',
+    'get_video_analyses',
+    'get_video_slices'
 ]
 
 # 创建完整的MCP服务器
 mcp = FastApiMCP(
     app,
     name="Flowclip API",
-    description="Flowclip视频处理平台 - 39个精选工具，所有工具名称都已优化",
-    include_operations=ALLOWED_OPERATIONS,  # 包含所有39个已修复的操作
+    description="Flowclip视频处理平台 - 41个精选工具，所有工具名称都已优化",
+    include_operations=ALLOWED_OPERATIONS,  # 包含所有41个已修复的操作
     describe_all_responses=True,
     describe_full_response_schema=True,
 )
@@ -118,7 +120,7 @@ categories = {
     '视频管理': ['list_videos', 'list_active_videos', 'get_video', 'update_video', 'delete_video'],
     '视频下载': ['download_video', 'download_video_json', 'get_video_download_url', 'get_srt_content'],
     '状态查询': ['get_video_status', 'get_task_status_detail', 'get_dashboard', 'get_running_videos'],
-    '视频切片': ['validate_slices', 'process_slices']
+    '视频切片': ['validate_slices', 'process_slices', 'get_video_analyses', 'get_video_slices']
 }
 
 for category, tools in categories.items():

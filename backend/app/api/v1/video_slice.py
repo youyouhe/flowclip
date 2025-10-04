@@ -269,7 +269,7 @@ async def process_slices(
             detail=f"启动任务失败: {str(e)}"
         )
 
-@router.get("/video-analyses/{video_id}", response_model=List[LLMAnalysisSchema])
+@router.get("/video-analyses/{video_id}", response_model=List[LLMAnalysisSchema], operation_id="get_video_analyses")
 async def get_video_analyses(
     video_id: int,
     current_user: User = Depends(get_current_user),
@@ -306,7 +306,7 @@ async def get_video_analyses(
             detail=f"获取失败: {str(e)}"
         )
 
-@router.get("/video-slices/{video_id}", response_model=List[VideoSliceSchema])
+@router.get("/video-slices/{video_id}", response_model=List[VideoSliceSchema], operation_id="get_video_slices")
 async def get_video_slices(
     video_id: int,
     current_user: User = Depends(get_current_user),
