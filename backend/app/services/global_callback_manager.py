@@ -8,6 +8,8 @@ import threading
 import time
 import logging
 import signal
+import socket
+import os
 from typing import Dict, Optional, Any
 from aiohttp import web
 import json
@@ -40,6 +42,8 @@ class GlobalCallbackManager:
         self.callback_host = "0.0.0.0"
         self._server_running = False
         self._server_thread = None
+        self._server_startup_lock = threading.Lock()  # 服务器启动互斥锁
+        self._server_pid = None  # 记录启动服务器的进程ID
 
         # 任务管理
         self._task_registry: Dict[str, asyncio.Future] = {}  # {task_id: Future}
@@ -53,6 +57,34 @@ class GlobalCallbackManager:
 
         logger.info("全局回调服务器管理器初始化完成")
 
+    def _is_port_available(self, port: int) -> bool:
+        """检查端口是否可用"""
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+                sock.settimeout(1)
+                result = sock.connect_ex((self.callback_host, port))
+                return result != 0  # 连接失败表示端口可用
+        except Exception as e:
+            logger.warning(f"端口检查异常: {e}")
+            return False
+
+    def _is_server_responding(self) -> bool:
+        """检查服务器是否响应"""
+        try:
+            import requests
+            url = f"http://localhost:{self.callback_port}/health"
+            response = requests.get(url, timeout=2)
+            return response.status_code == 200
+        except Exception:
+            # 如果health端点不存在，尝试基本连接
+            try:
+                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+                    sock.settimeout(1)
+                    result = sock.connect_ex((self.callback_host, self.callback_port))
+                    return result == 0  # 连接成功表示服务器在运行
+            except Exception:
+                return False
+
     @property
     def stats(self) -> Dict[str, Any]:
         """获取统计信息"""
@@ -62,23 +94,51 @@ class GlobalCallbackManager:
             "failed_tasks": self._failed_tasks,
             "pending_tasks": len(self._task_registry),
             "server_running": self._server_running,
-            "port": self.callback_port
+            "port": self.callback_port,
+            "server_pid": self._server_pid,
+            "server_responding": self._is_server_responding() if self._server_running else False
         }
 
     def ensure_server_running(self):
         """确保回调服务器正在运行"""
-        if self._server_running and self._server_thread and self._server_thread.is_alive():
-            logger.info("全局回调服务器已在运行")
-            return
+        # 使用互斥锁确保同时只有一个线程能启动服务器
+        with self._server_startup_lock:
+            current_pid = os.getpid()
 
-        # 如果服务器线程存在但不活跃，重置状态
-        if self._server_thread and not self._server_thread.is_alive():
-            logger.warning("检测到全局回调服务器线程已退出，重置状态")
-            self._server_running = False
-            self._server_thread = None
+            # 如果服务器正在运行且线程活跃，检查是否是当前进程启动的
+            if self._server_running and self._server_thread and self._server_thread.is_alive():
+                if self._server_pid == current_pid:
+                    logger.info("全局回调服务器已在运行（当前进程启动）")
+                    return
+                else:
+                    # 服务器是其他进程启动的，检查是否还能用
+                    if self._is_server_responding():
+                        logger.info(f"全局回调服务器已在运行（进程 {self._server_pid} 启动），复用现有服务器")
+                        return
+                    else:
+                        logger.warning(f"进程 {self._server_pid} 启动的服务器无响应，重新启动")
+                        self._server_running = False
+                        self._server_thread = None
 
-        # 启动服务器
-        self._start_callback_server()
+            # 如果服务器线程存在但不活跃，重置状态
+            if self._server_thread and not self._server_thread.is_alive():
+                logger.warning("检测到全局回调服务器线程已退出，重置状态")
+                self._server_running = False
+                self._server_thread = None
+                self._server_pid = None
+
+            # 检查端口是否被占用
+            if not self._is_port_available(self.callback_port):
+                if self._is_server_responding():
+                    logger.info("端口被占用但服务器响应正常，复用现有服务器")
+                    self._server_running = True
+                    return
+                else:
+                    logger.error(f"端口 {self.callback_port} 被占用但服务器无响应，无法启动回调服务器")
+                    raise RuntimeError(f"回调服务器端口 {self.callback_port} 被占用且无响应")
+
+            # 启动服务器
+            self._start_callback_server()
 
     def register_task(self, task_id: str) -> asyncio.Future:
         """注册任务并返回Future对象"""
@@ -170,10 +230,21 @@ class GlobalCallbackManager:
         if self._server_running:
             return
 
-        self._server_running = True
-        self._process_id = None  # 重置进程ID
+        # 再次检查端口可用性（双重检查）
+        if not self._is_port_available(self.callback_port):
+            if self._is_server_responding():
+                logger.info("服务器已在运行，无需启动")
+                self._server_running = True
+                return
+            else:
+                logger.error(f"端口 {self.callback_port} 被占用，无法启动服务器")
+                return
 
-        logger.info(f"启动全局回调服务器，端口: {self.callback_port}")
+        self._server_running = True
+        self._process_id = None
+        self._server_pid = os.getpid()  # 记录启动服务器的进程ID
+
+        logger.info(f"启动全局回调服务器，端口: {self.callback_port}，进程ID: {self._server_pid}")
         self._server_thread = threading.Thread(
             target=self._run_callback_server,
             name="GlobalCallbackServer",
@@ -181,9 +252,17 @@ class GlobalCallbackManager:
         )
         self._server_thread.start()
 
-        # 等待服务器启动
+        # 等待服务器启动并验证
         time.sleep(1.0)
-        logger.info(f"全局回调服务器线程已启动，线程ID: {self._server_thread.ident}")
+
+        # 验证服务器是否真正启动
+        if self._is_server_responding():
+            logger.info(f"✅ 全局回调服务器启动成功，线程ID: {self._server_thread.ident}")
+        else:
+            logger.error("❌ 全局回调服务器启动失败，无法响应连接")
+            self._server_running = False
+            self._server_thread = None
+            self._server_pid = None
 
     def _run_callback_server(self):
         """运行全局回调服务器"""
@@ -227,9 +306,14 @@ class GlobalCallbackManager:
                 logger.error(f"回调处理错误: {e}", exc_info=True)
                 return web.Response(status=500, text=str(e))
 
+        async def health_check(request):
+            """健康检查端点"""
+            return web.Response(text='OK', status=200)
+
         async def create_app():
             app = web.Application()
             app.router.add_post('/callback', callback_handler)
+            app.router.add_get('/health', health_check)
 
             runner = web.AppRunner(app)
             await runner.setup()
@@ -238,6 +322,7 @@ class GlobalCallbackManager:
 
             logger.info(f"✅ 全局回调服务器启动于端口 {self.callback_port}")
             logger.info(f"回调URL: http://localhost:{self.callback_port}/callback")
+            logger.info(f"健康检查URL: http://localhost:{self.callback_port}/health")
 
             # 保持运行
             while self._server_running:
@@ -250,9 +335,24 @@ class GlobalCallbackManager:
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
             loop.run_until_complete(create_app())
+        except OSError as e:
+            if "address already in use" in str(e).lower():
+                logger.error(f"❌ 端口 {self.callback_port} 已被占用，全局回调服务器启动失败")
+                # 检查是否有其他服务器在运行
+                if self._is_server_responding():
+                    logger.info("检测到其他服务器在运行，将尝试使用现有服务器")
+                    self._server_running = True  # 标记为可用，使用现有服务器
+                else:
+                    logger.error("端口被占用但没有响应的服务器，无法启动回调服务器")
+                    self._server_running = False
+            else:
+                logger.error(f"❌ 全局回调服务器网络错误: {e}", exc_info=True)
+                self._server_running = False
         except Exception as e:
-            logger.error(f"全局回调服务器失败: {e}", exc_info=True)
+            logger.error(f"❌ 全局回调服务器运行时错误: {e}", exc_info=True)
             self._server_running = False
+        finally:
+            logger.info("全局回调服务器线程结束")
 
     def shutdown(self):
         """关闭全局回调服务器"""
@@ -273,6 +373,11 @@ class GlobalCallbackManager:
             self._server_thread.join(timeout=5.0)
             if self._server_thread.is_alive():
                 logger.warning("全局回调服务器线程未能正常关闭")
+
+        # 清理状态
+        self._server_thread = None
+        self._server_pid = None
+        self._process_id = None
 
         logger.info("全局回调服务器已关闭")
 
