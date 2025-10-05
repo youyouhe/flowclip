@@ -37,10 +37,19 @@ docker-compose down
 
 ## 已安装工具
 
-- **Python 3**: 完整的Python环境
+- **Python 3.9**: 完整的现代Python环境
 - **yt-dlp**: YouTube视频下载工具
 - **ffmpeg**: 视频处理工具
 - **其他工具**: curl, wget, git, vim
+
+## Python版本
+
+容器内使用Python 3.9版本，支持现代Python特性和库。可以通过以下命令验证：
+
+```bash
+python3 --version
+pip3 --version
+```
 
 ## 使用yt-dlp
 
