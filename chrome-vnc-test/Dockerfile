@@ -1,9 +1,9 @@
-FROM consol/ubuntu-xfce-vnc:focal-latest
+FROM consol/ubuntu-xfce-vnc:latest
 
 # 切换到root用户
 USER root
 
-# 更新软件包并安装Python和工具
+# 更新软件包并安装编译工具
 RUN apt-get update && apt-get install -y \
     python3 \
     python3-pip \
@@ -13,22 +13,30 @@ RUN apt-get update && apt-get install -y \
     git \
     vim \
     ffmpeg \
+    build-essential \
+    libssl-dev \
+    libffi-dev \
+    zlib1g-dev \
+    libbz2-dev \
+    libreadline-dev \
+    libsqlite3-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# 安装Python 3.9和开发工具
-RUN add-apt-repository ppa:deadsnakes/ppa && \
-    apt-get update && \
-    apt-get install -y \
-    python3.9 \
-    python3.9-pip \
-    python3.9-dev \
-    python3.9-venv && \
-    update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.9 1 && \
-    update-alternatives --install /usr/bin/pip3 pip3 /usr/bin/pip3.9 1
+# 编译安装Python 3.9
+RUN cd /tmp && \
+    wget https://www.python.org/ftp/python/3.9.16/Python-3.9.16.tgz && \
+    tar xzf Python-3.9.16.tgz && \
+    cd Python-3.9.16 && \
+    ./configure --enable-optimizations --prefix=/usr/local && \
+    make -j$(nproc) && \
+    make altinstall && \
+    ln -s /usr/local/bin/python3.9 /usr/bin/python3.9 && \
+    ln -s /usr/local/bin/pip3.9 /usr/bin/pip3.9 && \
+    cd / && rm -rf /tmp/Python-3.9.16
 
 # 安装yt-dlp
 RUN python3.9 -m pip install --upgrade pip && \
-    pip3 install yt-dlp
+    python3.9 -m pip install yt-dlp
 
 # 创建常用目录
 RUN mkdir -p /headless/Downloads /headless/Videos
