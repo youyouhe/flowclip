@@ -25,10 +25,13 @@ docker-compose down
 
 ## 使用说明
 
-1. 启动容器后，等待约30秒让Chrome完全加载
+1. 启动容器后，等待约30秒让桌面环境完全加载
 2. 通过Web界面或VNC客户端连接
-3. Chrome会自动启动，直接访问 YouTube
-4. 登录你的Google账户
+3. 在桌面中找到Chrome浏览器并启动
+4. 在Chrome中访问 YouTube
+5. 登录你的Google账户
+
+**注意**: 这个镜像提供完整的Ubuntu桌面环境，Chrome需要手动启动
 
 ## 故障排除
 

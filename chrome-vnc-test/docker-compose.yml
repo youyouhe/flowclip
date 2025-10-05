@@ -2,7 +2,7 @@ version: '3.8'
 
 services:
   chrome-vnc:
-    image: 096liqgd.mirror.aliyuncs.com/aswinmuralidharan/docker-chrome-vnc:latest
+    image: consol/ubuntu-xfce-vnc:latest
     container_name: youtube-chrome
     restart: unless-stopped
     ports:
