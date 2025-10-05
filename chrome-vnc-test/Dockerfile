@@ -1,0 +1,33 @@
+FROM consol/ubuntu-xfce-vnc:latest
+
+# 切换到root用户
+USER root
+
+# 更新软件包并安装Python和工具
+RUN apt-get update && apt-get install -y \
+    python3 \
+    python3-pip \
+    python3-venv \
+    curl \
+    wget \
+    git \
+    vim \
+    ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
+
+# 安装yt-dlp
+RUN python3 -m pip install --upgrade pip && \
+    pip3 install yt-dlp
+
+# 创建常用目录
+RUN mkdir -p /home/headless/Downloads /home/headless/Videos
+
+# 设置权限
+RUN chown -R headless:headless /home/headless
+
+# 切换回普通用户
+USER 1000
+
+# 安装用户级别的Python包
+RUN python3 -m pip install --user --upgrade pip && \
+    python3 -m pip install --user requests beautifulsoup4 selenium

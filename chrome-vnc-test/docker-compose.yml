@@ -2,7 +2,7 @@ version: '3.8'
 
 services:
   chrome-vnc:
-    image: consol/ubuntu-xfce-vnc:latest
+    build: .
     container_name: youtube-chrome
     restart: unless-stopped
     ports:
@@ -12,7 +12,9 @@ services:
       - VNC_PW=youtube123
       - VNC_RESOLUTION=1920x1080
     volumes:
-      - chrome-data:/data
+      - chrome-data:/home/headless
+      - ./downloads:/home/headless/Downloads
+      - ./videos:/home/headless/Videos
     networks:
       - chrome-network
 

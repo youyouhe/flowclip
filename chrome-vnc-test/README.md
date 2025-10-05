@@ -35,6 +35,28 @@ docker-compose down
 
 **注意**: 这个镜像提供完整的Ubuntu桌面环境，Chrome需要手动启动
 
+## 已安装工具
+
+- **Python 3**: 完整的Python环境
+- **yt-dlp**: YouTube视频下载工具
+- **ffmpeg**: 视频处理工具
+- **其他工具**: curl, wget, git, vim
+
+## 使用yt-dlp
+
+```bash
+# 下载视频
+yt-dlp "https://www.youtube.com/watch?v=VIDEO_ID"
+
+# 下载音频
+yt-dlp -x --audio-format mp3 "URL"
+
+# 查看可用格式
+yt-dlp -F "URL"
+```
+
+下载的文件会保存在 `/home/headless/Downloads` 目录，并映射到宿主机的 `./downloads` 文件夹。
+
 ## 故障排除
 
 如果Chrome启动较慢，可以查看日志：
