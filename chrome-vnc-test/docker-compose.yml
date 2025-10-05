@@ -1,0 +1,24 @@
+version: '3.8'
+
+services:
+  chrome-vnc:
+    image: 096liqgd.mirror.aliyuncs.com/aswinmuralidharan/docker-chrome-vnc:latest
+    container_name: youtube-chrome
+    restart: unless-stopped
+    ports:
+      - "5901:5901"  # VNC端口
+      - "6901:6901"  # Web VNC端口
+    environment:
+      - VNC_PASSWORD=youtube123
+      - RESOLUTION=1920x1080
+    volumes:
+      - chrome-data:/data
+    networks:
+      - chrome-network
+
+volumes:
+  chrome-data:
+
+networks:
+  chrome-network:
+    driver: bridge
