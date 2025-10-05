@@ -66,6 +66,35 @@ yt-dlp -F "URL"
 
 下载的文件会保存在 `/headless/Downloads` 目录，并映射到宿主机的 `./downloads` 文件夹。
 
+## 自动传输cookie文件到本地
+
+### 方法1: 使用shell脚本
+
+```bash
+# 在容器中执行
+ssh root@服务器IP -p 2222 "bash /headless/scripts/yt-dlp-with-transfer.sh 'https://www.youtube.com/watch?v=VIDEO_ID' '你的本地IP' '你的用户名' '/本地/路径' [SSH端口]"
+
+# 示例
+ssh root@服务器IP -p 2222 "bash /headless/scripts/yt-dlp-with-transfer.sh 'https://www.youtube.com/watch?v=laHxlpR0rBE' '192.168.1.100' 'john' '/home/john/downloads' 22"
+```
+
+### 方法2: 使用Python脚本
+
+```bash
+# 1. 先在容器中导出cookie
+ssh root@服务器IP -p 2222 "yt-dlp --cookies-from-browser firefox --cookies /headless/Downloads/cookie.txt -F 'https://www.youtube.com/watch?v=VIDEO_ID'"
+
+# 2. 然后传输cookie文件
+ssh root@服务器IP -p 2222 "python3.9 /headless/scripts/transfer-cookie.py '你的本地IP' '你的用户名' '/本地/路径' [SSH端口]"
+```
+
+### 使用前提
+
+1. **本地SSH服务**: 确保你的本地机器SSH服务已启动
+2. **网络连通**: 容器能访问你的本地IP
+3. **SSH认证**: 配置免密登录或准备密码输入
+4. **Firefox登录**: 在容器内的Firefox中已登录YouTube
+
 ## 远程执行和SSH访问
 
 ### SSH连接
