@@ -26,6 +26,10 @@ logger = logging.getLogger(__name__)
 class TusASRClient:
     """TUS ASR客户端，为FlowClip系统提供TUS协议支持"""
 
+    # 类级别属性初始化
+    _callback_running = False
+    _callback_server_thread = None
+
     # 是否使用独立回调服务器
     _use_standalone_callback = settings.tus_use_standalone_callback
     _use_global_callback = settings.tus_use_global_callback and not settings.tus_use_standalone_callback
