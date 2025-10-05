@@ -402,28 +402,37 @@ def generate_srt(self, video_id: str, project_id: int, user_id: int, split_files
                                         stage=ProcessingStage.GENERATE_SRT
                                     )
                                     
-                                    # 更新视频记录
-                                    video = db.query(Video).filter(Video.id == task.video_id).first()
-                                    if video:
-                                        video.processing_progress = 100
-                                        video.processing_stage = ProcessingStage.GENERATE_SRT.value
-                                        video.processing_message = "字幕生成完成"
-                                        video.processing_completed_at = datetime.utcnow()
-                                        print(f"已更新视频记录: video_id={video.id}")
-                                    
-                                    # 更新processing_status表
-                                    try:
-                                        from app.models.processing_task import ProcessingStatus
-                                        processing_status = db.query(ProcessingStatus).filter(
-                                            ProcessingStatus.video_id == task.video_id
-                                        ).first()
-                                        if processing_status:
-                                            processing_status.overall_status = ProcessingTaskStatus.SUCCESS
-                                            processing_status.overall_progress = 100
-                                            processing_status.current_stage = ProcessingStage.COMPLETED.value
-                                            print(f"已更新processing_status整体状态: video_id={task.video_id}")
-                                    except Exception as status_error:
-                                        print(f"更新processing_status失败: {status_error}")
+                                    # 注意：切片/子切片的SRT任务不应该更新原视频的处理状态
+                                    # 因为这是切片级别的任务，不应该影响视频级别的整体处理状态
+                                    # 这里只更新ProcessingTask记录，不更新Video记录
+
+                                    # 只有当这是原视频的SRT任务时（不是切片或子切片），才更新视频状态
+                                    if not slice_id and not sub_slice_id:
+                                        # 这是原视频的SRT任务，可以更新视频记录
+                                        video = db.query(Video).filter(Video.id == task.video_id).first()
+                                        if video:
+                                            video.processing_progress = 100
+                                            video.processing_stage = ProcessingStage.GENERATE_SRT.value
+                                            video.processing_message = "字幕生成完成"
+                                            video.processing_completed_at = datetime.utcnow()
+                                            print(f"已更新原视频记录: video_id={video.id}")
+
+                                        # 更新processing_status表
+                                        try:
+                                            from app.models.processing_task import ProcessingStatus
+                                            processing_status = db.query(ProcessingStatus).filter(
+                                                ProcessingStatus.video_id == task.video_id
+                                            ).first()
+                                            if processing_status:
+                                                processing_status.overall_status = ProcessingTaskStatus.SUCCESS
+                                                processing_status.overall_progress = 100
+                                                processing_status.current_stage = ProcessingStage.COMPLETED.value
+                                                print(f"已更新processing_status整体状态: video_id={task.video_id}")
+                                        except Exception as status_error:
+                                            print(f"更新processing_status失败: {status_error}")
+                                    else:
+                                        # 这是切片或子切片的SRT任务，不更新视频状态
+                                        print(f"切片/子切片SRT任务完成，不更新原视频状态: slice_id={slice_id}, sub_slice_id={sub_slice_id}")
                                         
                                 else:
                                     print(f"未找到任务记录: celery_task_id={celery_task_id}，但这不影响srt_url保存")
@@ -524,28 +533,34 @@ def generate_srt(self, video_id: str, project_id: int, user_id: int, split_files
                                         stage=ProcessingStage.GENERATE_SRT
                                     )
 
-                                    # 更新视频记录
-                                    video = db.query(Video).filter(Video.id == task.video_id).first()
-                                    if video:
-                                        video.processing_progress = 100
-                                        video.processing_stage = ProcessingStage.GENERATE_SRT.value
-                                        video.processing_message = "字幕生成完成 (策略: tus)"
-                                        video.processing_completed_at = datetime.utcnow()
-                                        print(f"已更新视频记录: video_id={video.id}")
+                                    # 注意：切片/子切片的SRT任务不应该更新原视频的处理状态
+                                    # 只有当这是原视频的SRT任务时（不是切片或子切片），才更新视频状态
+                                    if not slice_id and not sub_slice_id:
+                                        # 这是原视频的SRT任务，可以更新视频记录
+                                        video = db.query(Video).filter(Video.id == task.video_id).first()
+                                        if video:
+                                            video.processing_progress = 100
+                                            video.processing_stage = ProcessingStage.GENERATE_SRT.value
+                                            video.processing_message = "字幕生成完成 (策略: tus)"
+                                            video.processing_completed_at = datetime.utcnow()
+                                            print(f"已更新原视频记录: video_id={video.id}")
 
-                                    # 更新processing_status表
-                                    try:
-                                        from app.models.processing_task import ProcessingStatus
-                                        processing_status = db.query(ProcessingStatus).filter(
-                                            ProcessingStatus.video_id == task.video_id
-                                        ).first()
-                                        if processing_status:
-                                            processing_status.overall_status = ProcessingTaskStatus.SUCCESS
-                                            processing_status.overall_progress = 100
-                                            processing_status.current_stage = ProcessingStage.COMPLETED.value
-                                            print(f"已更新processing_status整体状态: video_id={task.video_id}")
-                                    except Exception as status_error:
-                                        print(f"更新processing_status失败: {status_error}")
+                                        # 更新processing_status表
+                                        try:
+                                            from app.models.processing_task import ProcessingStatus
+                                            processing_status = db.query(ProcessingStatus).filter(
+                                                ProcessingStatus.video_id == task.video_id
+                                            ).first()
+                                            if processing_status:
+                                                processing_status.overall_status = ProcessingTaskStatus.SUCCESS
+                                                processing_status.overall_progress = 100
+                                                processing_status.current_stage = ProcessingStage.COMPLETED.value
+                                                print(f"已更新processing_status整体状态: video_id={task.video_id}")
+                                        except Exception as status_error:
+                                            print(f"更新processing_status失败: {status_error}")
+                                    else:
+                                        # 这是切片或子切片的SRT任务，不更新视频状态
+                                        print(f"TUS切片/子切片SRT任务完成，不更新原视频状态: slice_id={slice_id}, sub_slice_id={sub_slice_id}")
 
                                     # 如果是子切片处理，更新子切片记录
                                     if sub_slice_id:
