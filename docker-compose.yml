@@ -143,8 +143,8 @@ services:
       - REDIS_URL=redis://redis:6379
       - CALLBACK_HOST=0.0.0.0
       - CALLBACK_PORT=9090
-      - REDIS_KEY_PREFIX=tus_callback:
-      - REDIS_RESULT_PREFIX=tus_result:
+      - REDIS_KEY_PREFIX=tus_callback
+      - REDIS_RESULT_PREFIX=tus_result
       - REDIS_STATS_KEY=tus_callback_stats
     depends_on:
       redis:
