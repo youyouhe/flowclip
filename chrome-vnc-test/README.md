@@ -66,6 +66,38 @@ yt-dlp -F "URL"
 
 下载的文件会保存在 `/headless/Downloads` 目录，并映射到宿主机的 `./downloads` 文件夹。
 
+## 远程执行和SSH访问
+
+### SSH连接
+- **端口**: 2222
+- **用户**: root
+- **密码**: admin123
+
+```bash
+# SSH连接到容器
+ssh root@服务器IP -p 2222
+# 密码: admin123
+```
+
+### 脚本执行
+脚本文件放在 `./scripts/` 目录，会自动映射到容器的 `/headless/scripts`
+
+```bash
+# 通过SSH执行脚本
+ssh root@服务器IP -p 2222 "python3.9 /headless/scripts/your_script.py"
+
+# 通过文件传输上传脚本
+scp -P 2222 your_script.py root@服务器IP:/headless/scripts/
+```
+
+### 已安装的远程执行工具
+
+- **paramiko**: Python SSH客户端
+- **fabric**: 远程命令执行工具
+- **ansible**: 自动化配置管理
+- **flask/fastapi**: Web API框架
+- **screen/tmux**: 会话管理工具
+
 ## 故障排除
 
 如果Chrome启动较慢，可以查看日志：

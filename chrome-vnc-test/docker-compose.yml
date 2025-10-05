@@ -8,6 +8,7 @@ services:
     ports:
       - "5901:5901"  # VNC端口
       - "6901:6901"  # Web VNC端口
+      - "2222:22"    # SSH端口
     environment:
       - VNC_PW=youtube123
       - VNC_RESOLUTION=1920x1080
@@ -15,8 +16,10 @@ services:
       - chrome-data:/headless
       - ./downloads:/headless/Downloads
       - ./videos:/headless/Videos
+      - ./scripts:/headless/scripts
     networks:
       - chrome-network
+    command: ["/usr/local/bin/ssh-entrypoint.sh"]
 
 volumes:
   chrome-data:
