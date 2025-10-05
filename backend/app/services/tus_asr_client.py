@@ -808,9 +808,14 @@ class TusASRClient:
                         return result
 
                 except asyncio.TimeoutError:
-                    logger.warning(f"任务 {task_id} 等待超时（{safe_timeout}s），检查缓存结果...")
+                    elapsed_time = time.time() - start_time
+                    logger.warning(f"任务 {task_id} 等待超时（{safe_timeout}s），已等待 {elapsed_time:.1f} 秒")
 
-                    # 检查是否有缓存结果（处理竞态条件）
+                    # 延迟清理任务，给回调留出到达时间
+                    logger.info(f"延迟清理任务 {task_id}，等待可能的延迟回调...")
+                    await asyncio.sleep(5.0)  # 等待5秒给回调时间到达
+
+                    # 再次检查是否有缓存结果（处理竞态条件）
                     cached_result = self.callback_manager.get_cached_result(task_id)
                     if cached_result:
                         logger.info(f"✅ 从缓存获取到任务 {task_id} 的结果")
@@ -831,14 +836,34 @@ class TusASRClient:
                             logger.info(f"返回缓存的非完成状态结果: {cached_result}")
                             return cached_result
                     else:
-                        logger.error(f"❌ 任务 {task_id} 超时且无缓存结果")
-                        raise TimeoutError(f"任务 {task_id} 处理超时（{safe_timeout}s）且无缓存结果")
+                        logger.warning(f"⚠️ 任务 {task_id} 超时且无缓存结果，但继续等待一段时间...")
+                        # 再等待30秒，处理ASR服务延迟的情况
+                        await asyncio.sleep(30.0)
+
+                        # 最后一次检查缓存
+                        final_cached_result = self.callback_manager.get_cached_result(task_id)
+                        if final_cached_result:
+                            logger.info(f"✅ 延迟检查成功，从缓存获取到任务 {task_id} 的结果")
+                            if isinstance(final_cached_result, dict) and final_cached_result.get('status') == 'completed':
+                                cached_task_id = final_cached_result.get('task_id')
+                                srt_url = final_cached_result.get('srt_url', f"{self.api_url}/api/v1/tasks/{cached_task_id}/download")
+                                if srt_url and not srt_url.startswith('http'):
+                                    srt_url = f"{self.api_url}{srt_url}"
+                                srt_content = await self._download_srt_content(srt_url)
+                                return srt_content
+                            else:
+                                return final_cached_result
+                        else:
+                            logger.error(f"❌ 任务 {task_id} 最终超时且无缓存结果")
+                            # 只有在最终超时后才清理任务
+                            self.callback_manager.cleanup_task(task_id)
+                            raise TimeoutError(f"任务 {task_id} 处理超时（{safe_timeout}s）且无缓存结果")
 
                 except asyncio.CancelledError:
                     elapsed_time = time.time() - start_time
-                    logger.warning(f"全局回调超时，回退到轮询任务 {task_id} (已等待 {elapsed_time:.1f} 秒)")
-                    # 清理全局管理器中的任务
-                    self.callback_manager.cleanup_task(task_id)
+                    logger.warning(f"全局回调取消，回退到轮询任务 {task_id} (已等待 {elapsed_time:.1f} 秒)")
+                    # 不要立即清理任务，让后续回调能够被缓存
+                    logger.info(f"任务 {task_id} 已取消，但保留在注册表中以便接收延迟回调")
 
             else:
                 # 传统模式：使用本地回调服务器

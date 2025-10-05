@@ -220,7 +220,7 @@ class GlobalCallbackManager:
                 # 任务可能已超时清理，缓存结果供后续获取
                 self._result_cache[task_id] = result
                 self._cache_expiry[task_id] = time.time() + 300  # 5分钟缓存
-                logger.warning(f"任务 {task_id} 不存在或已完成，结果已缓存（5分钟有效期）")
+                logger.info(f"✅ 任务 {task_id} 回调已接收，结果已缓存（5分钟有效期）")
 
     def fail_task(self, task_id: str, error: Exception):
         """标记任务失败"""
@@ -322,7 +322,9 @@ class GlobalCallbackManager:
 
         async def callback_handler(request):
             try:
+                current_time = time.time()
                 logger.info("全局回调处理器被触发")
+                logger.info(f"回调到达时间: {current_time}")
                 logger.info(f"请求方法: {request.method}")
                 logger.info(f"请求头: {dict(request.headers)}")
                 logger.info(f"请求远程地址: {request.remote}")
@@ -336,6 +338,24 @@ class GlobalCallbackManager:
                     return web.Response(status=400, text='Missing task_id')
 
                 logger.info(f"处理任务ID: {task_id}")
+
+                # 调试：检查任务是否在注册表中
+                with self._task_lock:
+                    is_registered = task_id in self._task_registry
+                    future_status = "已存在" if is_registered else "不存在"
+                    if is_registered:
+                        future = self._task_registry[task_id]
+                        future_status += f" (done: {future.done()})"
+
+                    # 检查是否在缓存中
+                    in_cache = task_id in self._result_cache
+                    cache_status = "在缓存中" if in_cache else "不在缓存中"
+                    if in_cache:
+                        expiry_time = self._cache_expiry[task_id]
+                        remaining_time = expiry_time - current_time
+                        cache_status += f" (剩余时间: {remaining_time:.1f}s)"
+
+                logger.info(f"任务状态检查 - 注册表: {future_status}, 缓存: {cache_status}")
 
                 # 处理任务结果
                 if payload.get('status') == 'completed':
