@@ -15,9 +15,9 @@ RUN apt-get update && apt-get install -y \
     ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
-# 安装yt-dlp
-RUN python3 -m pip install --upgrade pip && \
-    pip3 install yt-dlp
+# 安装yt-dlp（使用wget方式，避免pip版本问题）
+RUN wget https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -O /usr/local/bin/yt-dlp && \
+    chmod a+rx /usr/local/bin/yt-dlp
 
 # 创建常用目录
 RUN mkdir -p /home/headless/Downloads /home/headless/Videos
@@ -29,5 +29,5 @@ RUN chown -R headless:headless /home/headless
 USER 1000
 
 # 安装用户级别的Python包
-RUN python3 -m pip install --user --upgrade pip && \
+RUN python3 -m pip install --user --upgrade "pip<21.0" && \
     python3 -m pip install --user requests beautifulsoup4 selenium
