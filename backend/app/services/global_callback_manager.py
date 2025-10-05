@@ -1,6 +1,7 @@
 """
 全局回调服务器管理器
 统一管理TUS ASR回调服务器，支持固定端口和任务队列复用
+使用Redis作为共享任务状态管理器，解决多进程环境下的任务同步问题
 """
 
 import asyncio
@@ -10,6 +11,7 @@ import logging
 import signal
 import socket
 import os
+import pickle
 from typing import Dict, Optional, Any
 from aiohttp import web
 import json
@@ -18,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 
 class GlobalCallbackManager:
-    """全局回调服务器管理器 - 单例模式"""
+    """全局回调服务器管理器 - 单例模式，使用Redis共享任务状态"""
 
     _instance = None
     _lock = threading.Lock()
@@ -45,21 +47,46 @@ class GlobalCallbackManager:
         self._server_startup_lock = threading.Lock()  # 服务器启动互斥锁
         self._server_pid = None  # 记录启动服务器的进程ID
 
-        # 任务管理
-        self._task_registry: Dict[str, asyncio.Future] = {}  # {task_id: Future}
-        self._task_lock = threading.RLock()  # 可重入锁
-        self._process_id = None
+        # Redis配置
+        self._redis_client = None
+        self._redis_key_prefix = "tus_callback:"
+        self._result_key_prefix = "tus_result:"
+        self._stats_key = "tus_callback_stats"
 
-        # 结果缓存（用于处理竞态条件）
-        self._result_cache: Dict[str, Any] = {}  # {task_id: result}
-        self._cache_expiry: Dict[str, float] = {}  # {task_id: expiry_timestamp}
+        # 本地Future存储（仅用于当前进程的任务）
+        self._local_futures: Dict[str, asyncio.Future] = {}
+        self._future_lock = threading.RLock()
 
-        # 统计信息
-        self._registered_tasks = 0
-        self._completed_tasks = 0
-        self._failed_tasks = 0
+        # 初始化Redis连接
+        self._init_redis()
 
-        logger.info("全局回调服务器管理器初始化完成")
+        logger.info("全局回调服务器管理器初始化完成（Redis模式）")
+
+    def _init_redis(self):
+        """初始化Redis连接"""
+        try:
+            import redis
+            from app.core.config import settings
+
+            # 使用现有的Redis配置
+            redis_url = getattr(settings, 'REDIS_URL', 'redis://localhost:6379/0')
+            self._redis_client = redis.from_url(redis_url, decode_responses=False)
+
+            # 测试连接
+            self._redis_client.ping()
+            logger.info(f"✅ Redis连接成功: {redis_url}")
+
+        except Exception as e:
+            logger.error(f"❌ Redis连接失败: {e}")
+            raise RuntimeError(f"无法连接到Redis: {e}")
+
+    def _get_task_key(self, task_id: str) -> str:
+        """获取任务在Redis中的键名"""
+        return f"{self._redis_key_prefix}{task_id}"
+
+    def _get_result_key(self, task_id: str) -> str:
+        """获取结果在Redis中的键名"""
+        return f"{self._result_key_prefix}{task_id}"
 
     def _is_port_available(self, port: int) -> bool:
         """检查端口是否可用"""
@@ -108,21 +135,58 @@ class GlobalCallbackManager:
 
     @property
     def stats(self) -> Dict[str, Any]:
-        """获取统计信息"""
-        # 清理过期缓存
-        self._cleanup_expired_cache()
+        """获取统计信息（从Redis获取全局统计）"""
+        try:
+            # 从Redis获取统计信息
+            stats_data = self._redis_client.hgetall(self._stats_key)
+            stats = {}
 
-        return {
-            "registered_tasks": self._registered_tasks,
-            "completed_tasks": self._completed_tasks,
-            "failed_tasks": self._failed_tasks,
-            "pending_tasks": len(self._task_registry),
-            "cached_results": len(self._result_cache),
-            "server_running": self._server_running,
-            "port": self.callback_port,
-            "server_pid": self._server_pid,
-            "server_responding": self._is_server_responding() if self._server_running else False
-        }
+            for key, value in stats_data.items():
+                if key in ['registered_tasks', 'completed_tasks', 'failed_tasks']:
+                    stats[key.decode('utf-8')] = int(value.decode('utf-8'))
+
+            # 获取当前待处理任务数
+            pending_keys = self._redis_client.keys(f"{self._redis_key_prefix}*")
+            stats['pending_tasks'] = len(pending_keys)
+
+            # 获取缓存结果数
+            result_keys = self._redis_client.keys(f"{self._result_key_prefix}*")
+            stats['cached_results'] = len(result_keys)
+
+            # 本地统计
+            stats['local_pending_tasks'] = len(self._local_futures)
+
+            # 服务器状态
+            stats['server_running'] = self._server_running
+            stats['port'] = self.callback_port
+            stats['server_pid'] = self._server_pid
+            stats['server_responding'] = self._is_server_responding() if self._server_running else False
+            stats['current_process_id'] = os.getpid()
+
+            # 填充默认值
+            stats.setdefault('registered_tasks', 0)
+            stats.setdefault('completed_tasks', 0)
+            stats.setdefault('failed_tasks', 0)
+
+            return stats
+
+        except Exception as e:
+            logger.error(f"获取Redis统计信息失败: {e}")
+            # 返回本地统计作为fallback
+            return {
+                "registered_tasks": 0,
+                "completed_tasks": 0,
+                "failed_tasks": 0,
+                "pending_tasks": len(self._local_futures),
+                "cached_results": 0,
+                "local_pending_tasks": len(self._local_futures),
+                "server_running": self._server_running,
+                "port": self.callback_port,
+                "server_pid": self._server_pid,
+                "server_responding": self._is_server_responding() if self._server_running else False,
+                "current_process_id": os.getpid(),
+                "redis_error": str(e)
+            }
 
     def ensure_server_running(self):
         """确保回调服务器正在运行"""
@@ -166,61 +230,135 @@ class GlobalCallbackManager:
             self._start_callback_server()
 
     def register_task(self, task_id: str) -> asyncio.Future:
-        """注册任务并返回Future对象"""
-        with self._task_lock:
-            if task_id in self._task_registry:
-                logger.warning(f"任务 {task_id} 已存在，移除旧的Future")
-                # 如果旧的Future还没完成，取消它
-                old_future = self._task_registry[task_id]
+        """注册任务并返回Future对象（使用Redis共享状态）"""
+        with self._future_lock:
+            # 检查本地是否已有Future
+            if task_id in self._local_futures:
+                old_future = self._local_futures[task_id]
                 if not old_future.done():
                     old_future.cancel()
+                del self._local_futures[task_id]
 
-            # 创建新的Future - 使用当前事件循环
+            # 在Redis中注册任务状态
+            try:
+                task_data = {
+                    'task_id': task_id,
+                    'status': 'pending',
+                    'created_at': time.time(),
+                    'process_id': os.getpid()
+                }
+
+                # 使用Redis存储任务状态，设置过期时间为1小时
+                task_key = self._get_task_key(task_id)
+                self._redis_client.setex(
+                    task_key,
+                    3600,  # 1小时过期
+                    pickle.dumps(task_data)
+                )
+
+                # 更新统计信息
+                self._increment_stat('registered_tasks')
+
+                logger.info(f"任务 {task_id} 已注册到Redis，进程ID: {os.getpid()}")
+
+            except Exception as e:
+                logger.error(f"Redis任务注册失败: {e}")
+                raise
+
+            # 创建本地Future
             try:
                 loop = asyncio.get_running_loop()
             except RuntimeError:
-                # 如果没有运行中的loop，创建新的
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
+
             future = loop.create_future()
+            self._local_futures[task_id] = future
 
-            self._task_registry[task_id] = future
-            self._registered_tasks += 1
-
-            logger.info(f"任务 {task_id} 已注册，当前待处理任务数: {len(self._task_registry)}")
+            logger.info(f"任务 {task_id} 本地Future已创建，当前本地任务数: {len(self._local_futures)}")
             return future
 
     def get_task(self, task_id: str) -> Optional[asyncio.Future]:
         """获取任务的Future对象"""
-        with self._task_lock:
-            return self._task_registry.get(task_id)
+        with self._future_lock:
+            return self._local_futures.get(task_id)
+
+    def _increment_stat(self, stat_name: str):
+        """增加统计计数"""
+        try:
+            self._redis_client.hincrby(self._stats_key, stat_name, 1)
+        except Exception as e:
+            logger.error(f"更新Redis统计失败: {e}")
+
+    def _check_task_exists_in_redis(self, task_id: str) -> bool:
+        """检查任务是否在Redis中存在"""
+        try:
+            task_key = self._get_task_key(task_id)
+            return self._redis_client.exists(task_key) > 0
+        except Exception as e:
+            logger.error(f"检查Redis任务状态失败: {e}")
+            return False
+
+    def _check_result_exists_in_redis(self, task_id: str) -> bool:
+        """检查结果是否在Redis中存在"""
+        try:
+            result_key = self._get_result_key(task_id)
+            return self._redis_client.exists(result_key) > 0
+        except Exception as e:
+            logger.error(f"检查Redis结果状态失败: {e}")
+            return False
 
     def complete_task(self, task_id: str, result: Any):
-        """完成任务并设置结果"""
-        with self._task_lock:
-            future = self._task_registry.get(task_id)
-            if future and not future.done():
-                # 获取或创建事件循环来设置结果
+        """完成任务并设置结果（Redis模式）"""
+        current_time = time.time()
+
+        # 1. 将结果存储到Redis（5分钟过期）
+        try:
+            result_data = {
+                'task_id': task_id,
+                'result': result,
+                'completed_at': current_time,
+                'status': 'completed'
+            }
+
+            result_key = self._get_result_key(task_id)
+            self._redis_client.setex(
+                result_key,
+                300,  # 5分钟过期
+                pickle.dumps(result_data)
+            )
+
+            logger.info(f"✅ 任务 {task_id} 结果已存储到Redis")
+
+        except Exception as e:
+            logger.error(f"Redis结果存储失败: {e}")
+
+        # 2. 尝试在本地Future中设置结果
+        with self._future_lock:
+            local_future = self._local_futures.get(task_id)
+
+            if local_future and not local_future.done():
                 try:
-                    loop = future.get_loop()
-                except RuntimeError:
-                    # 如果Future没有关联的loop，创建新的
-                    loop = asyncio.new_event_loop()
-                    asyncio.set_event_loop(loop)
+                    loop = local_future.get_loop()
+                    if loop.is_running():
+                        loop.call_soon_threadsafe(local_future.set_result, result)
+                    else:
+                        loop.run_until_complete(local_future.set_result(result))
 
-                # 在正确的loop中设置结果
-                if loop.is_running():
-                    loop.call_soon_threadsafe(future.set_result, result)
-                else:
-                    loop.run_until_complete(future.set_result(result))
+                    self._increment_stat('completed_tasks')
+                    logger.info(f"✅ 任务 {task_id} 本地Future已完成，结果已设置")
 
-                self._completed_tasks += 1
-                logger.info(f"任务 {task_id} 已完成，结果已设置")
+                except Exception as e:
+                    logger.error(f"设置本地Future结果失败: {e}")
             else:
-                # 任务可能已超时清理，缓存结果供后续获取
-                self._result_cache[task_id] = result
-                self._cache_expiry[task_id] = time.time() + 300  # 5分钟缓存
-                logger.info(f"✅ 任务 {task_id} 回调已接收，结果已缓存（5分钟有效期）")
+                logger.info(f"✅ 任务 {task_id} 回调已接收，结果已存储到Redis（5分钟有效期）")
+
+        # 3. 从Redis中移除任务状态
+        try:
+            task_key = self._get_task_key(task_id)
+            self._redis_client.delete(task_key)
+        except Exception as e:
+            logger.error(f"删除Redis任务状态失败: {e}")
 
     def fail_task(self, task_id: str, error: Exception):
         """标记任务失败"""
@@ -253,30 +391,23 @@ class GlobalCallbackManager:
                 logger.warning(f"任务 {task_id} 不存在或已完成，错误结果已缓存（5分钟有效期）")
 
     def get_cached_result(self, task_id: str) -> Optional[Any]:
-        """获取缓存的结果"""
-        with self._task_lock:
-            if task_id in self._result_cache:
-                # 检查是否过期
-                if time.time() < self._cache_expiry[task_id]:
-                    logger.info(f"从缓存获取任务 {task_id} 的结果")
-                    return self._result_cache[task_id]
-                else:
-                    # 清理过期缓存
-                    del self._result_cache[task_id]
-                    del self._cache_expiry[task_id]
-                    logger.info(f"任务 {task_id} 的缓存结果已过期，已清理")
+        """获取缓存的结果（从Redis）"""
+        try:
+            result_key = self._get_result_key(task_id)
+            result_data = self._redis_client.get(result_key)
+
+            if result_data:
+                data = pickle.loads(result_data)
+                logger.info(f"✅ 从Redis缓存获取任务 {task_id} 的结果")
+                return data.get('result')
+            else:
+                return None
+
+        except Exception as e:
+            logger.error(f"获取Redis缓存结果失败: {e}")
             return None
 
-    def cleanup_task(self, task_id: str):
-        """清理任务"""
-        with self._task_lock:
-            if task_id in self._task_registry:
-                future = self._task_registry[task_id]
-                if not future.done():
-                    future.cancel()
-                del self._task_registry[task_id]
-                logger.info(f"任务 {task_id} 已从注册表中清理")
-
+    
     def _start_callback_server(self):
         """启动全局回调服务器"""
         if self._server_running:
@@ -339,23 +470,21 @@ class GlobalCallbackManager:
 
                 logger.info(f"处理任务ID: {task_id}")
 
-                # 调试：检查任务是否在注册表中
-                with self._task_lock:
-                    is_registered = task_id in self._task_registry
-                    future_status = "已存在" if is_registered else "不存在"
-                    if is_registered:
-                        future = self._task_registry[task_id]
-                        future_status += f" (done: {future.done()})"
+                # 调试：检查任务状态（Redis模式）
+                is_registered = self._check_task_exists_in_redis(task_id)
+                in_cache = self._check_result_exists_in_redis(task_id)
 
-                    # 检查是否在缓存中
-                    in_cache = task_id in self._result_cache
-                    cache_status = "在缓存中" if in_cache else "不在缓存中"
-                    if in_cache:
-                        expiry_time = self._cache_expiry[task_id]
-                        remaining_time = expiry_time - current_time
-                        cache_status += f" (剩余时间: {remaining_time:.1f}s)"
+                # 检查本地Future
+                with self._future_lock:
+                    local_future = self._local_futures.get(task_id)
+                    local_status = "本地存在" if local_future else "本地不存在"
+                    if local_future:
+                        local_status += f" (done: {local_future.done()})"
 
-                logger.info(f"任务状态检查 - 注册表: {future_status}, 缓存: {cache_status}")
+                redis_status = "Redis存在" if is_registered else "Redis不存在"
+                cache_status = "结果缓存存在" if in_cache else "结果缓存不存在"
+
+                logger.info(f"任务状态检查 - Redis: {redis_status}, {cache_status}, {local_status}")
 
                 # 处理任务结果
                 if payload.get('status') == 'completed':
