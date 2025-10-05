@@ -23,6 +23,8 @@ docker-compose down
 - 地址: localhost:5901
 - 密码: youtube123
 
+**注意**: 如果密码无效，尝试默认密码 `vncpassword`
+
 ## 使用说明
 
 1. 启动容器后，等待约30秒让桌面环境完全加载
