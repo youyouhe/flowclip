@@ -130,6 +130,46 @@ services:
         max-size: "20m"
         max-file: "2"
 
+  # 独立TUS回调服务器
+  callback-server:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: flowclip-callback
+    command: python callback_server.py
+    ports:
+      - "9090:9090"  # 固定端口用于TUS回调服务器
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - CALLBACK_HOST=0.0.0.0
+      - CALLBACK_PORT=9090
+      - REDIS_KEY_PREFIX=tus_callback:
+      - REDIS_RESULT_PREFIX=tus_result:
+      - REDIS_STATS_KEY=tus_callback_stats
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - flowclip-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "2"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9090/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+        reservations:
+          memory: 128M
+
   # Celery Worker
   celery-worker:
     build:
@@ -137,8 +177,7 @@ services:
       dockerfile: Dockerfile
     container_name: flowclip-celery
     command: python start_celery.py worker --loglevel=info --concurrency=5
-    ports:
-      - "9090:9090"  # 固定端口用于全局TUS回调服务器
+    # 移除端口映射，不再需要从celery worker暴露回调端口
     environment:
       - DATABASE_URL=mysql+aiomysql://youtube_user:youtube_password@mysql:3306/youtube_slicer?charset=utf8mb4
       - REDIS_URL=redis://redis:6379

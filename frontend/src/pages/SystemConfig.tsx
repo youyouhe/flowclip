@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Card, Row, Col, Form, Input, Button, Spin, Alert, Typography, Divider, Collapse, Tag, Select, Upload, message, Tabs } from 'antd';
+import { Card, Row, Col, Form, Input, Button, Spin, Alert, Typography, Divider, Collapse, Tag, Select, Upload, message, Tabs, Switch } from 'antd';
 import { systemConfigAPI, capcutAPI, asrAPI, llmAPI } from '../services/api';
 import { useAuth } from '../components/AuthProvider';
 import { UploadOutlined, PlayCircleOutlined } from '@ant-design/icons';
@@ -35,6 +35,50 @@ const SystemConfig: React.FC = () => {
   const [asrTestResult, setAsrTestResult] = useState<string | null>(null);
   const [llmModels, setLlmModels] = useState<Array<{id: string, name: string}>>([]);
   const { user } = useAuth();
+
+  // 配置项显示名称映射
+  const getConfigDisplayName = (key: string) => {
+    const displayNames: Record<string, string> = {
+      // TUS配置显示名称
+      'tus_api_url': 'TUS API服务地址',
+      'tus_upload_url': 'TUS上传服务地址',
+      'tus_file_size_threshold_mb': 'TUS文件大小阈值(MB)',
+      'tus_enable_routing': '启用TUS路由',
+      'tus_max_retries': 'TUS最大重试次数',
+      'tus_timeout_seconds': 'TUS超时时间(秒)',
+      'tus_use_global_callback': '使用全局回调服务器',
+      'tus_use_standalone_callback': '使用独立回调服务器',
+
+      // 其他配置的显示名称可以继续添加
+      'asr_service_url': 'ASR服务地址',
+      'openrouter_api_key': 'OpenRouter API密钥',
+      'capcut_api_url': 'CapCut API地址',
+    };
+
+    return displayNames[key] || key;
+  };
+
+  // 配置项描述映射
+  const getConfigDescription = (key: string) => {
+    const descriptions: Record<string, string> = {
+      // TUS配置描述
+      'tus_api_url': 'TUS ASR API服务的完整URL地址，用于创建ASR任务和下载结果',
+      'tus_upload_url': 'TUS文件上传服务的URL地址，用于上传音频文件',
+      'tus_file_size_threshold_mb': '文件大小阈值(MB)，超过此大小的文件将使用TUS协议',
+      'tus_enable_routing': '是否启用基于文件大小的TUS路由功能',
+      'tus_max_retries': 'TUS操作失败时的最大重试次数',
+      'tus_timeout_seconds': 'TUS操作的超时时间(秒)',
+      'tus_use_global_callback': '是否使用全局回调服务器模式（与独立回调服务器二选一）',
+      'tus_use_standalone_callback': '是否使用独立回调服务器容器（推荐，解决多进程回调丢失问题）',
+
+      // 其他配置描述
+      'asr_service_url': 'ASR服务的URL地址，用于音频转文字处理',
+      'openrouter_api_key': 'OpenRouter API密钥，用于访问LLM服务',
+      'capcut_api_url': 'CapCut API服务的URL地址，用于视频编辑功能',
+    };
+
+    return descriptions[key] || '';
+  };
 
   useEffect(() => {
     fetchSystemConfigs();
@@ -509,7 +553,7 @@ return (
                       <Form.Item
                         label={
                           <span>
-                            {config.key} 
+                            {getConfigDisplayName(config.key)}
                             {config.default && (
                               <Text type="secondary" className="ml-2">
                                 (默认: {config.key === 'llm_system_prompt' && config.default.length > 200 ? config.default.substring(0, 200) + '...' : config.default})
@@ -518,7 +562,7 @@ return (
                           </span>
                         }
                         name={config.key}
-                        help={config.description}
+                        help={config.description || getConfigDescription(config.key)}
                       >
                         {config.category === '数据库配置' ? (
                           // 数据库配置设为只读
@@ -573,12 +617,49 @@ return (
                             max={config.key === 'llm_temperature' ? "1" : "100000"}
                           />
                         ) : config.key.includes('password') || config.key.includes('secret') || config.key.includes('key') ? (
-                          <Input.Password 
+                          <Input.Password
                             placeholder={config.default || `请输入${config.key}`}
                             visibilityToggle={true}
                           />
+                        ) : config.key === 'tus_use_standalone_callback' ? (
+                          // 独立回调服务器配置使用Switch组件
+                          <Switch
+                            checked={config.value === 'true'}
+                            onChange={(checked) => {
+                              form.setFieldsValue({ [config.key]: checked.toString() });
+                              // 如果启用独立回调服务器，自动禁用全局回调服务器
+                              if (checked) {
+                                form.setFieldsValue({ 'tus_use_global_callback': 'false' });
+                              }
+                            }}
+                            checkedChildren="启用"
+                            unCheckedChildren="禁用"
+                          />
+                        ) : config.key === 'tus_use_global_callback' ? (
+                          // 全局回调服务器配置使用Switch组件
+                          <Switch
+                            checked={config.value === 'true'}
+                            onChange={(checked) => {
+                              form.setFieldsValue({ [config.key]: checked.toString() });
+                              // 如果启用全局回调服务器，自动禁用独立回调服务器
+                              if (checked) {
+                                form.setFieldsValue({ 'tus_use_standalone_callback': 'false' });
+                              }
+                            }}
+                            checkedChildren="启用"
+                            unCheckedChildren="禁用"
+                            disabled={form.getFieldValue('tus_use_standalone_callback') === 'true'}
+                          />
+                        ) : config.key.includes('use_') && config.key.includes('callback') ? (
+                          // 其他回调相关配置使用Switch组件
+                          <Switch
+                            checked={config.value === 'true'}
+                            onChange={(checked) => form.setFieldsValue({ [config.key]: checked.toString() })}
+                            checkedChildren="启用"
+                            unCheckedChildren="禁用"
+                          />
                         ) : (
-                          <Input 
+                          <Input
                             placeholder={config.default || `请输入${config.key}`}
                           />
                         )}

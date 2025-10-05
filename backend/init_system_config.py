@@ -80,6 +80,16 @@ def init_system_config(max_retries=5, retry_delay=2):
                 "asr_service_url": os.environ.get('ASR_SERVICE_URL', ''),
                 "openrouter_api_key": os.environ.get('OPENROUTER_API_KEY', ''),
                 "capcut_api_url": os.environ.get('CAPCUT_API_URL', ''),
+
+                # TUS ASR配置
+                "tus_api_url": os.environ.get('TUS_API_URL', ''),
+                "tus_upload_url": os.environ.get('TUS_UPLOAD_URL', ''),
+                "tus_file_size_threshold_mb": os.environ.get('TUS_FILE_SIZE_THRESHOLD_MB', '10'),
+                "tus_enable_routing": os.environ.get('TUS_ENABLE_ROUTING', 'true'),
+                "tus_max_retries": os.environ.get('TUS_MAX_RETRIES', '3'),
+                "tus_timeout_seconds": os.environ.get('TUS_TIMEOUT_SECONDS', '1500'),
+                "tus_use_global_callback": os.environ.get('TUS_USE_GLOBAL_CALLBACK', 'true'),
+                "tus_use_standalone_callback": os.environ.get('TUS_USE_STANDALONE_CALLBACK', 'true'),
                 
                 # Server配置
                 "public_ip": os.environ.get('PUBLIC_IP', ''),
@@ -156,6 +166,8 @@ def get_config_category(key):
         return "Redis配置"
     elif key.startswith('minio_'):
         return "MinIO配置"
+    elif key.startswith('tus_'):
+        return "TUS ASR配置"
     elif key in ['secret_key']:
         return "安全配置"
     elif key in ['public_ip', 'private_ip', 'frontend_url', 'api_url']:

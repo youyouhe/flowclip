@@ -62,6 +62,7 @@ class Settings(BaseSettings):
     tus_max_retries: int = 3  # TUS最大重试次数
     tus_timeout_seconds: int = 1500  # TUS超时时间(秒) - 设置为小于Celery硬时间限制
     tus_use_global_callback: bool = True  # 是否使用全局回调服务器(固定端口模式)
+    tus_use_standalone_callback: bool = True  # 是否使用独立回调服务器容器
     
     # LLM Configuration
     openrouter_api_key: Optional[str] = None

@@ -18,6 +18,7 @@ from aiohttp import web
 
 from app.core.config import settings
 from app.services.global_callback_manager import global_callback_manager
+from app.services.standalone_callback_client import standalone_callback_client
 
 logger = logging.getLogger(__name__)
 
@@ -25,8 +26,9 @@ logger = logging.getLogger(__name__)
 class TusASRClient:
     """TUS ASR客户端，为FlowClip系统提供TUS协议支持"""
 
-    # 是否使用全局回调服务器
-    _use_global_callback = settings.tus_use_global_callback
+    # 是否使用独立回调服务器
+    _use_standalone_callback = settings.tus_use_standalone_callback
+    _use_global_callback = settings.tus_use_global_callback and not settings.tus_use_standalone_callback
 
     @classmethod
     def _process_signal_handler(cls, signum, frame):
@@ -100,7 +102,13 @@ class TusASRClient:
         self._load_config_from_database_without_port()
 
         # 内部状态管理
-        if self._use_global_callback:
+        if self._use_standalone_callback:
+            # 独立回调服务器模式
+            self.completed_tasks = {}  # 保留兼容性，但实际不使用
+            self.callback_manager = standalone_callback_client
+            self.process_id = os.getpid()  # 记录进程ID用于日志
+            logger.info("使用独立回调服务器模式")
+        elif self._use_global_callback:
             # 全局模式：使用全局管理器
             self.completed_tasks = {}  # 保留兼容性，但实际不使用
             self.callback_manager = global_callback_manager
@@ -781,7 +789,39 @@ class TusASRClient:
         safe_timeout = min(self.timeout_seconds, 1700)  # 留出100秒的缓冲时间
 
         try:
-            if self._use_global_callback:
+            if self._use_standalone_callback:
+                # 独立回调服务器模式
+                logger.info(f"使用独立回调服务器模式等待任务 {task_id} (超时: {safe_timeout}s)")
+
+                # 向独立回调服务器注册任务
+                if self.callback_manager.register_task(task_id):
+                    logger.info(f"任务 {task_id} 已向独立回调服务器注册")
+
+                    # 等待回调结果
+                    result_data = await self.callback_manager.wait_for_result(task_id, safe_timeout)
+
+                    if result_data and isinstance(result_data, dict):
+                        logger.info(f"任务 {task_id} 结果已获取: {result_data}")
+
+                        if result_data.get('status') == 'completed':
+                            result_task_id = result_data.get('task_id')
+                            srt_url = result_data.get('srt_url', f"{self.api_url}/api/v1/tasks/{result_task_id}/download")
+                            logger.info(f"准备下载SRT内容，URL: {srt_url}")
+                            # 如果srt_url是相对路径（不以http开头），转换为完整URL
+                            if srt_url and not srt_url.startswith('http'):
+                                srt_url = f"{self.api_url}{srt_url}"
+                                logger.info(f"转换后的SRT URL: {srt_url}")
+                            srt_content = await self._download_srt_content(srt_url)
+                            logger.info(f"SRT内容下载完成，长度: {len(srt_content) if srt_content else 0}")
+                            return srt_content
+                    else:
+                        logger.error(f"任务 {task_id} 未收到有效结果")
+                        raise RuntimeError(f"任务 {task_id} 未收到有效结果")
+                else:
+                    logger.error(f"任务 {task_id} 注册失败")
+                    raise RuntimeError(f"任务 {task_id} 注册失败")
+
+            elif self._use_global_callback:
                 # 全局模式：使用全局回调管理器
                 logger.info(f"使用全局回调模式等待任务 {task_id} (超时: {safe_timeout}s)")
                 logger.info(f"全局管理器统计: {self.callback_manager.stats}")
