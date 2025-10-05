@@ -410,6 +410,12 @@ class TusASRClient:
         start_time = time.time()  # 记录开始时间用于统计
 
         try:
+            # 检查回调管理器是否可用
+            if not self.callback_manager._redis_available:
+                logger.warning("⚠️ 回调管理器Redis不可用，回退到标准ASR处理")
+                return await self._fallback_to_standard_asr(audio_file_path, metadata, start_time)
+
+            # 步骤1: 创建ASR任务
             # 步骤1: 创建ASR任务
             logger.info("📝 步骤1: 创建ASR任务...")
             task_info = await self._create_tus_task(audio_file_path, metadata)
@@ -956,6 +962,92 @@ class TusASRClient:
                 # 传统模式：清理本地任务
                 if task_id in self.completed_tasks:
                     del self.completed_tasks[task_id]
+
+    async def _fallback_to_standard_asr(
+        self,
+        audio_file_path: str,
+        metadata: Dict[str, Any],
+        start_time: float
+    ) -> Dict[str, Any]:
+        """回退到标准ASR处理"""
+        logger.info("🔄 回退到标准ASR处理")
+
+        try:
+            # 使用标准ASR处理
+            from app.services.audio_processor import AudioProcessor
+            audio_processor = AudioProcessor()
+
+            # 直接处理音频文件
+            srt_content = await audio_processor.generate_srt_from_audio(
+                audio_file_path,
+                {
+                    'language': metadata.get('language', 'auto'),
+                    'model': metadata.get('model', 'whisper'),
+                    'video_id': metadata.get('video_id', 'unknown'),
+                    'project_id': metadata.get('project_id', 1),
+                    'user_id': metadata.get('user_id', 1)
+                }
+            )
+
+            logger.info("✅ 标准ASR处理完成")
+
+            # 上传SRT内容到MinIO
+            srt_url = None
+            if srt_content:
+                user_id = metadata.get('user_id', 1)
+                project_id = metadata.get('project_id', 1)
+                video_id = metadata.get('video_id', 'unknown')
+
+                srt_filename = f"{video_id}.srt"
+                srt_object_name = f"users/{user_id}/projects/{project_id}/subtitles/{srt_filename}"
+
+                try:
+                    tmp_srt_path = None
+                    try:
+                        with tempfile.NamedTemporaryFile(mode='w', suffix='.srt', delete=False, encoding='utf-8') as tmp_srt_file:
+                            tmp_srt_file.write(srt_content)
+                            tmp_srt_path = tmp_srt_file.name
+
+                        from app.services.minio_client import minio_service
+                        srt_url = await minio_service.upload_file(
+                            tmp_srt_path,
+                            srt_object_name,
+                            "text/srt"
+                        )
+
+                        if tmp_srt_path:
+                            import os
+                            if os.path.exists(tmp_srt_path):
+                                os.unlink(tmp_srt_path)
+                    except Exception as upload_error:
+                        logger.error(f"SRT文件上传失败: {upload_error}")
+                        if tmp_srt_path:
+                            import os
+                            if os.path.exists(tmp_srt_path):
+                                os.unlink(tmp_srt_path)
+                        raise
+
+                except Exception as e:
+                    logger.error(f"上传SRT到MinIO失败: {e}")
+
+            return {
+                'success': True,
+                'strategy': 'standard',
+                'task_id': None,
+                'srt_content': srt_content,
+                'srt_url': srt_url,
+                'minio_path': srt_url,
+                'object_name': srt_object_name if 'srt_object_name' in locals() else None,
+                'file_path': audio_file_path,
+                'metadata': metadata,
+                'processing_time': time.time() - start_time,
+                'file_size': audio_path.stat().st_size if 'audio_path' in locals() else 0,
+                'fallback_reason': 'redis_unavailable'
+            }
+
+        except Exception as e:
+            logger.error(f"标准ASR处理失败: {e}")
+            raise RuntimeError(f"TUS和标准ASR处理都失败: {str(e)}") from e
 
     async def _poll_tus_results(self, task_id: str) -> str:
         """轮询TUS任务结果"""

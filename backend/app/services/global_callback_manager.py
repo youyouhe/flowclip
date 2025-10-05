@@ -57,28 +57,77 @@ class GlobalCallbackManager:
         self._local_futures: Dict[str, asyncio.Future] = {}
         self._future_lock = threading.RLock()
 
+        # Fallback模式存储（当Redis不可用时）
+        self._fallback_registry: Dict[str, Any] = {}
+        self._fallback_results: Dict[str, Any] = {}
+        self._fallback_expiry: Dict[str, float] = {}
+        self._fallback_lock = threading.RLock()
+
+        # Redis模式标志
+        self._redis_available = False
+
         # 初始化Redis连接
         self._init_redis()
 
-        logger.info("全局回调服务器管理器初始化完成（Redis模式）")
+        if self._redis_client:
+            logger.info("全局回调服务器管理器初始化完成（Redis模式）")
+        else:
+            logger.warning("全局回调服务器管理器初始化完成（Fallback模式）")
 
     def _init_redis(self):
         """初始化Redis连接"""
         try:
             import redis
-            from app.core.config import settings
+            from app.core.celery import celery_app
 
-            # 使用现有的Redis配置
-            redis_url = getattr(settings, 'REDIS_URL', 'redis://localhost:6379/0')
-            self._redis_client = redis.from_url(redis_url, decode_responses=False)
+            # 首先尝试使用Celery的broker URL（最可靠的配置）
+            broker_url = celery_app.conf.broker_url
+            if broker_url:
+                # 将celery broker URL转换为redis URL
+                if broker_url.startswith('redis://'):
+                    redis_url = broker_url
+                else:
+                    redis_url = f"redis://{broker_url.split('@')[-1]}"
+            else:
+                # 回退到配置文件中的设置
+                from app.core.config import settings
+                redis_url = getattr(settings, 'redis_url', 'redis://localhost:6379/0')
+
+            logger.info(f"🔗 尝试连接Redis: {redis_url}")
+
+            # 创建Redis客户端，使用与Celery相同的配置
+            self._redis_client = redis.from_url(
+                redis_url,
+                decode_responses=False,
+                socket_connect_timeout=10,
+                socket_timeout=10,
+                retry_on_timeout=True,
+                health_check_interval=30
+            )
 
             # 测试连接
             self._redis_client.ping()
             logger.info(f"✅ Redis连接成功: {redis_url}")
 
+            # 验证Redis功能
+            test_key = f"{self._redis_key_prefix}test"
+            self._redis_client.setex(test_key, 10, "test")
+            test_result = self._redis_client.get(test_key)
+            if test_result:
+                logger.info("✅ Redis读写测试通过")
+            else:
+                logger.warning("⚠️ Redis读写测试失败")
+                self._redis_client.delete(test_key)
+
         except Exception as e:
             logger.error(f"❌ Redis连接失败: {e}")
-            raise RuntimeError(f"无法连接到Redis: {e}")
+            # 不要抛出异常，而是设置一个fallback模式
+            logger.warning("⚠️ 将使用fallback模式，任务状态将存储在内存中")
+            self._redis_client = None
+            self._redis_available = False
+
+        # 设置Redis可用性标志
+        self._redis_available = self._redis_client is not None
 
     def _get_task_key(self, task_id: str) -> str:
         """获取任务在Redis中的键名"""
@@ -135,58 +184,56 @@ class GlobalCallbackManager:
 
     @property
     def stats(self) -> Dict[str, Any]:
-        """获取统计信息（从Redis获取全局统计）"""
-        try:
-            # 从Redis获取统计信息
-            stats_data = self._redis_client.hgetall(self._stats_key)
-            stats = {}
+        """获取统计信息（支持Redis和fallback模式）"""
+        stats = {
+            "server_running": self._server_running,
+            "port": self.callback_port,
+            "server_pid": self._server_pid,
+            "server_responding": self._is_server_responding() if self._server_running else False,
+            "current_process_id": os.getpid(),
+            "redis_available": self._redis_available,
+            "local_pending_tasks": len(self._local_futures)
+        }
 
-            for key, value in stats_data.items():
-                if key in ['registered_tasks', 'completed_tasks', 'failed_tasks']:
-                    stats[key.decode('utf-8')] = int(value.decode('utf-8'))
+        if self._redis_available:
+            # Redis模式 - 获取全局统计
+            try:
+                stats_data = self._redis_client.hgetall(self._stats_key)
+                for key, value in stats_data.items():
+                    if key in ['registered_tasks', 'completed_tasks', 'failed_tasks']:
+                        stats[key.decode('utf-8')] = int(value.decode('utf-8'))
 
-            # 获取当前待处理任务数
-            pending_keys = self._redis_client.keys(f"{self._redis_key_prefix}*")
-            stats['pending_tasks'] = len(pending_keys)
+                # 获取当前待处理任务数
+                pending_keys = self._redis_client.keys(f"{self._redis_key_prefix}*")
+                stats['pending_tasks'] = len(pending_keys)
 
-            # 获取缓存结果数
-            result_keys = self._redis_client.keys(f"{self._result_key_prefix}*")
-            stats['cached_results'] = len(result_keys)
+                # 获取缓存结果数
+                result_keys = self._redis_client.keys(f"{self._result_key_prefix}*")
+                stats['cached_results'] = len(result_keys)
 
-            # 本地统计
-            stats['local_pending_tasks'] = len(self._local_futures)
+                # 填充默认值
+                stats.setdefault('registered_tasks', 0)
+                stats.setdefault('completed_tasks', 0)
+                stats.setdefault('failed_tasks', 0)
 
-            # 服务器状态
-            stats['server_running'] = self._server_running
-            stats['port'] = self.callback_port
-            stats['server_pid'] = self._server_pid
-            stats['server_responding'] = self._is_server_responding() if self._server_running else False
-            stats['current_process_id'] = os.getpid()
+            except Exception as e:
+                logger.error(f"获取Redis统计信息失败: {e}")
+                stats['redis_error'] = str(e)
+                stats['registered_tasks'] = 0
+                stats['completed_tasks'] = 0
+                stats['failed_tasks'] = 0
+                stats['pending_tasks'] = 0
+                stats['cached_results'] = 0
+        else:
+            # Fallback模式 - 使用本地统计
+            with self._fallback_lock:
+                stats['registered_tasks'] = len(self._fallback_registry)
+                stats['pending_tasks'] = len(self._fallback_registry)
+                stats['cached_results'] = len(self._fallback_results)
+                stats['completed_tasks'] = 0
+                stats['failed_tasks'] = 0
 
-            # 填充默认值
-            stats.setdefault('registered_tasks', 0)
-            stats.setdefault('completed_tasks', 0)
-            stats.setdefault('failed_tasks', 0)
-
-            return stats
-
-        except Exception as e:
-            logger.error(f"获取Redis统计信息失败: {e}")
-            # 返回本地统计作为fallback
-            return {
-                "registered_tasks": 0,
-                "completed_tasks": 0,
-                "failed_tasks": 0,
-                "pending_tasks": len(self._local_futures),
-                "cached_results": 0,
-                "local_pending_tasks": len(self._local_futures),
-                "server_running": self._server_running,
-                "port": self.callback_port,
-                "server_pid": self._server_pid,
-                "server_responding": self._is_server_responding() if self._server_running else False,
-                "current_process_id": os.getpid(),
-                "redis_error": str(e)
-            }
+        return stats
 
     def ensure_server_running(self):
         """确保回调服务器正在运行"""
@@ -230,7 +277,7 @@ class GlobalCallbackManager:
             self._start_callback_server()
 
     def register_task(self, task_id: str) -> asyncio.Future:
-        """注册任务并返回Future对象（使用Redis共享状态）"""
+        """注册任务并返回Future对象（支持Redis和fallback模式）"""
         with self._future_lock:
             # 检查本地是否已有Future
             if task_id in self._local_futures:
@@ -239,31 +286,40 @@ class GlobalCallbackManager:
                     old_future.cancel()
                 del self._local_futures[task_id]
 
-            # 在Redis中注册任务状态
-            try:
-                task_data = {
-                    'task_id': task_id,
-                    'status': 'pending',
-                    'created_at': time.time(),
-                    'process_id': os.getpid()
-                }
+            if self._redis_available:
+                # Redis模式
+                try:
+                    task_data = {
+                        'task_id': task_id,
+                        'status': 'pending',
+                        'created_at': time.time(),
+                        'process_id': os.getpid()
+                    }
 
-                # 使用Redis存储任务状态，设置过期时间为1小时
-                task_key = self._get_task_key(task_id)
-                self._redis_client.setex(
-                    task_key,
-                    3600,  # 1小时过期
-                    pickle.dumps(task_data)
-                )
+                    task_key = self._get_task_key(task_id)
+                    self._redis_client.setex(
+                        task_key,
+                        3600,
+                        pickle.dumps(task_data)
+                    )
 
-                # 更新统计信息
-                self._increment_stat('registered_tasks')
+                    self._increment_stat('registered_tasks')
+                    logger.info(f"任务 {task_id} 已注册到Redis，进程ID: {os.getpid()}")
 
-                logger.info(f"任务 {task_id} 已注册到Redis，进程ID: {os.getpid()}")
+                except Exception as e:
+                    logger.error(f"Redis任务注册失败: {e}")
+                    # 回退到fallback模式
+                    self._redis_available = False
 
-            except Exception as e:
-                logger.error(f"Redis任务注册失败: {e}")
-                raise
+            if not self._redis_available:
+                # Fallback模式
+                with self._fallback_lock:
+                    self._fallback_registry[task_id] = {
+                        'task_id': task_id,
+                        'status': 'pending',
+                        'created_at': time.time(),
+                        'process_id': os.getpid()
+                    }
 
             # 创建本地Future
             try:
@@ -275,7 +331,8 @@ class GlobalCallbackManager:
             future = loop.create_future()
             self._local_futures[task_id] = future
 
-            logger.info(f"任务 {task_id} 本地Future已创建，当前本地任务数: {len(self._local_futures)}")
+            mode = "Redis" if self._redis_available else "Fallback"
+            logger.info(f"任务 {task_id} 本地Future已创建（{mode}模式），当前本地任务数: {len(self._local_futures)}")
             return future
 
     def get_task(self, task_id: str) -> Optional[asyncio.Future]:
@@ -285,53 +342,89 @@ class GlobalCallbackManager:
 
     def _increment_stat(self, stat_name: str):
         """增加统计计数"""
-        try:
-            self._redis_client.hincrby(self._stats_key, stat_name, 1)
-        except Exception as e:
-            logger.error(f"更新Redis统计失败: {e}")
+        if self._redis_available:
+            try:
+                self._redis_client.hincrby(self._stats_key, stat_name, 1)
+            except Exception as e:
+                logger.error(f"更新Redis统计失败: {e}")
+                # 回退到fallback模式
+                self._redis_available = False
 
     def _check_task_exists_in_redis(self, task_id: str) -> bool:
-        """检查任务是否在Redis中存在"""
-        try:
-            task_key = self._get_task_key(task_id)
-            return self._redis_client.exists(task_key) > 0
-        except Exception as e:
-            logger.error(f"检查Redis任务状态失败: {e}")
-            return False
+        """检查任务是否在存储中存在"""
+        if self._redis_available:
+            try:
+                task_key = self._get_task_key(task_id)
+                return self._redis_client.exists(task_key) > 0
+            except Exception as e:
+                logger.error(f"检查Redis任务状态失败: {e}")
+                return False
+        else:
+            # Fallback模式
+            with self._fallback_lock:
+                return task_id in self._fallback_registry
 
     def _check_result_exists_in_redis(self, task_id: str) -> bool:
-        """检查结果是否在Redis中存在"""
-        try:
-            result_key = self._get_result_key(task_id)
-            return self._redis_client.exists(result_key) > 0
-        except Exception as e:
-            logger.error(f"检查Redis结果状态失败: {e}")
-            return False
+        """检查结果是否在存储中存在"""
+        if self._redis_available:
+            try:
+                result_key = self._get_result_key(task_id)
+                return self._redis_client.exists(result_key) > 0
+            except Exception as e:
+                logger.error(f"检查Redis结果状态失败: {e}")
+                return False
+        else:
+            # Fallback模式
+            with self._fallback_lock:
+                return task_id in self._fallback_results
 
     def complete_task(self, task_id: str, result: Any):
-        """完成任务并设置结果（Redis模式）"""
+        """完成任务并设置结果（支持Redis和fallback模式）"""
         current_time = time.time()
 
-        # 1. 将结果存储到Redis（5分钟过期）
-        try:
-            result_data = {
-                'task_id': task_id,
-                'result': result,
-                'completed_at': current_time,
-                'status': 'completed'
-            }
+        if self._redis_available:
+            # Redis模式
+            try:
+                result_data = {
+                    'task_id': task_id,
+                    'result': result,
+                    'completed_at': current_time,
+                    'status': 'completed'
+                }
 
-            result_key = self._get_result_key(task_id)
-            self._redis_client.setex(
-                result_key,
-                300,  # 5分钟过期
-                pickle.dumps(result_data)
-            )
+                result_key = self._get_result_key(task_id)
+                self._redis_client.setex(
+                    result_key,
+                    300,  # 5分钟过期
+                    pickle.dumps(result_data)
+                )
 
-            logger.info(f"✅ 任务 {task_id} 结果已存储到Redis")
+                logger.info(f"✅ 任务 {task_id} 结果已存储到Redis")
 
-        except Exception as e:
-            logger.error(f"Redis结果存储失败: {e}")
+                # 从Redis中移除任务状态
+                task_key = self._get_task_key(task_id)
+                self._redis_client.delete(task_key)
+
+            except Exception as e:
+                logger.error(f"Redis操作失败: {e}")
+                # 回退到fallback模式
+                self._redis_available = False
+
+        if not self._redis_available:
+            # Fallback模式
+            with self._fallback_lock:
+                self._fallback_results[task_id] = {
+                    'result': result,
+                    'completed_at': current_time,
+                    'status': 'completed'
+                }
+                self._fallback_expiry[task_id] = current_time + 300  # 5分钟过期
+
+                # 从fallback注册表中移除任务
+                if task_id in self._fallback_registry:
+                    del self._fallback_registry[task_id]
+
+                logger.info(f"✅ 任务 {task_id} 结果已存储到Fallback缓存")
 
         # 2. 尝试在本地Future中设置结果
         with self._future_lock:
@@ -345,20 +438,17 @@ class GlobalCallbackManager:
                     else:
                         loop.run_until_complete(local_future.set_result(result))
 
-                    self._increment_stat('completed_tasks')
-                    logger.info(f"✅ 任务 {task_id} 本地Future已完成，结果已设置")
+                    if self._redis_available:
+                        self._increment_stat('completed_tasks')
+
+                    mode = "Redis" if self._redis_available else "Fallback"
+                    logger.info(f"✅ 任务 {task_id} 本地Future已完成（{mode}模式），结果已设置")
 
                 except Exception as e:
                     logger.error(f"设置本地Future结果失败: {e}")
             else:
-                logger.info(f"✅ 任务 {task_id} 回调已接收，结果已存储到Redis（5分钟有效期）")
-
-        # 3. 从Redis中移除任务状态
-        try:
-            task_key = self._get_task_key(task_id)
-            self._redis_client.delete(task_key)
-        except Exception as e:
-            logger.error(f"删除Redis任务状态失败: {e}")
+                mode = "Redis" if self._redis_available else "Fallback"
+                logger.info(f"✅ 任务 {task_id} 回调已接收，结果已存储到{mode}缓存（5分钟有效期）")
 
     def fail_task(self, task_id: str, error: Exception):
         """标记任务失败"""
@@ -391,21 +481,38 @@ class GlobalCallbackManager:
                 logger.warning(f"任务 {task_id} 不存在或已完成，错误结果已缓存（5分钟有效期）")
 
     def get_cached_result(self, task_id: str) -> Optional[Any]:
-        """获取缓存的结果（从Redis）"""
-        try:
-            result_key = self._get_result_key(task_id)
-            result_data = self._redis_client.get(result_key)
+        """获取缓存的结果（支持Redis和fallback模式）"""
+        # 首先尝试从Redis获取
+        if self._redis_available:
+            try:
+                result_key = self._get_result_key(task_id)
+                result_data = self._redis_client.get(result_key)
 
-            if result_data:
-                data = pickle.loads(result_data)
-                logger.info(f"✅ 从Redis缓存获取任务 {task_id} 的结果")
-                return data.get('result')
-            else:
-                return None
+                if result_data:
+                    data = pickle.loads(result_data)
+                    logger.info(f"✅ 从Redis缓存获取任务 {task_id} 的结果")
+                    return data.get('result')
 
-        except Exception as e:
-            logger.error(f"获取Redis缓存结果失败: {e}")
-            return None
+            except Exception as e:
+                logger.error(f"获取Redis缓存结果失败: {e}")
+                # 不要回退到fallback模式，继续检查本地缓存
+
+        # 从fallback缓存获取
+        with self._fallback_lock:
+            if task_id in self._fallback_results:
+                # 检查是否过期
+                expiry_time = self._fallback_expiry.get(task_id, 0)
+                if current_time < expiry_time:
+                    result_data = self._fallback_results[task_id]
+                    logger.info(f"✅ 从Fallback缓存获取任务 {task_id} 的结果")
+                    return result_data.get('result')
+                else:
+                    # 清理过期的fallback缓存
+                    del self._fallback_results[task_id]
+                    del self._fallback_expiry[task_id]
+                    logger.info(f"任务 {task_id} 的Fallback缓存结果已过期，已清理")
+
+        return None
 
     
     def _start_callback_server(self):
