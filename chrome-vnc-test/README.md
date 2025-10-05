@@ -55,7 +55,7 @@ yt-dlp -x --audio-format mp3 "URL"
 yt-dlp -F "URL"
 ```
 
-下载的文件会保存在 `/home/headless/Downloads` 目录，并映射到宿主机的 `./downloads` 文件夹。
+下载的文件会保存在 `/headless/Downloads` 目录，并映射到宿主机的 `./downloads` 文件夹。
 
 ## 故障排除
 

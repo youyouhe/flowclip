@@ -20,10 +20,10 @@ RUN wget https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -O /us
     chmod a+rx /usr/local/bin/yt-dlp
 
 # 创建常用目录
-RUN mkdir -p /home/headless/Downloads /home/headless/Videos
+RUN mkdir -p /headless/Downloads /headless/Videos
 
 # 设置权限
-RUN chown -R headless:headless /home/headless
+RUN chown -R 1000:0 /headless
 
 # 切换回普通用户
 USER 1000

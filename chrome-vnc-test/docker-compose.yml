@@ -12,9 +12,9 @@ services:
       - VNC_PW=youtube123
       - VNC_RESOLUTION=1920x1080
     volumes:
-      - chrome-data:/home/headless
-      - ./downloads:/home/headless/Downloads
-      - ./videos:/home/headless/Videos
+      - chrome-data:/headless
+      - ./downloads:/headless/Downloads
+      - ./videos:/headless/Videos
     networks:
       - chrome-network
 
