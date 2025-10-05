@@ -514,7 +514,67 @@ class GlobalCallbackManager:
 
         return None
 
-    
+    def cleanup_task(self, task_id: str):
+        """清理任务相关的资源"""
+        logger.info(f"清理任务 {task_id} 的相关资源")
+
+        # 清理本地Future
+        with self._future_lock:
+            if task_id in self._local_futures:
+                future = self._local_futures[task_id]
+                if not future.done():
+                    future.cancel()
+                del self._local_futures[task_id]
+                logger.info(f"已清理任务 {task_id} 的本地Future")
+
+        # 清理Redis中的任务状态和结果
+        if self._redis_available:
+            try:
+                task_key = self._get_task_key(task_id)
+                result_key = self._get_result_key(task_id)
+
+                # 删除任务状态和结果
+                deleted_count = 0
+                if self._redis_client.exists(task_key):
+                    self._redis_client.delete(task_key)
+                    deleted_count += 1
+                    logger.info(f"已清理任务 {task_id} 的Redis状态")
+
+                if self._redis_client.exists(result_key):
+                    self._redis_client.delete(result_key)
+                    deleted_count += 1
+                    logger.info(f"已清理任务 {task_id} 的Redis结果")
+
+                if deleted_count > 0:
+                    logger.info(f"✅ 任务 {task_id} 的Redis资源清理完成，删除了 {deleted_count} 个键")
+
+            except Exception as e:
+                logger.error(f"清理Redis任务资源失败: {e}")
+
+        # 清理Fallback缓存
+        with self._fallback_lock:
+            cleaned_count = 0
+            if task_id in self._fallback_registry:
+                del self._fallback_registry[task_id]
+                cleaned_count += 1
+                logger.info(f"已清理任务 {task_id} 的Fallback注册状态")
+
+            if task_id in self._fallback_results:
+                del self._fallback_results[task_id]
+                cleaned_count += 1
+                logger.info(f"已清理任务 {task_id} 的Fallback结果")
+
+            if task_id in self._fallback_expiry:
+                del self._fallback_expiry[task_id]
+                cleaned_count += 1
+                logger.info(f"已清理任务 {task_id} 的Fallback过期时间")
+
+            if cleaned_count > 0:
+                logger.info(f"✅ 任务 {task_id} 的Fallback资源清理完成，删除了 {cleaned_count} 个项目")
+
+        logger.info(f"任务 {task_id} 资源清理完成")
+
+
     def _start_callback_server(self):
         """启动全局回调服务器"""
         if self._server_running:
