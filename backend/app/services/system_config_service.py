@@ -301,7 +301,9 @@ class SystemConfigService:
             {"key": "tus_enable_routing", "label": "启用TUS路由", "category": "其他服务配置", "default": str(settings.tus_enable_routing).lower(), "description": "是否启用TUS自动路由功能"},
             {"key": "tus_max_retries", "label": "TUS最大重试次数", "category": "其他服务配置", "default": str(settings.tus_max_retries), "description": "TUS操作的最大重试次数"},
             {"key": "tus_timeout_seconds", "label": "TUS超时时间(秒)", "category": "其他服务配置", "default": str(settings.tus_timeout_seconds), "description": "TUS操作的超时时间(秒) - 应设置为小于Celery任务硬时间限制(1800秒)"},
-            
+            {"key": "tus_use_global_callback", "label": "使用全局回调服务器", "category": "其他服务配置", "default": str(settings.tus_use_global_callback).lower(), "description": "是否使用全局回调服务器模式（与独立回调服务器二选一）"},
+            {"key": "tus_use_standalone_callback", "label": "使用独立回调服务器", "category": "其他服务配置", "default": str(settings.tus_use_standalone_callback).lower(), "description": "是否使用独立回调服务器容器（推荐，解决多进程回调丢失问题）"},
+
             # LLM配置
             {"key": "openrouter_api_key", "label": "OpenRouter API密钥", "category": "LLM配置", "default": settings.openrouter_api_key or "", "sensitive": True},
             {"key": "llm_base_url", "label": "LLM服务基础URL", "category": "LLM配置", "default": getattr(settings, 'llm_base_url', 'https://openrouter.ai/api/v1'), "description": "LLM服务的基础URL，例如OpenRouter API的URL"},
