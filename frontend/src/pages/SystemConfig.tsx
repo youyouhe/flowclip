@@ -668,7 +668,7 @@ return (
                                           <Text strong>独立回调服务器模式</Text>
                                           <br />
                                           <Text type="secondary" style={{ fontSize: '12px' }}>
-                                            使用独立回调服务器容器（推荐，解决多进程回调丢失问题）
+                                            使用Redis通信模式，为每个进程动态分配端口（推荐，解决多进程回调丢失问题）
                                           </Text>
                                         </div>
                                       </Radio>
@@ -677,7 +677,7 @@ return (
                                           <Text strong>全局回调服务器模式</Text>
                                           <br />
                                           <Text type="secondary" style={{ fontSize: '12px' }}>
-                                            使用全局回调服务器模式（固定端口9090）
+                                            使用单一HTTP服务器，固定端口9090，所有进程共享
                                           </Text>
                                         </div>
                                       </Radio>
