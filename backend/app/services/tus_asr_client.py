@@ -89,8 +89,15 @@ class TusASRClient:
         configured_timeout = timeout_seconds or settings.tus_timeout_seconds
         self.timeout_seconds = min(configured_timeout, 1700)  # 限制在1700秒以内
 
+        # 首先从数据库加载配置以确定回调模式
+        self._load_config_from_database_mode_only()
+
         # 回调端口配置 - 支持固定端口模式
-        if self._use_global_callback:
+        if self._use_standalone_callback:
+            # 独立回调服务器模式：使用固定端口
+            self.callback_port = getattr(settings, 'tus_callback_port', 9090)
+            logger.info(f"使用独立回调服务器模式，固定端口: {self.callback_port}")
+        elif self._use_global_callback:
             # 使用全局回调服务器的固定端口
             self.callback_port = getattr(settings, 'tus_callback_port', 9090)
             logger.info(f"使用全局回调服务器模式，固定端口: {self.callback_port}")
@@ -181,6 +188,34 @@ class TusASRClient:
 
         except Exception as e:
             logger.warning(f"从数据库加载TUS配置失败: {e}，使用默认配置")
+
+    def _load_config_from_database_mode_only(self):
+        """仅从数据库加载回调模式配置，用于确定端口分配策略"""
+        try:
+            from app.core.database import get_sync_db
+            from app.services.system_config_service import SystemConfigService
+
+            # 使用同步数据库连接
+            with get_sync_db() as db:
+                # 只获取回调模式配置
+                callback_mode = SystemConfigService.get_config_sync(db, 'tus_callback_mode')
+                if callback_mode:
+                    callback_mode = callback_mode.lower()
+                    if callback_mode == 'standalone':
+                        self._use_standalone_callback = True
+                        self._use_global_callback = False
+                        logger.info(f"从数据库加载回调模式: 独立模式")
+                    elif callback_mode == 'global':
+                        self._use_standalone_callback = False
+                        self._use_global_callback = True
+                        logger.info(f"从数据库加载回调模式: 全局模式")
+                    else:
+                        self._use_standalone_callback = False
+                        self._use_global_callback = False
+                        logger.info(f"从数据库加载回调模式: 传统模式")
+
+        except Exception as e:
+            logger.warning(f"从数据库加载回调模式失败: {e}，使用默认配置")
 
     def _load_config_from_database_without_port(self):
         """从数据库动态加载TUS配置，但不覆盖端口设置"""
