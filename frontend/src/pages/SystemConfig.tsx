@@ -668,7 +668,7 @@ return (
                                           <Text strong>独立回调服务器模式</Text>
                                           <br />
                                           <Text type="secondary" style={{ fontSize: '12px' }}>
-                                            使用Redis通信模式，为每个进程动态分配端口（推荐，解决多进程回调丢失问题）
+                                            运行独立的callback_server.py进程，固定端口9090，通过Redis通信（推荐）
                                           </Text>
                                         </div>
                                       </Radio>
@@ -677,7 +677,7 @@ return (
                                           <Text strong>全局回调服务器模式</Text>
                                           <br />
                                           <Text type="secondary" style={{ fontSize: '12px' }}>
-                                            使用单一HTTP服务器，固定端口9090，所有进程共享
+                                            在应用内部启动HTTP服务器，固定端口9090，单例模式管理
                                           </Text>
                                         </div>
                                       </Radio>
