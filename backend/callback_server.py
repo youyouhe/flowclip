@@ -83,8 +83,17 @@ class StandaloneCallbackServer:
     def _init_redis(self):
         """初始化Redis连接"""
         try:
+            # 尝试使用和主应用相同的Redis配置
+            try:
+                from app.core.config import settings
+                actual_redis_url = settings.redis_url
+                logger.info(f"使用主应用配置的Redis URL: {actual_redis_url}")
+            except ImportError:
+                actual_redis_url = self.redis_url
+                logger.info(f"使用环境变量Redis URL: {actual_redis_url}")
+
             self._redis_client = redis.from_url(
-                self.redis_url,
+                actual_redis_url,
                 decode_responses=False,
                 socket_connect_timeout=10,
                 socket_timeout=10,
@@ -94,7 +103,7 @@ class StandaloneCallbackServer:
 
             # 测试连接
             self._redis_client.ping()
-            logger.info(f"✅ Redis连接成功: {self.redis_url}")
+            logger.info(f"✅ Redis连接成功: {actual_redis_url}")
 
         except Exception as e:
             logger.error(f"❌ Redis连接失败: {e}")
@@ -107,9 +116,16 @@ class StandaloneCallbackServer:
             return
 
         try:
-            # 从环境变量获取数据库URL，默认使用MySQL配置
-            database_url = os.getenv('DATABASE_URL',
-                'mysql+aiomysql://youtube_user:youtube_password@mysql:3306/youtube_slicer?charset=utf8mb4')
+            # 尝试使用和主应用相同的数据库配置
+            try:
+                from app.core.config import settings
+                database_url = settings.database_url
+                logger.info(f"使用主应用配置的数据库URL")
+            except ImportError:
+                # 从环境变量获取数据库URL，默认使用MySQL配置
+                database_url = os.getenv('DATABASE_URL',
+                    'mysql+aiomysql://youtube_user:youtube_password@mysql:3306/youtube_slicer?charset=utf8mb4')
+                logger.info(f"使用环境变量数据库URL")
 
             # 使用同步引擎进行独立服务器的数据库操作
             sync_database_url = database_url.replace('aiomysql://', 'mysql+pymysql://')
@@ -336,9 +352,11 @@ class StandaloneCallbackServer:
 
         try:
             session = self.db_session_factory()
+            logger.info(f"🔍 开始查找与TUS任务ID {task_id} 关联的ProcessingTask")
 
             # 首先尝试从Redis中获取Celery任务ID
             celery_task_id = self._get_celery_task_id_from_redis(task_id)
+            logger.info(f"📋 从Redis获取到的Celery任务ID: {celery_task_id}")
 
             processing_task = None
             if celery_task_id:
@@ -350,6 +368,7 @@ class StandaloneCallbackServer:
 
             if not processing_task:
                 # 回退到通过task_metadata查找
+                logger.info(f"🔍 尝试通过task_metadata查找TUS任务ID {task_id}")
                 processing_task = session.query(ProcessingTask).filter(
                     ProcessingTask.task_metadata.like(f'%{task_id}%')
                 ).first()
@@ -357,7 +376,29 @@ class StandaloneCallbackServer:
                     logger.info(f"✅ 通过task_metadata找到关联任务: TUS任务ID {task_id} -> ProcessingTask.id={processing_task.id}")
 
             if not processing_task:
-                logger.warning(f"⚠️ 未找到与TUS任务ID {task_id} 关联的ProcessingTask")
+                # 最后尝试：查找最近的相关任务
+                logger.info(f"🔍 尝试查找最近的相关ProcessingTask（过去1小时内）")
+                from datetime import datetime, timedelta
+                one_hour_ago = datetime.utcnow() - timedelta(hours=1)
+
+                processing_task = session.query(ProcessingTask).filter(
+                    ProcessingTask.created_at >= one_hour_ago,
+                    ProcessingTask.task_type.like('%tus%')
+                ).order_by(ProcessingTask.created_at.desc()).first()
+
+                if processing_task:
+                    logger.info(f"✅ 通过时间窗口找到关联任务: TUS任务ID {task_id} -> ProcessingTask.id={processing_task.id}")
+
+            if not processing_task:
+                logger.error(f"❌ 未找到与TUS任务ID {task_id} 关联的ProcessingTask")
+                # 列出所有最近的ProcessingTask用于调试
+                recent_tasks = session.query(ProcessingTask).filter(
+                    ProcessingTask.created_at >= datetime.utcnow() - timedelta(hours=2)
+                ).all()
+                logger.info(f"📋 最近2小时内的ProcessingTask数量: {len(recent_tasks)}")
+                for task in recent_tasks[:5]:  # 只显示前5个
+                    logger.info(f"  - Task.id={task.id}, celery_task_id={task.celery_task_id}, task_type={task.task_type}")
+
                 session.close()
                 return
 
