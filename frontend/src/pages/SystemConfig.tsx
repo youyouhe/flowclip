@@ -636,32 +636,28 @@ return (
                           ) : config.key === 'tus_use_standalone_callback' ? (
                             // TUS回调服务器模式选择 - 使用Radio.Group
                             <Form.Item shouldUpdate={(prevValues, currentValues) =>
+                              prevValues.tus_callback_mode !== currentValues.tus_callback_mode ||
                               prevValues.tus_use_standalone_callback !== currentValues.tus_use_standalone_callback ||
                               prevValues.tus_use_global_callback !== currentValues.tus_use_global_callback
                             }>
                               {({ getFieldValue }) => {
                                 const standaloneValue = getFieldValue('tus_use_standalone_callback') === 'true';
                                 const globalValue = getFieldValue('tus_use_global_callback') === 'true';
-                                const currentValue = standaloneValue ? 'standalone' : (globalValue ? 'global' : 'standalone');
+                                // 优先使用tus_callback_mode，如果没有则根据布尔值推断
+                            const callbackMode = getFieldValue('tus_callback_mode');
+                            const currentValue = callbackMode || (standaloneValue ? 'standalone' : (globalValue ? 'global' : 'standalone'));
 
                                 return (
-                                  <Radio.Group
-                                    value={currentValue}
-                                    onChange={(e) => {
-                                      const mode = e.target.value;
-                                      if (mode === 'standalone') {
+                                  <Form.Item name="tus_callback_mode" noStyle>
+                                    <Radio.Group
+                                      value={currentValue}
+                                      onChange={(e) => {
+                                        const mode = e.target.value;
                                         form.setFieldsValue({
-                                          'tus_use_standalone_callback': 'true',
-                                          'tus_use_global_callback': 'false'
+                                          'tus_callback_mode': mode
                                         });
-                                      } else {
-                                        form.setFieldsValue({
-                                          'tus_use_standalone_callback': 'false',
-                                          'tus_use_global_callback': 'true'
-                                        });
-                                      }
-                                    }}
-                                  >
+                                      }}
+                                    >
                                       <Radio value="standalone">
                                         <div>
                                           <Text strong>独立回调服务器模式</Text>
@@ -681,6 +677,7 @@ return (
                                         </div>
                                       </Radio>
                                     </Radio.Group>
+                                  </Form.Item>
                                 );
                               }}
                             </Form.Item>

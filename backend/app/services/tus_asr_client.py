@@ -218,6 +218,19 @@ class TusASRClient:
                         file_size_detector.threshold_mb = threshold_mb
                         file_size_detector.threshold_bytes = threshold_mb * 1024 * 1024
                         logger.info(f"从数据库加载TUS文件大小阈值: {threshold_mb}MB")
+                    elif config_key == 'tus_callback_mode':
+                        # 根据tus_callback_mode设置回调服务器模式
+                        callback_mode = config_value.lower()
+                        if callback_mode == 'standalone':
+                            self._use_standalone_callback = True
+                            self._use_global_callback = False
+                            logger.info(f"从数据库设置独立回调服务器模式")
+                        elif callback_mode == 'global':
+                            self._use_standalone_callback = False
+                            self._use_global_callback = True
+                            logger.info(f"从数据库设置全局回调服务器模式")
+                        else:
+                            logger.warning(f"未知的TUS回调模式: {callback_mode}，使用默认模式")
 
         except Exception as e:
             logger.warning(f"从数据库加载TUS配置失败: {e}，使用默认配置")
