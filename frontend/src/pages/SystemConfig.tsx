@@ -645,24 +645,23 @@ return (
                                 const currentValue = standaloneValue ? 'standalone' : (globalValue ? 'global' : 'standalone');
 
                                 return (
-                                  <Form.Item name="tus_callback_mode" noStyle>
-                                    <Radio.Group
-                                      value={currentValue}
-                                      onChange={(e) => {
-                                        const mode = e.target.value;
-                                        if (mode === 'standalone') {
-                                          form.setFieldsValue({
-                                            'tus_use_standalone_callback': 'true',
-                                            'tus_use_global_callback': 'false'
-                                          });
-                                        } else {
-                                          form.setFieldsValue({
-                                            'tus_use_standalone_callback': 'false',
-                                            'tus_use_global_callback': 'true'
-                                          });
-                                        }
-                                      }}
-                                    >
+                                  <Radio.Group
+                                    value={currentValue}
+                                    onChange={(e) => {
+                                      const mode = e.target.value;
+                                      if (mode === 'standalone') {
+                                        form.setFieldsValue({
+                                          'tus_use_standalone_callback': 'true',
+                                          'tus_use_global_callback': 'false'
+                                        });
+                                      } else {
+                                        form.setFieldsValue({
+                                          'tus_use_standalone_callback': 'false',
+                                          'tus_use_global_callback': 'true'
+                                        });
+                                      }
+                                    }}
+                                  >
                                       <Radio value="standalone">
                                         <div>
                                           <Text strong>独立回调服务器模式</Text>
@@ -682,7 +681,6 @@ return (
                                         </div>
                                       </Radio>
                                     </Radio.Group>
-                                  </Form.Item>
                                 );
                               }}
                             </Form.Item>
