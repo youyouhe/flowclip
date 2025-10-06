@@ -563,105 +563,117 @@ return (
                         }
                         name={config.key}
                         help={config.description || getConfigDescription(config.key)}
+                        shouldUpdate={(prevValues, currentValues) => {
+                          // 对于TUS回调配置，需要监听相关字段的变化
+                          if (config.key === 'tus_use_standalone_callback' || config.key === 'tus_use_global_callback') {
+                            return prevValues.tus_use_standalone_callback !== currentValues.tus_use_standalone_callback ||
+                                   prevValues.tus_use_global_callback !== currentValues.tus_use_global_callback;
+                          }
+                          return false;
+                        }}
                       >
-                        {config.category === '数据库配置' ? (
-                          // 数据库配置设为只读
-                          <Input 
-                            value={config.value}
-                            readOnly
-                            disabled
-                          />
-                        ) : config.key === 'asr_model_type' ? (
-                          // ASR模型类型选择下拉框
-                          <Select
-                            placeholder="请选择ASR模型类型"
-                            defaultValue={config.value || 'whisper'}
-                            onChange={(value) => form.setFieldsValue({ [config.key]: value })}
-                          >
-                            <Select.Option value="whisper">Whisper模型</Select.Option>
-                            <Select.Option value="sense">Sense模型</Select.Option>
-                          </Select>
-                        ) : config.key === 'capcut_api_key' ? (
-                          // CapCut API密钥输入框
-                          <Input.Password
-                            placeholder={config.default || "请输入CapCut API密钥"}
-                            visibilityToggle={true}
-                          />
-                        ) : config.key === 'llm_model_type' ? (
-                          // LLM模型类型支持手动输入的输入框
-                          <Input 
-                            placeholder={config.default || '请输入LLM模型类型，如 google/gemini-2.5-flash'}
-                            defaultValue={config.value}
-                          />
-                        ) : config.key === 'llm_system_prompt' ? (
-                          // LLM系统提示词使用文本区域
-                          <Input.TextArea 
-                            rows={8}
-                            placeholder={config.default || `请输入${config.key}`}
-                            showCount
-                            maxLength={5000}
-                          />
-                        ) : config.key === 'llm_base_url' ? (
-                          // LLM基础URL使用URL输入框
-                          <Input 
-                            placeholder={config.default || `请输入${config.key}`}
-                            addonBefore="https://"
-                          />
-                        ) : config.key === 'llm_temperature' || config.key === 'llm_max_tokens' ? (
-                          // LLM数值参数使用数字输入框
-                          <Input 
-                            type="number"
-                            placeholder={config.default || `请输入${config.key}`}
-                            step={config.key === 'llm_temperature' ? "0.1" : "1"}
-                            min={config.key === 'llm_temperature' ? "0" : "1"}
-                            max={config.key === 'llm_temperature' ? "1" : "100000"}
-                          />
-                        ) : config.key.includes('password') || config.key.includes('secret') || config.key.includes('key') ? (
-                          <Input.Password
-                            placeholder={config.default || `请输入${config.key}`}
-                            visibilityToggle={true}
-                          />
-                        ) : config.key === 'tus_use_standalone_callback' ? (
-                          // 独立回调服务器配置使用Switch组件
-                          <Switch
-                            checked={config.value === 'true'}
-                            onChange={(checked) => {
-                              form.setFieldsValue({ [config.key]: checked.toString() });
-                              // 如果启用独立回调服务器，自动禁用全局回调服务器
-                              if (checked) {
-                                form.setFieldsValue({ 'tus_use_global_callback': 'false' });
-                              }
-                            }}
-                            checkedChildren="启用"
-                            unCheckedChildren="禁用"
-                          />
-                        ) : config.key === 'tus_use_global_callback' ? (
-                          // 全局回调服务器配置使用Switch组件
-                          <Switch
-                            checked={config.value === 'true'}
-                            onChange={(checked) => {
-                              form.setFieldsValue({ [config.key]: checked.toString() });
-                              // 如果启用全局回调服务器，自动禁用独立回调服务器
-                              if (checked) {
-                                form.setFieldsValue({ 'tus_use_standalone_callback': 'false' });
-                              }
-                            }}
-                            checkedChildren="启用"
-                            unCheckedChildren="禁用"
-                            disabled={form.getFieldValue('tus_use_standalone_callback') === 'true'}
-                          />
-                        ) : config.key.includes('use_') && config.key.includes('callback') ? (
-                          // 其他回调相关配置使用Switch组件
-                          <Switch
-                            checked={config.value === 'true'}
-                            onChange={(checked) => form.setFieldsValue({ [config.key]: checked.toString() })}
-                            checkedChildren="启用"
-                            unCheckedChildren="禁用"
-                          />
-                        ) : (
-                          <Input
-                            placeholder={config.default || `请输入${config.key}`}
-                          />
+                        {({ getFieldValue }) => (
+                          <>
+                            {config.category === '数据库配置' ? (
+                              // 数据库配置设为只读
+                              <Input
+                                value={config.value}
+                                readOnly
+                                disabled
+                              />
+                            ) : config.key === 'asr_model_type' ? (
+                              // ASR模型类型选择下拉框
+                              <Select
+                                placeholder="请选择ASR模型类型"
+                                defaultValue={config.value || 'whisper'}
+                                onChange={(value) => form.setFieldsValue({ [config.key]: value })}
+                              >
+                                <Select.Option value="whisper">Whisper模型</Select.Option>
+                                <Select.Option value="sense">Sense模型</Select.Option>
+                              </Select>
+                            ) : config.key === 'capcut_api_key' ? (
+                              // CapCut API密钥输入框
+                              <Input.Password
+                                placeholder={config.default || "请输入CapCut API密钥"}
+                                visibilityToggle={true}
+                              />
+                            ) : config.key === 'llm_model_type' ? (
+                              // LLM模型类型支持手动输入的输入框
+                              <Input
+                                placeholder={config.default || '请输入LLM模型类型，如 google/gemini-2.5-flash'}
+                                defaultValue={config.value}
+                              />
+                            ) : config.key === 'llm_system_prompt' ? (
+                              // LLM系统提示词使用文本区域
+                              <Input.TextArea
+                                rows={8}
+                                placeholder={config.default || `请输入${config.key}`}
+                                showCount
+                                maxLength={5000}
+                              />
+                            ) : config.key === 'llm_base_url' ? (
+                              // LLM基础URL使用URL输入框
+                              <Input
+                                placeholder={config.default || `请输入${config.key}`}
+                                addonBefore="https://"
+                              />
+                            ) : config.key === 'llm_temperature' || config.key === 'llm_max_tokens' ? (
+                              // LLM数值参数使用数字输入框
+                              <Input
+                                type="number"
+                                placeholder={config.default || `请输入${config.key}`}
+                                step={config.key === 'llm_temperature' ? "0.1" : "1"}
+                                min={config.key === 'llm_temperature' ? "0" : "1"}
+                                max={config.key === 'llm_temperature' ? "1" : "100000"}
+                              />
+                            ) : config.key.includes('password') || config.key.includes('secret') || config.key.includes('key') ? (
+                              <Input.Password
+                                placeholder={config.default || `请输入${config.key}`}
+                                visibilityToggle={true}
+                              />
+                            ) : config.key === 'tus_use_standalone_callback' ? (
+                              // 独立回调服务器配置使用Switch组件
+                              <Switch
+                                checked={getFieldValue(config.key) === 'true'}
+                                onChange={(checked) => {
+                                  form.setFieldsValue({ [config.key]: checked.toString() });
+                                  // 如果启用独立回调服务器，自动禁用全局回调服务器
+                                  if (checked) {
+                                    form.setFieldsValue({ 'tus_use_global_callback': 'false' });
+                                  }
+                                }}
+                                checkedChildren="启用"
+                                unCheckedChildren="禁用"
+                              />
+                            ) : config.key === 'tus_use_global_callback' ? (
+                              // 全局回调服务器配置使用Switch组件
+                              <Switch
+                                checked={getFieldValue(config.key) === 'true'}
+                                onChange={(checked) => {
+                                  form.setFieldsValue({ [config.key]: checked.toString() });
+                                  // 如果启用全局回调服务器，自动禁用独立回调服务器
+                                  if (checked) {
+                                    form.setFieldsValue({ 'tus_use_standalone_callback': 'false' });
+                                  }
+                                }}
+                                checkedChildren="启用"
+                                unCheckedChildren="禁用"
+                                disabled={getFieldValue('tus_use_standalone_callback') === 'true'}
+                              />
+                            ) : config.key.includes('use_') && config.key.includes('callback') ? (
+                              // 其他回调相关配置使用Switch组件
+                              <Switch
+                                checked={getFieldValue(config.key) === 'true'}
+                                onChange={(checked) => form.setFieldsValue({ [config.key]: checked.toString() })}
+                                checkedChildren="启用"
+                                unCheckedChildren="禁用"
+                              />
+                            ) : (
+                              <Input
+                                placeholder={config.default || `请输入${config.key}`}
+                              />
+                            )}
+                          </>
                         )}
                       </Form.Item>
                     </Col>
