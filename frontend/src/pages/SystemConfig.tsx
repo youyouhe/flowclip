@@ -649,16 +649,17 @@ return (
 
                                 return (
                                   <Form.Item name="tus_callback_mode" noStyle>
-                                    <Radio.Group
+                                    <Select
                                       value={currentValue}
-                                      onChange={(e) => {
-                                        const mode = e.target.value;
+                                      onChange={(mode) => {
                                         form.setFieldsValue({
                                           'tus_callback_mode': mode
                                         });
                                       }}
+                                      style={{ width: '100%' }}
+                                      placeholder="请选择TUS回调服务器模式"
                                     >
-                                      <Radio value="standalone">
+                                      <Select.Option value="standalone">
                                         <div>
                                           <Text strong>独立回调服务器模式</Text>
                                           <br />
@@ -666,8 +667,8 @@ return (
                                             运行独立的callback_server.py进程，固定端口9090，通过Redis通信（推荐）
                                           </Text>
                                         </div>
-                                      </Radio>
-                                      <Radio value="global">
+                                      </Select.Option>
+                                      <Select.Option value="global">
                                         <div>
                                           <Text strong>全局回调服务器模式</Text>
                                           <br />
@@ -675,8 +676,8 @@ return (
                                             在应用内部启动HTTP服务器，固定端口9090，单例模式管理
                                           </Text>
                                         </div>
-                                      </Radio>
-                                    </Radio.Group>
+                                      </Select.Option>
+                                    </Select>
                                   </Form.Item>
                                 );
                               }}
