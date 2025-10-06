@@ -47,6 +47,8 @@ class SystemConfigService:
         "tus_enable_routing": "tus_enable_routing",
         "tus_max_retries": "tus_max_retries",
         "tus_timeout_seconds": "tus_timeout_seconds",
+        "tus_use_global_callback": "tus_use_global_callback",
+        "tus_use_standalone_callback": "tus_use_standalone_callback",
 
         # LLM配置
         "llm_base_url": "llm_base_url",
@@ -69,6 +71,8 @@ class SystemConfigService:
 
         # 布尔类型
         "tus_enable_routing": lambda x: str(x).lower() in ('true', '1', 'yes', 'on'),
+        "tus_use_global_callback": lambda x: str(x).lower() in ('true', '1', 'yes', 'on'),
+        "tus_use_standalone_callback": lambda x: str(x).lower() in ('true', '1', 'yes', 'on'),
     }
     
     @staticmethod
