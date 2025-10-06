@@ -411,278 +411,280 @@ return (
         onFinish={onFinish}
         autoComplete="off"
       >
-        <Collapse defaultActiveKey={Object.keys(groupedConfigs)}>
-          {Object.entries(groupedConfigs).map(([category, configs]) => {
+        <Collapse
+          defaultActiveKey={Object.keys(groupedConfigs)}
+          items={Object.entries(groupedConfigs).map(([category, configs]) => {
             // 检查是否需要添加健康检查按钮
             const service = Object.keys(serviceCategoryMap).find(
               key => serviceCategoryMap[key] === category
             );
-            
-            return (
-              <Panel 
-                header={
-                  <span>
-                    {category}
-                    {category === '其他服务配置' && (
-                      <span className="ml-4">
-                        {Object.keys(serviceCategoryMap).filter(key => serviceCategoryMap[key] === category).map(serviceKey => (
-                          <span key={serviceKey} className="mr-4">
-                            {serviceDisplayNames[serviceKey] || serviceKey}服务状态: <ServiceStatusTag serviceName={serviceKey} />
-                          </span>
-                        ))}
-                      </span>
-                    )}
-                    {service && category !== '其他服务配置' && (
-                      <span className="ml-4">
-                        {serviceDisplayNames[service] || service}服务状态: <ServiceStatusTag serviceName={service} />
-                      </span>
-                    )}
-                  </span>
-                } 
-                key={category}
-              >
-                {(category === '其他服务配置' || category === 'LLM配置') && (
-                  <div style={{ marginBottom: '24px', padding: '16px', backgroundColor: '#f0f2f5', borderRadius: '8px' }}>
-                    {category === '其他服务配置' && (
-                      <Title level={4} style={{ marginTop: 0, marginBottom: '16px' }}>
-                        <PlayCircleOutlined /> ASR服务测试
-                      </Title>
-                    )}
-                    {category === 'LLM配置' && (
-                      <>
+
+            return {
+              key: category,
+              label: (
+                <span>
+                  {category}
+                  {category === '其他服务配置' && (
+                    <span className="ml-4">
+                      {Object.keys(serviceCategoryMap).filter(key => serviceCategoryMap[key] === category).map(serviceKey => (
+                        <span key={serviceKey} className="mr-4">
+                          {serviceDisplayNames[serviceKey] || serviceKey}服务状态: <ServiceStatusTag serviceName={serviceKey} />
+                        </span>
+                      ))}
+                    </span>
+                  )}
+                  {service && category !== '其他服务配置' && (
+                    <span className="ml-4">
+                      {serviceDisplayNames[service] || service}服务状态: <ServiceStatusTag serviceName={service} />
+                    </span>
+                  )}
+                </span>
+              ),
+              children: (
+                <>
+                  {(category === '其他服务配置' || category === 'LLM配置') && (
+                    <div style={{ marginBottom: '24px', padding: '16px', backgroundColor: '#f0f2f5', borderRadius: '8px' }}>
+                      {category === '其他服务配置' && (
                         <Title level={4} style={{ marginTop: 0, marginBottom: '16px' }}>
-                          <PlayCircleOutlined /> LLM服务状态
+                          <PlayCircleOutlined /> ASR服务测试
                         </Title>
-                        <Row gutter={[16, 16]}>
-                          <Col span={24}>
-                            <Text>LLM服务配置状态将在此显示</Text>
-                          </Col>
-                        </Row>
-                      </>
-                    )}
-                    {category === '其他服务配置' && (
-                      <>
-                        <Row gutter={[16, 16]}>
-                          <Col span={24}>
-                            <Text strong>上传音频文件进行测试:</Text>
-                          </Col>
-                          <Col span={12}>
-                        <Upload
-                          accept=".wav,.mp3,.flac,.aac,.ogg,.webm,.m4a,.opus,audio/*"
-                          beforeUpload={(file) => {
-                            const allowedTypes = [
-                              'audio/wav',
-                              'audio/x-wav',
-                              'audio/mp3',
-                              'audio/mpeg',
-                              'audio/flac',
-                              'audio/aac',
-                              'audio/ogg',
-                              'audio/webm',
-                              'audio/mp4',
-                              'audio/x-m4a',
-                              'audio/opus'
-                            ];
-                            
-                            const isAllowedType = allowedTypes.includes(file.type) || 
-                              file.name.toLowerCase().match(/\.(wav|mp3|flac|aac|ogg|webm|m4a|opus)$/);
-                            
-                            if (!isAllowedType) {
-                              message.error('请上传音频文件 (WAV, MP3, FLAC, AAC, OGG, WEBM, M4A, OPUS)');
+                      )}
+                      {category === 'LLM配置' && (
+                        <>
+                          <Title level={4} style={{ marginTop: 0, marginBottom: '16px' }}>
+                            <PlayCircleOutlined /> LLM服务状态
+                          </Title>
+                          <Row gutter={[16, 16]}>
+                            <Col span={24}>
+                              <Text>LLM服务配置状态将在此显示</Text>
+                            </Col>
+                          </Row>
+                        </>
+                      )}
+                      {category === '其他服务配置' && (
+                        <>
+                          <Row gutter={[16, 16]}>
+                            <Col span={24}>
+                              <Text strong>上传音频文件进行测试:</Text>
+                            </Col>
+                            <Col span={12}>
+                          <Upload
+                            accept=".wav,.mp3,.flac,.aac,.ogg,.webm,.m4a,.opus,audio/*"
+                            beforeUpload={(file) => {
+                              const allowedTypes = [
+                                'audio/wav',
+                                'audio/x-wav',
+                                'audio/mp3',
+                                'audio/mpeg',
+                                'audio/flac',
+                                'audio/aac',
+                                'audio/ogg',
+                                'audio/webm',
+                                'audio/mp4',
+                                'audio/x-m4a',
+                                'audio/opus'
+                              ];
+
+                              const isAllowedType = allowedTypes.includes(file.type) ||
+                                file.name.toLowerCase().match(/\.(wav|mp3|flac|aac|ogg|webm|m4a|opus)$/);
+
+                              if (!isAllowedType) {
+                                message.error('请上传音频文件 (WAV, MP3, FLAC, AAC, OGG, WEBM, M4A, OPUS)');
+                                return false;
+                              }
+
+                              // 检查文件大小 (限制为5MB)
+                              const maxSize = 5 * 1024 * 1024; // 5MB
+                              if (file.size > maxSize) {
+                                message.error('文件大小不能超过5MB');
+                                return false;
+                              }
+
+                              setAsrTestFile(file);
                               return false;
+                            }}
+                            maxCount={1}
+                            fileList={asrTestFile ? [{ uid: '-1', name: asrTestFile.name, status: 'done' }] : []}
+                            onRemove={() => setAsrTestFile(null)}
+                          >
+                            <Button icon={<UploadOutlined />}>选择音频文件</Button>
+                          </Upload>
+                          <Text type="secondary" style={{ display: 'block', marginTop: '8px' }}>
+                            支持格式: WAV, MP3, FLAC, AAC, OGG, WEBM, M4A, OPUS (最大5MB)
+                          </Text>
+                        </Col>
+                        <Col span={12}>
+                          <Button
+                            type="primary"
+                            icon={<PlayCircleOutlined />}
+                            onClick={testAsrService}
+                            loading={asrTesting}
+                            disabled={!asrTestFile}
+                          >
+                            测试ASR服务
+                          </Button>
+                        </Col>
+                        {asrTestResult && (
+                          <Col span={24}>
+                            <Text strong>测试结果:</Text>
+                            <div style={{
+                              marginTop: '8px',
+                              padding: '12px',
+                              backgroundColor: '#fff',
+                              border: '1px solid #d9d9d9',
+                              borderRadius: '4px',
+                              maxHeight: '300px',
+                              overflow: 'auto',
+                              whiteSpace: 'pre-wrap',
+                              fontFamily: 'monospace',
+                              fontSize: '12px'
+                            }}>
+                              {asrTestResult}
+                            </div>
+                          </Col>
+                        )}
+                      </Row>
+                        </>
+                      )}
+                    </div>
+                  )}
+                  <Row gutter={16}>
+                    {configs.map(config => (
+                      <Col span={24} key={config.key}>
+                        <Form.Item
+                          label={
+                            <span>
+                              {getConfigDisplayName(config.key)}
+                              {config.default && (
+                                <Text type="secondary" className="ml-2">
+                                  (默认: {config.key === 'llm_system_prompt' && config.default.length > 200 ? config.default.substring(0, 200) + '...' : config.default})
+                                </Text>
+                              )}
+                            </span>
+                          }
+                          name={config.key}
+                          help={config.description || getConfigDescription(config.key)}
+                          shouldUpdate={(prevValues, currentValues) => {
+                            // 对于TUS回调配置，需要监听相关字段的变化
+                            if (config.key === 'tus_use_standalone_callback' || config.key === 'tus_use_global_callback') {
+                              return prevValues.tus_use_standalone_callback !== currentValues.tus_use_standalone_callback ||
+                                     prevValues.tus_use_global_callback !== currentValues.tus_use_global_callback;
                             }
-                            
-                            // 检查文件大小 (限制为5MB)
-                            const maxSize = 5 * 1024 * 1024; // 5MB
-                            if (file.size > maxSize) {
-                              message.error('文件大小不能超过5MB');
-                              return false;
-                            }
-                            
-                            setAsrTestFile(file);
                             return false;
                           }}
-                          maxCount={1}
-                          fileList={asrTestFile ? [{ uid: '-1', name: asrTestFile.name, status: 'done' }] : []}
-                          onRemove={() => setAsrTestFile(null)}
                         >
-                          <Button icon={<UploadOutlined />}>选择音频文件</Button>
-                        </Upload>
-                        <Text type="secondary" style={{ display: 'block', marginTop: '8px' }}>
-                          支持格式: WAV, MP3, FLAC, AAC, OGG, WEBM, M4A, OPUS (最大5MB)
-                        </Text>
+                          {({ getFieldValue }) => (
+                            <>
+                              {config.category === '数据库配置' ? (
+                                // 数据库配置设为只读
+                                <Input
+                                  value={config.value}
+                                  readOnly
+                                  disabled
+                                />
+                              ) : config.key === 'asr_model_type' ? (
+                                // ASR模型类型选择下拉框
+                                <Select
+                                  placeholder="请选择ASR模型类型"
+                                  defaultValue={config.value || 'whisper'}
+                                  onChange={(value) => form.setFieldsValue({ [config.key]: value })}
+                                >
+                                  <Select.Option value="whisper">Whisper模型</Select.Option>
+                                  <Select.Option value="sense">Sense模型</Select.Option>
+                                </Select>
+                              ) : config.key === 'capcut_api_key' ? (
+                                // CapCut API密钥输入框
+                                <Input.Password
+                                  placeholder={config.default || "请输入CapCut API密钥"}
+                                  visibilityToggle={true}
+                                />
+                              ) : config.key === 'llm_model_type' ? (
+                                // LLM模型类型支持手动输入的输入框
+                                <Input
+                                  placeholder={config.default || '请输入LLM模型类型，如 google/gemini-2.5-flash'}
+                                  defaultValue={config.value}
+                                />
+                              ) : config.key === 'llm_system_prompt' ? (
+                                // LLM系统提示词使用文本区域
+                                <Input.TextArea
+                                  rows={8}
+                                  placeholder={config.default || `请输入${config.key}`}
+                                  showCount
+                                  maxLength={5000}
+                                />
+                              ) : config.key === 'llm_base_url' ? (
+                                // LLM基础URL使用URL输入框
+                                <Input
+                                  placeholder={config.default || `请输入${config.key}`}
+                                  addonBefore="https://"
+                                />
+                              ) : config.key === 'llm_temperature' || config.key === 'llm_max_tokens' ? (
+                                // LLM数值参数使用数字输入框
+                                <Input
+                                  type="number"
+                                  placeholder={config.default || `请输入${config.key}`}
+                                  step={config.key === 'llm_temperature' ? "0.1" : "1"}
+                                  min={config.key === 'llm_temperature' ? "0" : "1"}
+                                  max={config.key === 'llm_temperature' ? "1" : "100000"}
+                                />
+                              ) : config.key.includes('password') || config.key.includes('secret') || config.key.includes('key') ? (
+                                <Input.Password
+                                  placeholder={config.default || `请输入${config.key}`}
+                                  visibilityToggle={true}
+                                />
+                              ) : config.key === 'tus_use_standalone_callback' ? (
+                                // 独立回调服务器配置使用Switch组件
+                                <Switch
+                                  checked={getFieldValue(config.key) === 'true'}
+                                  onChange={(checked) => {
+                                    form.setFieldsValue({ [config.key]: checked.toString() });
+                                    // 如果启用独立回调服务器，自动禁用全局回调服务器
+                                    if (checked) {
+                                      form.setFieldsValue({ 'tus_use_global_callback': 'false' });
+                                    }
+                                  }}
+                                  checkedChildren="启用"
+                                  unCheckedChildren="禁用"
+                                />
+                              ) : config.key === 'tus_use_global_callback' ? (
+                                // 全局回调服务器配置使用Switch组件
+                                <Switch
+                                  checked={getFieldValue(config.key) === 'true'}
+                                  onChange={(checked) => {
+                                    form.setFieldsValue({ [config.key]: checked.toString() });
+                                    // 如果启用全局回调服务器，自动禁用独立回调服务器
+                                    if (checked) {
+                                      form.setFieldsValue({ 'tus_use_standalone_callback': 'false' });
+                                    }
+                                  }}
+                                  checkedChildren="启用"
+                                  unCheckedChildren="禁用"
+                                  disabled={getFieldValue('tus_use_standalone_callback') === 'true'}
+                                />
+                              ) : config.key.includes('use_') && config.key.includes('callback') ? (
+                                // 其他回调相关配置使用Switch组件
+                                <Switch
+                                  checked={getFieldValue(config.key) === 'true'}
+                                  onChange={(checked) => form.setFieldsValue({ [config.key]: checked.toString() })}
+                                  checkedChildren="启用"
+                                  unCheckedChildren="禁用"
+                                />
+                              ) : (
+                                <Input
+                                  placeholder={config.default || `请输入${config.key}`}
+                                />
+                              )}
+                            </>
+                          )}
+                        </Form.Item>
                       </Col>
-                      <Col span={12}>
-                        <Button 
-                          type="primary" 
-                          icon={<PlayCircleOutlined />}
-                          onClick={testAsrService}
-                          loading={asrTesting}
-                          disabled={!asrTestFile}
-                        >
-                          测试ASR服务
-                        </Button>
-                      </Col>
-                      {asrTestResult && (
-                        <Col span={24}>
-                          <Text strong>测试结果:</Text>
-                          <div style={{ 
-                            marginTop: '8px', 
-                            padding: '12px', 
-                            backgroundColor: '#fff', 
-                            border: '1px solid #d9d9d9', 
-                            borderRadius: '4px',
-                            maxHeight: '300px',
-                            overflow: 'auto',
-                            whiteSpace: 'pre-wrap',
-                            fontFamily: 'monospace',
-                            fontSize: '12px'
-                          }}>
-                            {asrTestResult}
-                          </div>
-                        </Col>
-                      )}
-                    </Row>
-                      </>
-                    )}
-                  </div>
-                )}
-                <Row gutter={16}>
-                  {configs.map(config => (
-                    <Col span={24} key={config.key}>
-                      <Form.Item
-                        label={
-                          <span>
-                            {getConfigDisplayName(config.key)}
-                            {config.default && (
-                              <Text type="secondary" className="ml-2">
-                                (默认: {config.key === 'llm_system_prompt' && config.default.length > 200 ? config.default.substring(0, 200) + '...' : config.default})
-                              </Text>
-                            )}
-                          </span>
-                        }
-                        name={config.key}
-                        help={config.description || getConfigDescription(config.key)}
-                        shouldUpdate={(prevValues, currentValues) => {
-                          // 对于TUS回调配置，需要监听相关字段的变化
-                          if (config.key === 'tus_use_standalone_callback' || config.key === 'tus_use_global_callback') {
-                            return prevValues.tus_use_standalone_callback !== currentValues.tus_use_standalone_callback ||
-                                   prevValues.tus_use_global_callback !== currentValues.tus_use_global_callback;
-                          }
-                          return false;
-                        }}
-                      >
-                        {({ getFieldValue }) => (
-                          <>
-                            {config.category === '数据库配置' ? (
-                              // 数据库配置设为只读
-                              <Input
-                                value={config.value}
-                                readOnly
-                                disabled
-                              />
-                            ) : config.key === 'asr_model_type' ? (
-                              // ASR模型类型选择下拉框
-                              <Select
-                                placeholder="请选择ASR模型类型"
-                                defaultValue={config.value || 'whisper'}
-                                onChange={(value) => form.setFieldsValue({ [config.key]: value })}
-                              >
-                                <Select.Option value="whisper">Whisper模型</Select.Option>
-                                <Select.Option value="sense">Sense模型</Select.Option>
-                              </Select>
-                            ) : config.key === 'capcut_api_key' ? (
-                              // CapCut API密钥输入框
-                              <Input.Password
-                                placeholder={config.default || "请输入CapCut API密钥"}
-                                visibilityToggle={true}
-                              />
-                            ) : config.key === 'llm_model_type' ? (
-                              // LLM模型类型支持手动输入的输入框
-                              <Input
-                                placeholder={config.default || '请输入LLM模型类型，如 google/gemini-2.5-flash'}
-                                defaultValue={config.value}
-                              />
-                            ) : config.key === 'llm_system_prompt' ? (
-                              // LLM系统提示词使用文本区域
-                              <Input.TextArea
-                                rows={8}
-                                placeholder={config.default || `请输入${config.key}`}
-                                showCount
-                                maxLength={5000}
-                              />
-                            ) : config.key === 'llm_base_url' ? (
-                              // LLM基础URL使用URL输入框
-                              <Input
-                                placeholder={config.default || `请输入${config.key}`}
-                                addonBefore="https://"
-                              />
-                            ) : config.key === 'llm_temperature' || config.key === 'llm_max_tokens' ? (
-                              // LLM数值参数使用数字输入框
-                              <Input
-                                type="number"
-                                placeholder={config.default || `请输入${config.key}`}
-                                step={config.key === 'llm_temperature' ? "0.1" : "1"}
-                                min={config.key === 'llm_temperature' ? "0" : "1"}
-                                max={config.key === 'llm_temperature' ? "1" : "100000"}
-                              />
-                            ) : config.key.includes('password') || config.key.includes('secret') || config.key.includes('key') ? (
-                              <Input.Password
-                                placeholder={config.default || `请输入${config.key}`}
-                                visibilityToggle={true}
-                              />
-                            ) : config.key === 'tus_use_standalone_callback' ? (
-                              // 独立回调服务器配置使用Switch组件
-                              <Switch
-                                checked={getFieldValue(config.key) === 'true'}
-                                onChange={(checked) => {
-                                  form.setFieldsValue({ [config.key]: checked.toString() });
-                                  // 如果启用独立回调服务器，自动禁用全局回调服务器
-                                  if (checked) {
-                                    form.setFieldsValue({ 'tus_use_global_callback': 'false' });
-                                  }
-                                }}
-                                checkedChildren="启用"
-                                unCheckedChildren="禁用"
-                              />
-                            ) : config.key === 'tus_use_global_callback' ? (
-                              // 全局回调服务器配置使用Switch组件
-                              <Switch
-                                checked={getFieldValue(config.key) === 'true'}
-                                onChange={(checked) => {
-                                  form.setFieldsValue({ [config.key]: checked.toString() });
-                                  // 如果启用全局回调服务器，自动禁用独立回调服务器
-                                  if (checked) {
-                                    form.setFieldsValue({ 'tus_use_standalone_callback': 'false' });
-                                  }
-                                }}
-                                checkedChildren="启用"
-                                unCheckedChildren="禁用"
-                                disabled={getFieldValue('tus_use_standalone_callback') === 'true'}
-                              />
-                            ) : config.key.includes('use_') && config.key.includes('callback') ? (
-                              // 其他回调相关配置使用Switch组件
-                              <Switch
-                                checked={getFieldValue(config.key) === 'true'}
-                                onChange={(checked) => form.setFieldsValue({ [config.key]: checked.toString() })}
-                                checkedChildren="启用"
-                                unCheckedChildren="禁用"
-                              />
-                            ) : (
-                              <Input
-                                placeholder={config.default || `请输入${config.key}`}
-                              />
-                            )}
-                          </>
-                        )}
-                      </Form.Item>
-                    </Col>
-                  ))}
-                </Row>
-              </Panel>
-            );
+                    ))}
+                  </Row>
+                </>
+              )
+            };
           })}
-        </Collapse>
+        />
 
         <Divider />
 
