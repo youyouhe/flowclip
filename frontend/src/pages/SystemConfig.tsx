@@ -682,6 +682,33 @@ return (
                                 );
                               }}
                             </Form.Item>
+                          ) : config.key === 'tus_callback_mode' ? (
+                            // TUS回调服务器模式选择 - 使用Select下拉框
+                            <Form.Item name={config.key} noStyle>
+                              <Select
+                                style={{ width: '100%' }}
+                                placeholder="请选择TUS回调服务器模式"
+                              >
+                                <Select.Option value="standalone">
+                                  <div>
+                                    <Text strong>独立回调服务器模式</Text>
+                                    <br />
+                                    <Text type="secondary" style={{ fontSize: '12px' }}>
+                                      运行独立的callback_server.py进程，固定端口9090，通过Redis通信（推荐）
+                                    </Text>
+                                  </div>
+                                </Select.Option>
+                                <Select.Option value="global">
+                                  <div>
+                                    <Text strong>全局回调服务器模式</Text>
+                                    <br />
+                                    <Text type="secondary" style={{ fontSize: '12px' }}>
+                                      在应用内部启动HTTP服务器，固定端口9090，单例模式管理
+                                    </Text>
+                                  </div>
+                                </Select.Option>
+                              </Select>
+                            </Form.Item>
                           ) : config.key === 'tus_use_global_callback' ? (
                             // 跳过全局回调服务器的单独显示，因为已经在上面的Radio.Group中处理了
                             null
