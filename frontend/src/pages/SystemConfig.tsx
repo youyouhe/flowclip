@@ -688,23 +688,32 @@ return (
                               <Select
                                 style={{ width: '100%' }}
                                 placeholder="请选择TUS回调服务器模式"
+                                optionLabelProp="label"
                               >
-                                <Select.Option value="standalone">
-                                  <div>
+                                <Select.Option
+                                  value="standalone"
+                                  label="独立回调服务器模式"
+                                >
+                                  <div style={{ maxWidth: '400px' }}>
                                     <Text strong>独立回调服务器模式</Text>
-                                    <br />
-                                    <Text type="secondary" style={{ fontSize: '12px' }}>
-                                      运行独立的callback_server.py进程，固定端口9090，通过Redis通信（推荐）
-                                    </Text>
+                                    <div style={{ marginTop: '2px' }}>
+                                      <Text type="secondary" style={{ fontSize: '11px', lineHeight: '1.2' }}>
+                                        运行独立callback_server.py进程，固定9090端口，Redis通信（推荐）
+                                      </Text>
+                                    </div>
                                   </div>
                                 </Select.Option>
-                                <Select.Option value="global">
-                                  <div>
+                                <Select.Option
+                                  value="global"
+                                  label="全局回调服务器模式"
+                                >
+                                  <div style={{ maxWidth: '400px' }}>
                                     <Text strong>全局回调服务器模式</Text>
-                                    <br />
-                                    <Text type="secondary" style={{ fontSize: '12px' }}>
-                                      在应用内部启动HTTP服务器，固定端口9090，单例模式管理
-                                    </Text>
+                                    <div style={{ marginTop: '2px' }}>
+                                      <Text type="secondary" style={{ fontSize: '11px', lineHeight: '1.2' }}>
+                                        应用内部启动HTTP服务器，固定9090端口，单例模式管理
+                                      </Text>
+                                    </div>
                                   </div>
                                 </Select.Option>
                               </Select>
