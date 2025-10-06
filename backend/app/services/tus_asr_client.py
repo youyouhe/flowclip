@@ -423,7 +423,15 @@ class TusASRClient:
 
         try:
             # 检查回调管理器是否可用
-            if not self.callback_manager._redis_available:
+            redis_available = True
+            if self._use_standalone_callback:
+                # 独立回调客户端：检查Redis客户端是否存在
+                redis_available = self.callback_manager._redis_client is not None
+            elif self._use_global_callback:
+                # 全局回调管理器：检查Redis可用标志
+                redis_available = self.callback_manager._redis_available
+
+            if not redis_available:
                 logger.warning("⚠️ 回调管理器Redis不可用，回退到标准ASR处理")
                 return await self._fallback_to_standard_asr(audio_file_path, metadata, start_time)
 
