@@ -11,9 +11,39 @@ import time
 import logging
 import signal
 import pickle
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from aiohttp import web
 import redis
+from datetime import datetime
+import sys
+from pathlib import Path
+
+# 添加项目根目录到Python路径，以便导入项目模块
+sys.path.append(str(Path(__file__).parent))
+
+try:
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from app.core.database import Base
+    from app.models.processing_task import ProcessingTask, ProcessingStatus
+    from app.models.video import Video
+    from app.models.video_slice import VideoSlice, VideoSubSlice
+    from app.core.constants import ProcessingTaskStatus, ProcessingStage
+except ImportError as e:
+    logger = logging.getLogger(__name__)
+    logger.warning(f"无法导入数据库模块: {e}")
+    logger.warning("将仅使用Redis缓存模式，不更新数据库")
+    # 设置为None，后续检查时跳过数据库操作
+    create_engine = None
+    sessionmaker = None
+    Base = None
+    ProcessingTask = None
+    ProcessingStatus = None
+    Video = None
+    VideoSlice = None
+    VideoSubSlice = None
+    ProcessingTaskStatus = None
+    ProcessingStage = None
 
 # 设置日志
 logging.basicConfig(
@@ -36,13 +66,19 @@ class StandaloneCallbackServer:
         self._server_running = False
         self._redis_client = None
 
-        # 初始化Redis连接
+        # 数据库相关
+        self.db_engine = None
+        self.db_session_factory = None
+
+        # 初始化Redis连接和数据库连接
         self._init_redis()
+        self._init_database()
 
         logger.info(f"独立回调服务器初始化完成:")
         logger.info(f"  端口: {self.callback_port}")
         logger.info(f"  主机: {self.callback_host}")
         logger.info(f"  Redis URL: {self.redis_url}")
+        logger.info(f"  数据库支持: {'启用' if self.db_engine else '禁用'}")
 
     def _init_redis(self):
         """初始化Redis连接"""
@@ -63,6 +99,36 @@ class StandaloneCallbackServer:
         except Exception as e:
             logger.error(f"❌ Redis连接失败: {e}")
             raise RuntimeError(f"无法连接到Redis: {e}")
+
+    def _init_database(self):
+        """初始化数据库连接"""
+        if not all([create_engine, sessionmaker, ProcessingTask, ProcessingStatus]):
+            logger.warning("⚠️ 数据库模块导入失败，跳过数据库初始化")
+            return
+
+        try:
+            # 从环境变量获取数据库URL，默认使用MySQL配置
+            database_url = os.getenv('DATABASE_URL',
+                'mysql+aiomysql://youtube_user:youtube_password@mysql:3306/youtube_slicer?charset=utf8mb4')
+
+            # 使用同步引擎进行独立服务器的数据库操作
+            sync_database_url = database_url.replace('aiomysql://', 'mysql+pymysql://')
+
+            self.db_engine = create_engine(sync_database_url, echo=False)
+            self.db_session_factory = sessionmaker(bind=self.db_engine)
+
+            # 测试数据库连接
+            test_session = self.db_session_factory()
+            test_session.execute("SELECT 1")
+            test_session.close()
+
+            logger.info(f"✅ 数据库连接成功: {sync_database_url.split('@')[-1]}")
+
+        except Exception as e:
+            logger.error(f"❌ 数据库连接失败: {e}")
+            logger.warning("⚠️ 将仅使用Redis缓存模式，不更新数据库")
+            self.db_engine = None
+            self.db_session_factory = None
 
     def _get_task_key(self, task_id: str) -> str:
         """获取任务在Redis中的键名"""
@@ -146,6 +212,9 @@ class StandaloneCallbackServer:
 
             # 更新统计
             self._increment_stats('completed_tasks')
+
+            # 更新数据库中的任务状态
+            self._update_database_task_status(task_id, result)
 
         except Exception as e:
             logger.error(f"❌ 保存任务结果失败: {e}")
@@ -258,6 +327,164 @@ class StandaloneCallbackServer:
         """关闭服务器"""
         logger.info("正在关闭独立回调服务器...")
         self._server_running = False
+
+    def _update_database_task_status(self, task_id: str, result: Dict[str, Any]):
+        """更新数据库中的任务状态"""
+        if not self.db_session_factory:
+            logger.debug("数据库未连接，跳过数据库更新")
+            return
+
+        try:
+            session = self.db_session_factory()
+
+            # 首先尝试从Redis中获取Celery任务ID
+            celery_task_id = self._get_celery_task_id_from_redis(task_id)
+
+            processing_task = None
+            if celery_task_id:
+                # 优先通过Celery任务ID查找
+                processing_task = session.query(ProcessingTask).filter(
+                    ProcessingTask.celery_task_id == celery_task_id
+                ).first()
+                logger.info(f"✅ 通过Celery任务ID找到关联任务: {celery_task_id} -> ProcessingTask.id={processing_task.id if processing_task else 'None'}")
+
+            if not processing_task:
+                # 回退到通过task_metadata查找
+                processing_task = session.query(ProcessingTask).filter(
+                    ProcessingTask.task_metadata.like(f'%{task_id}%')
+                ).first()
+                if processing_task:
+                    logger.info(f"✅ 通过task_metadata找到关联任务: TUS任务ID {task_id} -> ProcessingTask.id={processing_task.id}")
+
+            if not processing_task:
+                logger.warning(f"⚠️ 未找到与TUS任务ID {task_id} 关联的ProcessingTask")
+                session.close()
+                return
+
+            logger.info(f"✅ 找到关联任务: ProcessingTask.id={processing_task.id}, celery_task_id={processing_task.celery_task_id}")
+
+            # 更新ProcessingTask状态
+            processing_task.status = ProcessingTaskStatus.SUCCESS
+            processing_task.progress = 100.0
+            processing_task.completed_at = datetime.utcnow()
+            processing_task.output_data = {
+                'strategy': 'tus',
+                'task_id': task_id,
+                'srt_url': result.get('srt_url'),
+                'filename': result.get('filename'),
+                'status': result.get('status'),
+                'completed_at': time.time(),
+                **result
+            }
+            processing_task.message = f"TUS ASR处理完成 (任务ID: {task_id})"
+
+            # 根据任务类型更新相关表
+            self._update_related_records(session, processing_task, result)
+
+            session.commit()
+            logger.info(f"✅ 数据库任务状态已更新: task_id={task_id}, processing_task_id={processing_task.id}")
+
+            session.close()
+
+        except Exception as e:
+            logger.error(f"❌ 更新数据库任务状态失败: {e}", exc_info=True)
+            try:
+                session.rollback()
+                session.close()
+            except:
+                pass
+
+    def _update_related_records(self, session, processing_task: ProcessingTask, result: Dict[str, Any]):
+        """更新相关记录（Video、VideoSlice等）"""
+        try:
+            srt_url = result.get('srt_url')
+            if not srt_url:
+                logger.warning("⚠️ 回调结果中没有srt_url")
+                return
+
+            # 从processing_task的input_data中获取任务信息
+            input_data = processing_task.input_data or {}
+            video_id = input_data.get('video_id')
+            slice_id = input_data.get('slice_id')
+            sub_slice_id = input_data.get('sub_slice_id')
+
+            if slice_id:
+                # 更新VideoSlice记录
+                video_slice = session.query(VideoSlice).filter(VideoSlice.id == slice_id).first()
+                if video_slice:
+                    video_slice.srt_url = srt_url
+                    video_slice.srt_processing_status = "completed"
+                    logger.info(f"✅ 已更新VideoSlice: id={slice_id}, srt_url={srt_url}")
+
+            elif sub_slice_id:
+                # 更新VideoSubSlice记录
+                sub_slice = session.query(VideoSubSlice).filter(VideoSubSlice.id == sub_slice_id).first()
+                if sub_slice:
+                    sub_slice.srt_url = srt_url
+                    sub_slice.srt_processing_status = "completed"
+                    logger.info(f"✅ 已更新VideoSubSlice: id={sub_slice_id}, srt_url={srt_url}")
+
+            elif video_id:
+                # 更新Video记录（原视频的SRT任务）
+                video = session.query(Video).filter(Video.id == video_id).first()
+                if video:
+                    video.processing_progress = 100
+                    video.processing_stage = ProcessingStage.GENERATE_SRT.value
+                    video.processing_message = "字幕生成完成 (TUS模式)"
+                    video.processing_completed_at = datetime.utcnow()
+                    logger.info(f"✅ 已更新Video: id={video_id}")
+
+                # 更新ProcessingStatus表
+                processing_status = session.query(ProcessingStatus).filter(
+                    ProcessingStatus.video_id == video_id
+                ).first()
+                if processing_status:
+                    processing_status.overall_status = ProcessingTaskStatus.SUCCESS
+                    processing_status.overall_progress = 100
+                    processing_status.current_stage = ProcessingStage.COMPLETED.value
+                    processing_status.generate_srt_status = ProcessingTaskStatus.SUCCESS
+                    processing_status.generate_srt_progress = 100
+                    logger.info(f"✅ 已更新ProcessingStatus: video_id={video_id}")
+
+        except Exception as e:
+            logger.error(f"❌ 更新相关记录失败: {e}", exc_info=True)
+
+    def _get_celery_task_id_from_redis(self, task_id: str) -> Optional[str]:
+        """从Redis中获取与TUS任务ID关联的Celery任务ID"""
+        try:
+            # 首先检查任务数据中是否包含Celery任务ID
+            task_key = self._get_task_key(task_id)
+            task_data = self._redis_client.get(task_key)
+            if task_data:
+                try:
+                    data = pickle.loads(task_data)
+                    celery_task_id = data.get('celery_task_id')
+                    if celery_task_id:
+                        logger.info(f"✅ 从任务数据中获取到Celery任务ID: {celery_task_id}")
+                        return celery_task_id
+                except Exception as e:
+                    logger.debug(f"解析任务数据失败: {e}")
+
+            # 如果任务数据中没有，尝试通过映射查找
+            # 这种情况下需要遍历所有可能的映射
+            logger.info(f"🔍 尝试通过映射查找TUS任务ID {task_id} 对应的Celery任务ID")
+
+            # 检查所有可能的映射键（这种效率较低，但作为回退方案）
+            for key_pattern in ["tus_celery_mapping:*"]:
+                matching_keys = self._redis_client.keys(key_pattern)
+                for key in matching_keys:
+                    mapping_value = self._redis_client.get(key)
+                    if mapping_value and mapping_value.decode('utf-8') == task_id:
+                        celery_task_id = key.decode('utf-8').split(':', 1)[1]  # 提取Celery任务ID
+                        logger.info(f"✅ 通过映射找到Celery任务ID: {celery_task_id}")
+                        return celery_task_id
+
+            logger.info(f"⚠️ 未找到TUS任务ID {task_id} 对应的Celery任务ID")
+            return None
+
+        except Exception as e:
+            logger.error(f"❌ 从Redis获取Celery任务ID失败: {e}")
+            return None
 
     def run(self):
         """运行服务器"""

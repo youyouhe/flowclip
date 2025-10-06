@@ -288,7 +288,8 @@ class TusASRClient:
     async def process_audio_file(
         self,
         audio_file_path: str,
-        metadata: Dict[str, Any] = None
+        metadata: Dict[str, Any] = None,
+        celery_task_id: str = None
     ) -> Dict[str, Any]:
         """
         处理音频文件的主要入口点
@@ -390,8 +391,19 @@ class TusASRClient:
                     logger.error("本地回调服务器线程状态：已停止运行")
                     raise RuntimeError("本地回调服务器线程异常停止")
 
-            # 执行TUS处理流程
-            result = await self._execute_tus_pipeline(audio_file_path, metadata or {})
+            # 如果没有提供Celery任务ID，尝试获取当前任务的ID
+            if not celery_task_id:
+                try:
+                    import celery
+                    current_task = celery.current_task
+                    if current_task:
+                        celery_task_id = current_task.request.id
+                        logger.info(f"自动获取到当前Celery任务ID: {celery_task_id}")
+                except Exception as e:
+                    logger.debug(f"无法获取Celery任务ID: {e}")
+
+            # 执行TUS处理流程，传递Celery任务ID
+            result = await self._execute_tus_pipeline(audio_file_path, metadata or {}, celery_task_id)
             return result
 
         except KeyboardInterrupt:
@@ -463,7 +475,8 @@ class TusASRClient:
     async def _execute_tus_pipeline(
         self,
         audio_file_path: str,
-        metadata: Dict[str, Any]
+        metadata: Dict[str, Any],
+        celery_task_id: str = None
     ) -> Dict[str, Any]:
         """执行完整的TUS处理流水线"""
         audio_path = Path(audio_file_path)
@@ -501,7 +514,7 @@ class TusASRClient:
             # 步骤3: 等待ASR处理结果
             logger.info("🎧 步骤3: 等待ASR处理...")
             logger.info(f"准备等待任务 {task_id} 的结果")
-            srt_content = await self._wait_for_tus_results(task_id)
+            srt_content = await self._wait_for_tus_results(task_id, celery_task_id)
             logger.info("✅ ASR处理完成")
 
             # 上传SRT内容到MinIO（如果需要的话）
@@ -840,7 +853,7 @@ class TusASRClient:
             logger.error(f"分块上传失败: {e}", exc_info=True)
             raise RuntimeError(f"分块上传失败: {str(e)}") from e
 
-    async def _wait_for_tus_results(self, task_id: str) -> str:
+    async def _wait_for_tus_results(self, task_id: str, celery_task_id: str = None) -> str:
         """等待TUS ASR处理结果"""
         logger.info(f"开始等待TUS结果，任务ID: {task_id}")
 
@@ -853,9 +866,9 @@ class TusASRClient:
                 # 独立回调服务器模式
                 logger.info(f"使用独立回调服务器模式等待任务 {task_id} (超时: {safe_timeout}s)")
 
-                # 向独立回调服务器注册任务
-                if self.callback_manager.register_task(task_id):
-                    logger.info(f"任务 {task_id} 已向独立回调服务器注册")
+                # 向独立回调服务器注册任务，传递Celery任务ID
+                if self.callback_manager.register_task(task_id, celery_task_id):
+                    logger.info(f"任务 {task_id} 已向独立回调服务器注册 (Celery任务ID: {celery_task_id})")
 
                     # 等待回调结果
                     result_data = await self.callback_manager.wait_for_result(task_id, safe_timeout)

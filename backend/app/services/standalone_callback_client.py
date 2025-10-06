@@ -56,7 +56,7 @@ class StandaloneCallbackClient:
         """获取结果在Redis中的键名"""
         return f"{self.result_key_prefix}{task_id}"
 
-    def register_task(self, task_id: str) -> bool:
+    def register_task(self, task_id: str, celery_task_id: str = None) -> bool:
         """注册任务到独立回调服务器"""
         try:
             task_data = {
@@ -65,6 +65,19 @@ class StandaloneCallbackClient:
                 'created_at': time.time(),
                 'client_type': 'standalone_callback_client'
             }
+
+            # 如果提供了Celery任务ID，保存关联关系
+            if celery_task_id:
+                task_data['celery_task_id'] = celery_task_id
+                logger.info(f"🔗 保存TUS任务ID与Celery任务ID关联: {task_id} -> {celery_task_id}")
+
+                # 额外保存一个映射关系，便于快速查找
+                mapping_key = f"tus_celery_mapping:{celery_task_id}"
+                self._redis_client.setex(
+                    mapping_key,
+                    3600,  # 1小时过期
+                    task_id
+                )
 
             task_key = self._get_task_key(task_id)
             self._redis_client.setex(
