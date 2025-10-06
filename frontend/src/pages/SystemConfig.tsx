@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Card, Row, Col, Form, Input, Button, Spin, Alert, Typography, Divider, Collapse, Tag, Select, Upload, message, Tabs, Switch } from 'antd';
+import { Card, Row, Col, Form, Input, Button, Spin, Alert, Typography, Divider, Collapse, Tag, Select, Upload, message, Tabs, Switch, Radio } from 'antd';
 import { systemConfigAPI, capcutAPI, asrAPI, llmAPI } from '../services/api';
 import { useAuth } from '../components/AuthProvider';
 import { UploadOutlined, PlayCircleOutlined } from '@ant-design/icons';
@@ -46,8 +46,8 @@ const SystemConfig: React.FC = () => {
       'tus_enable_routing': '启用TUS路由',
       'tus_max_retries': 'TUS最大重试次数',
       'tus_timeout_seconds': 'TUS超时时间(秒)',
-      'tus_use_global_callback': '使用全局回调服务器',
-      'tus_use_standalone_callback': '使用独立回调服务器',
+      'tus_use_global_callback': 'TUS回调服务器模式', // 这个会在Radio.Group中显示
+      'tus_use_standalone_callback': 'TUS回调服务器模式', // 统一显示为一个选项
 
       // 其他配置的显示名称可以继续添加
       'asr_service_url': 'ASR服务地址',
@@ -634,44 +634,61 @@ return (
                               />
                             </Form.Item>
                           ) : config.key === 'tus_use_standalone_callback' ? (
-                            // 独立回调服务器配置使用Switch组件
-                            <Form.Item
-                              name={config.key}
-                              valuePropName="checked"
-                              getValueFromEvent={(checked) => checked.toString()}
-                              noStyle
-                            >
-                              <Switch
-                                onChange={(checked) => {
-                                  // 如果启用独立回调服务器，自动禁用全局回调服务器
-                                  if (checked) {
-                                    form.setFieldsValue({ 'tus_use_global_callback': 'false' });
-                                  }
-                                }}
-                                checkedChildren="启用"
-                                unCheckedChildren="禁用"
-                              />
+                            // TUS回调服务器模式选择 - 使用Radio.Group
+                            <Form.Item shouldUpdate={(prevValues, currentValues) =>
+                              prevValues.tus_use_standalone_callback !== currentValues.tus_use_standalone_callback ||
+                              prevValues.tus_use_global_callback !== currentValues.tus_use_global_callback
+                            }>
+                              {({ getFieldValue }) => {
+                                const standaloneValue = getFieldValue('tus_use_standalone_callback') === 'true';
+                                const globalValue = getFieldValue('tus_use_global_callback') === 'true';
+                                const currentValue = standaloneValue ? 'standalone' : (globalValue ? 'global' : 'standalone');
+
+                                return (
+                                  <Form.Item name="tus_callback_mode" noStyle>
+                                    <Radio.Group
+                                      value={currentValue}
+                                      onChange={(e) => {
+                                        const mode = e.target.value;
+                                        if (mode === 'standalone') {
+                                          form.setFieldsValue({
+                                            'tus_use_standalone_callback': 'true',
+                                            'tus_use_global_callback': 'false'
+                                          });
+                                        } else {
+                                          form.setFieldsValue({
+                                            'tus_use_standalone_callback': 'false',
+                                            'tus_use_global_callback': 'true'
+                                          });
+                                        }
+                                      }}
+                                    >
+                                      <Radio value="standalone">
+                                        <div>
+                                          <Text strong>独立回调服务器模式</Text>
+                                          <br />
+                                          <Text type="secondary" style={{ fontSize: '12px' }}>
+                                            使用独立回调服务器容器（推荐，解决多进程回调丢失问题）
+                                          </Text>
+                                        </div>
+                                      </Radio>
+                                      <Radio value="global">
+                                        <div>
+                                          <Text strong>全局回调服务器模式</Text>
+                                          <br />
+                                          <Text type="secondary" style={{ fontSize: '12px' }}>
+                                            使用全局回调服务器模式（固定端口9090）
+                                          </Text>
+                                        </div>
+                                      </Radio>
+                                    </Radio.Group>
+                                  </Form.Item>
+                                );
+                              }}
                             </Form.Item>
                           ) : config.key === 'tus_use_global_callback' ? (
-                            // 全局回调服务器配置使用Switch组件
-                            <Form.Item shouldUpdate={(prevValues, currentValues) =>
-                              prevValues.tus_use_standalone_callback !== currentValues.tus_use_standalone_callback
-                            }>
-                              {({ getFieldValue }) => (
-                                <Form.Item
-                                  name={config.key}
-                                  valuePropName="checked"
-                                  getValueFromEvent={(checked) => checked.toString()}
-                                  noStyle
-                                >
-                                  <Switch
-                                    checkedChildren="启用"
-                                    unCheckedChildren="禁用"
-                                    disabled={getFieldValue('tus_use_standalone_callback') === 'true'}
-                                  />
-                                </Form.Item>
-                              )}
-                            </Form.Item>
+                            // 跳过全局回调服务器的单独显示，因为已经在上面的Radio.Group中处理了
+                            null
                           ) : config.key.includes('use_') && config.key.includes('callback') ? (
                             // 其他回调相关配置使用Switch组件
                             <Form.Item
