@@ -463,22 +463,35 @@ def generate_srt(self, video_id: str, project_id: int, user_id: int, split_files
                                             video.processing_completed_at = datetime.utcnow()
                                             print(f"已更新原视频记录: video_id={video.id}")
 
-                                        # 更新processing_status表
+                                        # 更新processing_status表 - 仅限原视频SRT任务
                                         try:
                                             from app.models.processing_task import ProcessingStatus
                                             processing_status = db.query(ProcessingStatus).filter(
                                                 ProcessingStatus.video_id == task.video_id
                                             ).first()
                                             if processing_status:
-                                                processing_status.overall_status = ProcessingTaskStatus.SUCCESS
-                                                processing_status.overall_progress = 100
-                                                processing_status.current_stage = ProcessingStage.COMPLETED.value
-                                                print(f"已更新processing_status整体状态: video_id={task.video_id}")
+                                                # 只有在不是切片任务的情况下才更新整体状态
+                                                processing_status.generate_srt_status = ProcessingTaskStatus.SUCCESS
+                                                processing_status.generate_srt_progress = 100
+                                                # 不要改变整体状态，因为可能还有其他任务在进行
+                                                print(f"已更新原视频SRT状态: video_id={task.video_id}")
                                         except Exception as status_error:
                                             print(f"更新processing_status失败: {status_error}")
                                     else:
-                                        # 这是切片或子切片的SRT任务，不更新视频状态
+                                        # 这是切片或子切片的SRT任务，绝对不能更新原视频状态
                                         print(f"切片/子切片SRT任务完成，不更新原视频状态: slice_id={slice_id}, sub_slice_id={sub_slice_id}")
+                                        # 确保不会意外影响到原视频的状态记录
+                                        try:
+                                            from app.models.processing_task import ProcessingStatus
+                                            processing_status = db.query(ProcessingStatus).filter(
+                                                ProcessingStatus.video_id == task.video_id
+                                            ).first()
+                                            if processing_status:
+                                                # 检查并确保不会修改原视频的SRT状态
+                                                print(f"检查原视频processing_status - 当前SRT状态: {processing_status.generate_srt_status}")
+                                                # 不做任何修改，只记录日志
+                                        except Exception as check_error:
+                                            print(f"检查原视频状态失败: {check_error}")
                                         
                                 else:
                                     print(f"未找到任务记录: celery_task_id={celery_task_id}，但这不影响srt_url保存")
@@ -591,22 +604,34 @@ def generate_srt(self, video_id: str, project_id: int, user_id: int, split_files
                                             video.processing_completed_at = datetime.utcnow()
                                             print(f"已更新原视频记录: video_id={video.id}")
 
-                                        # 更新processing_status表
+                                        # 更新processing_status表 - 仅限原视频SRT任务
                                         try:
                                             from app.models.processing_task import ProcessingStatus
                                             processing_status = db.query(ProcessingStatus).filter(
                                                 ProcessingStatus.video_id == task.video_id
                                             ).first()
                                             if processing_status:
-                                                processing_status.overall_status = ProcessingTaskStatus.SUCCESS
-                                                processing_status.overall_progress = 100
-                                                processing_status.current_stage = ProcessingStage.COMPLETED.value
-                                                print(f"已更新processing_status整体状态: video_id={task.video_id}")
+                                                # 只更新SRT相关状态，不改变整体状态
+                                                processing_status.generate_srt_status = ProcessingTaskStatus.SUCCESS
+                                                processing_status.generate_srt_progress = 100
+                                                print(f"已更新原视频SRT状态(TUS): video_id={task.video_id}")
                                         except Exception as status_error:
                                             print(f"更新processing_status失败: {status_error}")
                                     else:
-                                        # 这是切片或子切片的SRT任务，不更新视频状态
+                                        # 这是切片或子切片的SRT任务，绝对不能更新原视频状态
                                         print(f"TUS切片/子切片SRT任务完成，不更新原视频状态: slice_id={slice_id}, sub_slice_id={sub_slice_id}")
+                                        # 确保不会意外影响到原视频的状态记录
+                                        try:
+                                            from app.models.processing_task import ProcessingStatus
+                                            processing_status = db.query(ProcessingStatus).filter(
+                                                ProcessingStatus.video_id == task.video_id
+                                            ).first()
+                                            if processing_status:
+                                                # 检查并确保不会修改原视频的SRT状态
+                                                print(f"检查原视频processing_status(TUS) - 当前SRT状态: {processing_status.generate_srt_status}")
+                                                # 不做任何修改，只记录日志
+                                        except Exception as check_error:
+                                            print(f"检查原视频状态失败: {check_error}")
 
                                     # 如果是子切片处理，更新子切片记录
                                     if sub_slice_id:
