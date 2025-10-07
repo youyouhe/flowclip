@@ -690,7 +690,7 @@ class StandaloneCallbackServer:
                 # 从VideoSubSlice获取用户和项目信息
                 sub_slice = session.query(VideoSubSlice).filter(VideoSubSlice.id == sub_slice_id).first()
                 if sub_slice:
-                    user_id, project_id = self._get_user_project_from_video(session, sub_slice.slice.video_id)
+                    user_id, project_id = self._get_user_project_from_video(session, sub_slice.parent_slice.video_id)
                     # 检查子切片的sliced_file_path，提取slice_uuid用于路径关联
                     if sub_slice.sliced_file_path:
                         # 从路径中提取slice_uuid: users/{user_id}/projects/{project_id}/slices/{slice_uuid}/{filename}
