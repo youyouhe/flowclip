@@ -46,12 +46,19 @@ def generate_srt(self, video_id: str, project_id: int, user_id: int, split_files
     except Exception as config_error:
         print(f"重新加载MinIO配置失败: {config_error}")
     
-    def _ensure_processing_task_exists(celery_task_id: str, video_id: int) -> bool:
+    def _ensure_processing_task_exists(celery_task_id: str, video_id: int, slice_id: int = None, sub_slice_id: int = None) -> bool:
         """确保处理任务记录存在"""
         try:
             with get_sync_db() as db:
                 state_manager = get_state_manager(db)
-                
+
+                # 构建input_data，包含关联信息
+                input_data = {"direct_audio": True}
+                if slice_id:
+                    input_data["slice_id"] = slice_id
+                if sub_slice_id:
+                    input_data["sub_slice_id"] = sub_slice_id
+
                 # 尝试创建任务记录，如果已存在则忽略
                 try:
                     task = ProcessingTask(
@@ -59,7 +66,7 @@ def generate_srt(self, video_id: str, project_id: int, user_id: int, split_files
                         task_type=ProcessingTaskType.GENERATE_SRT,
                         task_name="字幕生成",
                         celery_task_id=celery_task_id,
-                        input_data={"direct_audio": True},
+                        input_data=input_data,
                         status=ProcessingTaskStatus.RUNNING,
                         started_at=datetime.utcnow(),
                         progress=0.0,
@@ -189,7 +196,7 @@ def generate_srt(self, video_id: str, project_id: int, user_id: int, split_files
             
         try:
             # 确保任务存在
-            _ensure_processing_task_exists(celery_task_id, video_id)
+            _ensure_processing_task_exists(celery_task_id, video_id, slice_id, sub_slice_id)
             
             with get_sync_db() as db:
                 state_manager = get_state_manager(db)
