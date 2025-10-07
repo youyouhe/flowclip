@@ -521,7 +521,26 @@ class StandaloneCallbackServer:
                 return None
 
             srt_content = response.text
-            logger.info(f"✅ SRT内容下载成功，大小: {len(srt_content)} 字符")
+            logger.info(f"✅ 原始响应内容下载成功，大小: {len(srt_content)} 字符")
+
+            # 检查响应是否是JSON格式（TUS API可能返回JSON包装的内容）
+            try:
+                import json
+                json_response = json.loads(srt_content)
+                if isinstance(json_response, dict) and 'data' in json_response:
+                    # 如果是JSON格式且包含data字段，提取data字段作为SRT内容
+                    srt_content = json_response['data']
+                    logger.info(f"✅ 从JSON响应中提取SRT内容，大小: {len(srt_content)} 字符")
+                    logger.info(f"📝 JSON响应格式: code={json_response.get('code')}, msg={json_response.get('msg')}")
+                else:
+                    logger.info(f"📝 响应不是预期的JSON格式，直接使用原始内容")
+            except json.JSONDecodeError:
+                # 如果不是JSON格式，直接使用原始内容
+                logger.info(f"📝 响应不是JSON格式，直接使用原始内容")
+            except Exception as e:
+                logger.warning(f"⚠️ 解析JSON响应失败，使用原始内容: {e}")
+
+            logger.info(f"✅ 最终SRT内容大小: {len(srt_content)} 字符")
             return srt_content
 
         except Exception as e:
@@ -733,7 +752,26 @@ class StandaloneCallbackServer:
                 return None
 
             srt_content = response.text
-            logger.info(f"✅ SRT内容下载成功，大小: {len(srt_content)} 字符")
+            logger.info(f"✅ 原始响应内容下载成功，大小: {len(srt_content)} 字符")
+
+            # 检查响应是否是JSON格式（TUS API可能返回JSON包装的内容）
+            try:
+                import json
+                json_response = json.loads(srt_content)
+                if isinstance(json_response, dict) and 'data' in json_response:
+                    # 如果是JSON格式且包含data字段，提取data字段作为SRT内容
+                    srt_content = json_response['data']
+                    logger.info(f"✅ 从JSON响应中提取SRT内容，大小: {len(srt_content)} 字符")
+                    logger.info(f"📝 JSON响应格式: code={json_response.get('code')}, msg={json_response.get('msg')}")
+                else:
+                    logger.info(f"📝 响应不是预期的JSON格式，直接使用原始内容")
+            except json.JSONDecodeError:
+                # 如果不是JSON格式，直接使用原始内容
+                logger.info(f"📝 响应不是JSON格式，直接使用原始内容")
+            except Exception as e:
+                logger.warning(f"⚠️ 解析JSON响应失败，使用原始内容: {e}")
+
+            logger.info(f"✅ 最终SRT内容大小: {len(srt_content)} 字符")
 
             # 确定MinIO存储路径和用户信息
             user_id = None
