@@ -149,6 +149,8 @@ services:
     depends_on:
       redis:
         condition: service_healthy
+    volumes:
+      - ./backend:/app  # 源码卷映射，便于开发调试
     networks:
       - flowclip-network
     logging:
