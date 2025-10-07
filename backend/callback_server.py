@@ -665,8 +665,11 @@ class StandaloneCallbackServer:
                     sub_slice.srt_processing_status = "completed"
                     logger.info(f"✅ 已更新VideoSubSlice: id={sub_slice_id}, srt_url={final_srt_url}")
 
-            elif video_id:
-                # 更新Video记录（原视频的SRT任务）
+            elif video_id and not slice_id and not sub_slice_id:
+                # 只有在既没有slice_id也没有sub_slice_id时，才更新原视频的记录
+                # 这确保了只有原视频的SRT任务才会影响原视频状态
+                logger.info(f"🎯 这是原视频的SRT任务，更新原视频记录: video_id={video_id}")
+
                 video = session.query(Video).filter(Video.id == video_id).first()
                 if video:
                     video.processing_progress = 100
@@ -675,17 +678,31 @@ class StandaloneCallbackServer:
                     video.processing_completed_at = datetime.utcnow()
                     logger.info(f"✅ 已更新Video: id={video_id}")
 
-                # 更新ProcessingStatus表
+                # 更新ProcessingStatus表 - 仅限原视频SRT任务
                 processing_status = session.query(ProcessingStatus).filter(
                     ProcessingStatus.video_id == video_id
                 ).first()
                 if processing_status:
-                    processing_status.overall_status = ProcessingTaskStatus.SUCCESS
-                    processing_status.overall_progress = 100
-                    processing_status.current_stage = ProcessingStage.COMPLETED.value
+                    # 只更新SRT相关状态，不改变整体状态
+                    # 防止切片任务影响原视频的整体状态
                     processing_status.generate_srt_status = ProcessingTaskStatus.SUCCESS
                     processing_status.generate_srt_progress = 100
-                    logger.info(f"✅ 已更新ProcessingStatus: video_id={video_id}")
+                    logger.info(f"✅ 已更新原视频SRT状态(TUS): video_id={video_id}")
+
+            elif video_id and (slice_id or sub_slice_id):
+                # 这是切片或子切片的SRT任务，绝对不能更新原视频状态
+                logger.warning(f"⚠️ 切片/子切片SRT任务完成，不更新原视频状态: video_id={video_id}, slice_id={slice_id}, sub_slice_id={sub_slice_id}")
+                # 确保不会意外影响到原视频的状态记录
+                try:
+                    processing_status = session.query(ProcessingStatus).filter(
+                        ProcessingStatus.video_id == video_id
+                    ).first()
+                    if processing_status:
+                        # 检查并确保不会修改原视频的SRT状态
+                        logger.info(f"🔍 检查原视频processing_status - 当前SRT状态: {processing_status.generate_srt_status}")
+                        # 不做任何修改，只记录日志
+                except Exception as check_error:
+                    logger.error(f"检查原视频状态失败: {check_error}")
 
         except Exception as e:
             logger.error(f"❌ 更新相关记录失败: {e}", exc_info=True)
