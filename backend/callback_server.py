@@ -575,10 +575,14 @@ class StandaloneCallbackServer:
                 with get_sync_db() as db:
                     db_configs = SystemConfigService.get_all_configs_sync(db)
                     tus_api_url = db_configs.get('tus_api_url', getattr(settings, 'tus_api_url', 'http://localhost:8000'))
+                    asr_api_key = db_configs.get('asr_api_key', getattr(settings, 'asr_api_key', None))
                     logger.info(f"✅ 从数据库加载TUS API URL: {tus_api_url}")
+                    logger.info(f"✅ 从数据库加载ASR API Key: {'已设置' if asr_api_key else '未设置'}")
             except Exception as config_error:
                 logger.warning(f"⚠️ 从数据库加载TUS API配置失败，使用默认值: {config_error}")
                 tus_api_url = getattr(settings, 'tus_api_url', 'http://localhost:8000')
+                asr_api_key = getattr(settings, 'asr_api_key', None)
+                logger.info(f"⚠️ 使用默认ASR API Key: {'已设置' if asr_api_key else '未设置'}")
 
             # 构建TUS下载URL
             if srt_url.startswith('/'):
@@ -591,10 +595,13 @@ class StandaloneCallbackServer:
 
             logger.info(f"🔄 开始从TUS服务下载SRT: {download_url}")
 
-            # 设置请求头
+            # 设置请求头 - 修复授权问题
             headers = {}
-            if hasattr(settings, 'asr_api_key') and settings.asr_api_key:
-                headers['X-API-Key'] = settings.asr_api_key
+            if asr_api_key:
+                headers['X-API-Key'] = asr_api_key
+                logger.info(f"✅ 使用ASR API Key进行授权")
+            else:
+                logger.warning(f"⚠️ 未设置ASR API Key，可能无法通过TUS API授权")
             headers['ngrok-skip-browser-warning'] = 'true'
 
             # 下载SRT内容
