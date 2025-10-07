@@ -516,7 +516,7 @@ async def get_slice_srt_content(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="读取SRT文件失败"
             )
-            
+
             # 尝试多种编码解码字节内容
             try:
                 content = content_bytes.decode('utf-8')
@@ -528,8 +528,29 @@ async def get_slice_srt_content(
                         content = content_bytes.decode('gbk')
                     except UnicodeDecodeError:
                         content = content_bytes.decode('latin-1')
-            
-            return {"content": content}
+
+            # 解析SRT内容为结构化数据，与视频SRT API格式保持一致
+            import re
+            subtitles = []
+
+            # 按字幕块分割
+            blocks = re.split(r'\n\s*\n', content.strip())
+            for block in blocks:
+                lines = block.strip().split('\n')
+                if len(lines) >= 3:
+                    subtitle = {
+                        'id': lines[0],
+                        'time_range': lines[1],
+                        'text': '\n'.join(lines[2:]).strip()
+                    }
+                    subtitles.append(subtitle)
+
+            return {
+                "content": content,
+                "subtitles": subtitles,
+                "total_subtitles": len(subtitles),
+                "file_size": len(content.encode('utf-8'))
+            }
             
         except Exception as e:
             logger.error(f"读取SRT文件失败: {str(e)}")
@@ -641,16 +662,37 @@ async def get_sub_slice_srt_content(
                         content = content_bytes.decode('gbk')
                     except UnicodeDecodeError:
                         content = content_bytes.decode('latin-1')
-            
-            return {"content": content}
-            
+
+            # 解析SRT内容为结构化数据，与视频SRT API格式保持一致
+            import re
+            subtitles = []
+
+            # 按字幕块分割
+            blocks = re.split(r'\n\s*\n', content.strip())
+            for block in blocks:
+                lines = block.strip().split('\n')
+                if len(lines) >= 3:
+                    subtitle = {
+                        'id': lines[0],
+                        'time_range': lines[1],
+                        'text': '\n'.join(lines[2:]).strip()
+                    }
+                    subtitles.append(subtitle)
+
+            return {
+                "content": content,
+                "subtitles": subtitles,
+                "total_subtitles": len(subtitles),
+                "file_size": len(content.encode('utf-8'))
+            }
+
         except Exception as e:
             logger.error(f"读取SRT文件失败: {str(e)}")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="读取SRT文件失败"
             )
-            
+
     except HTTPException:
         raise
     except Exception as e:
