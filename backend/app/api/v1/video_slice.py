@@ -659,50 +659,79 @@ async def get_sub_slice_srt_content(
                 content_bytes = response.read()
                 response.close()
                 response.release_conn()
-        except Exception as e:
-            logger.error(f"读取子切片SRT文件失败: {str(e)}")
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="读取SRT文件失败"
-            )
-            
-            # 尝试多种编码解码字节内容
-            try:
-                content = content_bytes.decode('utf-8')
-            except UnicodeDecodeError:
+
+                logger.info(f"✅ 子切片MinIO读取成功: bytes={len(content_bytes)}")
+
+                # 尝试多种编码解码字节内容
+                logger.info(f"🔍 子切片开始解码SRT内容...")
                 try:
-                    content = content_bytes.decode('utf-8-sig')
+                    content = content_bytes.decode('utf-8')
+                    logger.info(f"✅ 子切片UTF-8解码成功，内容长度: {len(content)}")
                 except UnicodeDecodeError:
                     try:
-                        content = content_bytes.decode('gbk')
+                        content = content_bytes.decode('utf-8-sig')
+                        logger.info(f"✅ 子切片UTF-8-SIG解码成功，内容长度: {len(content)}")
                     except UnicodeDecodeError:
-                        content = content_bytes.decode('latin-1')
+                        try:
+                            content = content_bytes.decode('gbk')
+                            logger.info(f"✅ 子切片GBK解码成功，内容长度: {len(content)}")
+                        except UnicodeDecodeError:
+                            content = content_bytes.decode('latin-1')
+                            logger.info(f"✅ 子切片Latin-1解码成功，内容长度: {len(content)}")
 
-            # 解析SRT内容为结构化数据，与视频SRT API格式保持一致
-            import re
-            subtitles = []
+                # 添加调试信息：打印解码后的SRT内容
+                logger.info(f"🔍 子切片解码后的SRT内容（前500字符）: {content[:500]}")
+                logger.info(f"🔍 子切片SRT内容总行数: {len(content.splitlines())}")
 
-            # 按字幕块分割
-            blocks = re.split(r'\n\s*\n', content.strip())
-            for block in blocks:
-                lines = block.strip().split('\n')
-                if len(lines) >= 3:
-                    subtitle = {
-                        'id': lines[0],
-                        'time_range': lines[1],
-                        'text': '\n'.join(lines[2:]).strip()
-                    }
-                    subtitles.append(subtitle)
+                # 检查内容格式
+                lines = content.splitlines()
+                non_empty_lines = [line for line in lines if line.strip()]
+                logger.info(f"🔍 子切片非空行数: {len(non_empty_lines)}")
 
-            return {
-                "content": content,
-                "subtitles": subtitles,
-                "total_subtitles": len(subtitles),
-                "file_size": len(content.encode('utf-8'))
-            }
+                if non_empty_lines:
+                    logger.info(f"🔍 子切片第一行内容: '{non_empty_lines[0]}'")
+                    logger.info(f"🔍 子切片最后一行内容: '{non_empty_lines[-1]}'")
+
+                    # 检查是否包含SRT格式标识
+                    has_srt_timestamp = any('-->' in line for line in non_empty_lines)
+                    logger.info(f"🔍 子切片是否包含SRT时间戳格式: {has_srt_timestamp}")
+
+                    # 显示前几行以便调试格式
+                    for i, line in enumerate(non_empty_lines[:10]):
+                        logger.info(f"🔍 子切片第{i+1}行: '{line}'")
+
+                # 解析SRT内容为结构化数据，与视频SRT API格式保持一致
+                import re
+                subtitles = []
+
+                # 按字幕块分割
+                blocks = re.split(r'\n\s*\n', content.strip())
+                for block in blocks:
+                    lines = block.strip().split('\n')
+                    if len(lines) >= 3:
+                        subtitle = {
+                            'id': lines[0],
+                            'time_range': lines[1],
+                            'text': '\n'.join(lines[2:]).strip()
+                        }
+                        subtitles.append(subtitle)
+
+                logger.info(f"🔍 子切片解析完成: 找到{len(subtitles)}个字幕块")
+
+                result = {
+                    "content": content,
+                    "subtitles": subtitles,
+                    "total_subtitles": len(subtitles),
+                    "file_size": len(content.encode('utf-8'))
+                }
+
+                logger.info(f"🔍 子切片SRT返回结果: sub_slice_id={sub_slice_id}, content长度={len(content)}, 字幕数={len(subtitles)}")
+                logger.info(f"🔍 子切片即将返回200状态码，数据类型: {type(result)}")
+
+                return result
 
         except Exception as e:
-            logger.error(f"读取SRT文件失败: {str(e)}")
+            logger.error(f"读取子切片SRT文件失败: {str(e)}")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="读取SRT文件失败"
