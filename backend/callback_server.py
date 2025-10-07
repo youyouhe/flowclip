@@ -419,19 +419,49 @@ class StandaloneCallbackServer:
             logger.info(f"  - input_data: {processing_task.input_data}")
             logger.info(f"  - task_metadata: {processing_task.task_metadata}")
 
-            # 更新ProcessingTask状态
+            # 下载SRT内容并保存到MinIO，同时获取SRT文本内容
+            srt_content = None
+            srt_url = result.get('srt_url')
+            if srt_url:
+                try:
+                    srt_content = self._download_srt_content_for_db(srt_url)
+                    logger.info(f"✅ SRT内容下载成功，大小: {len(srt_content) if srt_content else 0} 字符")
+                except Exception as e:
+                    logger.error(f"❌ 下载SRT内容失败: {e}")
+                    srt_content = None
+
+            # 更新ProcessingTask状态，包含SRT文本内容以保持前端兼容性
             processing_task.status = ProcessingTaskStatus.SUCCESS
             processing_task.progress = 100.0
             processing_task.completed_at = datetime.utcnow()
-            processing_task.output_data = {
-                'strategy': 'tus',
-                'task_id': task_id,
-                'srt_url': result.get('srt_url'),
-                'filename': result.get('filename'),
-                'status': result.get('status'),
-                'completed_at': time.time(),
-                **result
+
+            # 重要：不要覆盖已存在的output_data，而是合并更新
+            # Celery任务可能已经存储了重要信息（如srt_content）
+            existing_output_data = processing_task.output_data or {}
+
+            logger.info(f"📋 现有的output_data字段: {list(existing_output_data.keys())}")
+            if existing_output_data.get('srt_content'):
+                logger.info(f"✅ 现有output_data已包含SRT内容，长度: {len(existing_output_data['srt_content'])} 字符")
+
+            # 只更新必要的字段，保留Celery任务已存储的数据
+            updates = {
+                'callback_processed': True,  # 标记callback已处理
+                'callback_received_at': time.time(),
+                'tus_task_id': task_id,
+                'tus_result': result  # 保存原始TUS回调结果
             }
+
+            # 如果Celery任务没有存储SRT内容，而我们又下载到了，则添加
+            if srt_content and not existing_output_data.get('srt_content'):
+                updates['srt_content'] = srt_content
+                logger.info(f"✅ 通过callback添加SRT内容，长度: {len(srt_content)} 字符")
+
+            # 合并更新数据
+            existing_output_data.update(updates)
+
+            # 更新processing_task的output_data
+            processing_task.output_data = existing_output_data
+            logger.info(f"✅ 已合并更新output_data，总字段数: {len(processing_task.output_data)}")
             processing_task.message = f"TUS ASR处理完成 (任务ID: {task_id})"
 
             # 根据任务类型更新相关表
@@ -449,6 +479,54 @@ class StandaloneCallbackServer:
                 session.close()
             except:
                 pass
+
+    def _download_srt_content_for_db(self, srt_url: str) -> Optional[str]:
+        """下载SRT内容用于存储到数据库"""
+        try:
+            from app.services.system_config_service import SystemConfigService
+            from app.core.database import get_sync_db
+            import requests
+
+            # 从数据库动态加载TUS API配置
+            try:
+                with get_sync_db() as db:
+                    db_configs = SystemConfigService.get_all_configs_sync(db)
+                    tus_api_url = db_configs.get('tus_api_url', 'http://localhost:8000')
+                    asr_api_key = db_configs.get('asr_api_key', None)
+                    logger.info(f"✅ 从数据库加载TUS API URL: {tus_api_url}")
+            except Exception as config_error:
+                logger.warning(f"⚠️ 从数据库加载TUS API配置失败，使用默认值: {config_error}")
+                tus_api_url = 'http://localhost:8000'
+                asr_api_key = None
+
+            # 构建TUS下载URL
+            if srt_url.startswith('/'):
+                download_url = f"{tus_api_url.rstrip('/')}{srt_url}"
+            else:
+                download_url = srt_url
+
+            logger.info(f"🔄 开始下载SRT内容用于数据库存储: {download_url}")
+
+            # 设置请求头
+            headers = {}
+            if asr_api_key:
+                headers['X-API-Key'] = asr_api_key
+                logger.info(f"✅ 使用ASR API Key进行授权")
+            headers['ngrok-skip-browser-warning'] = 'true'
+
+            # 下载SRT内容
+            response = requests.get(download_url, headers=headers, timeout=30)
+            if response.status_code != 200:
+                logger.error(f"❌ 下载SRT失败: HTTP {response.status_code}")
+                return None
+
+            srt_content = response.text
+            logger.info(f"✅ SRT内容下载成功，大小: {len(srt_content)} 字符")
+            return srt_content
+
+        except Exception as e:
+            logger.error(f"❌ 下载SRT内容失败: {e}", exc_info=True)
+            return None
 
     def _update_related_records(self, session, processing_task: ProcessingTask, result: Dict[str, Any]):
         """更新相关记录（Video、VideoSlice等）"""
