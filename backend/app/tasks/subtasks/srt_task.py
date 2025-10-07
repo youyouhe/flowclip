@@ -22,7 +22,14 @@ from app.services.system_config_service import SystemConfigService
 # 创建logger
 logger = logging.getLogger(__name__)
 
-@shared_task(bind=True, name='app.tasks.video_tasks.generate_srt')
+@shared_task(
+    bind=True,
+    name='app.tasks.video_tasks.generate_srt',
+    autoretry_for=(Exception,),
+    retry_kwargs={'max_retries': 3, 'countdown': 60},  # 重试3次，间隔60秒
+    retry_backoff=True,
+    retry_jitter=True
+)
 def generate_srt(self, video_id: str, project_id: int, user_id: int, split_files: list = None, slice_id: int = None, sub_slice_id: int = None, create_processing_task: bool = True) -> Dict[str, Any]:
     """Generate SRT subtitles from audio using ASR"""
     

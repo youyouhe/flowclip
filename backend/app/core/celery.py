@@ -40,8 +40,8 @@ celery_app.conf.update(
     enable_utc=True,
     result_expires=3600,
     task_track_started=True,
-    task_time_limit=30 * 60,  # 30 minutes
-    task_soft_time_limit=25 * 60,  # 25 minutes
+    task_time_limit=60 * 60,  # 60 minutes
+    task_soft_time_limit=55 * 60,  # 55 minutes
     
     # 增加后端容错配置
     result_backend_always_retry=True,
