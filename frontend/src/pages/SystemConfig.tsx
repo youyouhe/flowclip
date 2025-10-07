@@ -46,8 +46,6 @@ const SystemConfig: React.FC = () => {
       'tus_enable_routing': '启用TUS路由',
       'tus_max_retries': 'TUS最大重试次数',
       'tus_timeout_seconds': 'TUS超时时间(秒)',
-      'tus_use_global_callback': 'TUS回调服务器模式', // 这个会在Radio.Group中显示
-      'tus_use_standalone_callback': 'TUS回调服务器模式', // 统一显示为一个选项
 
       // 其他配置的显示名称可以继续添加
       'asr_service_url': 'ASR服务地址',
@@ -68,8 +66,6 @@ const SystemConfig: React.FC = () => {
       'tus_enable_routing': '是否启用基于文件大小的TUS路由功能',
       'tus_max_retries': 'TUS操作失败时的最大重试次数',
       'tus_timeout_seconds': 'TUS操作的超时时间(秒)',
-      'tus_use_global_callback': '是否使用全局回调服务器模式（与独立回调服务器二选一）',
-      'tus_use_standalone_callback': '是否使用独立回调服务器容器（推荐，解决多进程回调丢失问题）',
 
       // 其他配置描述
       'asr_service_url': 'ASR服务的URL地址，用于音频转文字处理',
@@ -633,107 +629,9 @@ return (
                                 visibilityToggle={true}
                               />
                             </Form.Item>
-                          ) : config.key === 'tus_use_standalone_callback' ? (
-                            // TUS回调服务器模式选择 - 使用Radio.Group
-                            <Form.Item shouldUpdate={(prevValues, currentValues) =>
-                              prevValues.tus_callback_mode !== currentValues.tus_callback_mode ||
-                              prevValues.tus_use_standalone_callback !== currentValues.tus_use_standalone_callback ||
-                              prevValues.tus_use_global_callback !== currentValues.tus_use_global_callback
-                            }>
-                              {({ getFieldValue }) => {
-                                const standaloneValue = getFieldValue('tus_use_standalone_callback') === 'true';
-                                const globalValue = getFieldValue('tus_use_global_callback') === 'true';
-                                // 优先使用tus_callback_mode，如果没有则根据布尔值推断
-                            const callbackMode = getFieldValue('tus_callback_mode');
-                            const currentValue = callbackMode || (standaloneValue ? 'standalone' : (globalValue ? 'global' : 'standalone'));
-
-                                return (
-                                  <Form.Item name="tus_callback_mode" noStyle>
-                                    <Select
-                                      value={currentValue}
-                                      onChange={(mode) => {
-                                        form.setFieldsValue({
-                                          'tus_callback_mode': mode
-                                        });
-                                      }}
-                                      style={{ width: '100%' }}
-                                      placeholder="请选择TUS回调服务器模式"
-                                    >
-                                      <Select.Option value="standalone">
-                                        <div>
-                                          <Text strong>独立回调服务器模式</Text>
-                                          <br />
-                                          <Text type="secondary" style={{ fontSize: '12px' }}>
-                                            运行独立的callback_server.py进程，固定端口9090，通过Redis通信（推荐）
-                                          </Text>
-                                        </div>
-                                      </Select.Option>
-                                      <Select.Option value="global">
-                                        <div>
-                                          <Text strong>全局回调服务器模式</Text>
-                                          <br />
-                                          <Text type="secondary" style={{ fontSize: '12px' }}>
-                                            在应用内部启动HTTP服务器，固定端口9090，单例模式管理
-                                          </Text>
-                                        </div>
-                                      </Select.Option>
-                                    </Select>
-                                  </Form.Item>
-                                );
-                              }}
-                            </Form.Item>
-                          ) : config.key === 'tus_callback_mode' ? (
-                            // TUS回调服务器模式选择 - 使用Select下拉框
-                            <Form.Item name={config.key} noStyle>
-                              <Select
-                                style={{ width: '100%' }}
-                                placeholder="请选择TUS回调服务器模式"
-                                optionLabelProp="label"
-                              >
-                                <Select.Option
-                                  value="standalone"
-                                  label="独立回调服务器模式"
-                                >
-                                  <div style={{ maxWidth: '400px' }}>
-                                    <Text strong>独立回调服务器模式</Text>
-                                    <div style={{ marginTop: '2px' }}>
-                                      <Text type="secondary" style={{ fontSize: '11px', lineHeight: '1.2' }}>
-                                        运行独立callback_server.py进程，固定9090端口，Redis通信（推荐）
-                                      </Text>
-                                    </div>
-                                  </div>
-                                </Select.Option>
-                                <Select.Option
-                                  value="global"
-                                  label="全局回调服务器模式"
-                                >
-                                  <div style={{ maxWidth: '400px' }}>
-                                    <Text strong>全局回调服务器模式</Text>
-                                    <div style={{ marginTop: '2px' }}>
-                                      <Text type="secondary" style={{ fontSize: '11px', lineHeight: '1.2' }}>
-                                        应用内部启动HTTP服务器，固定9090端口，单例模式管理
-                                      </Text>
-                                    </div>
-                                  </div>
-                                </Select.Option>
-                              </Select>
-                            </Form.Item>
-                          ) : config.key === 'tus_use_global_callback' ? (
-                            // 跳过全局回调服务器的单独显示，因为已经在上面的Radio.Group中处理了
-                            null
                           ) : config.key.includes('use_') && config.key.includes('callback') ? (
-                            // 其他回调相关配置使用Switch组件
-                            <Form.Item
-                              name={config.key}
-                              valuePropName="checked"
-                              getValueFromEvent={(checked) => checked.toString()}
-                              noStyle
-                            >
-                              <Switch
-                                checkedChildren="启用"
-                                unCheckedChildren="禁用"
-                              />
-                            </Form.Item>
+                            // 跳过已移除的回调相关配置
+                            null
                           ) : (
                             <Form.Item name={config.key} noStyle>
                               <Input

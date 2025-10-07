@@ -88,8 +88,6 @@ def init_system_config(max_retries=5, retry_delay=2):
                 "tus_enable_routing": os.environ.get('TUS_ENABLE_ROUTING', 'true'),
                 "tus_max_retries": os.environ.get('TUS_MAX_RETRIES', '3'),
                 "tus_timeout_seconds": os.environ.get('TUS_TIMEOUT_SECONDS', '1500'),
-                "tus_use_global_callback": os.environ.get('TUS_USE_GLOBAL_CALLBACK', 'true'),
-                "tus_use_standalone_callback": os.environ.get('TUS_USE_STANDALONE_CALLBACK', 'true'),
                 
                 # Server配置
                 "public_ip": os.environ.get('PUBLIC_IP', ''),
