@@ -136,8 +136,9 @@ class StandaloneCallbackServer:
             self.db_session_factory = sessionmaker(bind=self.db_engine)
 
             # 测试数据库连接
+            from sqlalchemy import text
             test_session = self.db_session_factory()
-            test_session.execute("SELECT 1")
+            test_session.execute(text("SELECT 1"))
             test_session.close()
 
             # 安全地显示数据库连接信息
