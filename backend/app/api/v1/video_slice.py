@@ -514,43 +514,58 @@ async def get_slice_srt_content(
                 response.release_conn()
 
                 logger.info(f"✅ MinIO读取成功: bytes={len(content_bytes)}")
-        except Exception as e:
-            logger.error(f"❌ MinIO读取失败: {str(e)}, exc_info=True")
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="读取SRT文件失败"
-            )
 
-            # 尝试多种编码解码字节内容
-            logger.info(f"🔍 开始解码SRT内容...")
-            try:
-                content = content_bytes.decode('utf-8')
-                logger.info(f"✅ UTF-8解码成功，内容长度: {len(content)}")
-            except UnicodeDecodeError:
+                # 尝试多种编码解码字节内容
+                logger.info(f"🔍 开始解码SRT内容...")
                 try:
-                    content = content_bytes.decode('utf-8-sig')
-                    logger.info(f"✅ UTF-8-SIG解码成功，内容长度: {len(content)}")
+                    content = content_bytes.decode('utf-8')
+                    logger.info(f"✅ UTF-8解码成功，内容长度: {len(content)}")
                 except UnicodeDecodeError:
                     try:
-                        content = content_bytes.decode('gbk')
-                        logger.info(f"✅ GBK解码成功，内容长度: {len(content)}")
+                        content = content_bytes.decode('utf-8-sig')
+                        logger.info(f"✅ UTF-8-SIG解码成功，内容长度: {len(content)}")
                     except UnicodeDecodeError:
-                        content = content_bytes.decode('latin-1')
-                        logger.info(f"✅ Latin-1解码成功，内容长度: {len(content)}")
+                        try:
+                            content = content_bytes.decode('gbk')
+                            logger.info(f"✅ GBK解码成功，内容长度: {len(content)}")
+                        except UnicodeDecodeError:
+                            content = content_bytes.decode('latin-1')
+                            logger.info(f"✅ Latin-1解码成功，内容长度: {len(content)}")
 
-            # 先简单测试：直接返回原始内容
-            logger.info(f"🔍 简化测试：直接返回原始内容")
-            result = {
-                "content": content,
-                "subtitles": [],
-                "total_subtitles": 0,
-                "file_size": len(content.encode('utf-8'))
-            }
+                # 添加调试信息：打印解码后的SRT内容
+                logger.info(f"🔍 解码后的SRT内容（前500字符）: {content[:500]}")
+                logger.info(f"🔍 SRT内容总行数: {len(content.splitlines())}")
 
-            logger.info(f"🔍 切片SRT返回结果(简化): slice_id={slice_id}, content长度={len(content)}")
-            logger.info(f"🔍 即将返回200状态码，数据类型: {type(result)}")
+                # 检查内容格式
+                lines = content.splitlines()
+                non_empty_lines = [line for line in lines if line.strip()]
+                logger.info(f"🔍 非空行数: {len(non_empty_lines)}")
 
-            return result
+                if non_empty_lines:
+                    logger.info(f"🔍 第一行内容: '{non_empty_lines[0]}'")
+                    logger.info(f"🔍 最后一行内容: '{non_empty_lines[-1]}'")
+
+                    # 检查是否包含SRT格式标识
+                    has_srt_timestamp = any('-->' in line for line in non_empty_lines)
+                    logger.info(f"🔍 是否包含SRT时间戳格式: {has_srt_timestamp}")
+
+                    # 显示前几行以便调试格式
+                    for i, line in enumerate(non_empty_lines[:10]):
+                        logger.info(f"🔍 第{i+1}行: '{line}'")
+
+                # 先简单测试：直接返回原始内容
+                logger.info(f"🔍 简化测试：直接返回原始内容")
+                result = {
+                    "content": content,
+                    "subtitles": [],
+                    "total_subtitles": 0,
+                    "file_size": len(content.encode('utf-8'))
+                }
+
+                logger.info(f"🔍 切片SRT返回结果(简化): slice_id={slice_id}, content长度={len(content)}")
+                logger.info(f"🔍 即将返回200状态码，数据类型: {type(result)}")
+
+                return result
             
     except HTTPException:
         raise
