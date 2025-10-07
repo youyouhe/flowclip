@@ -834,22 +834,11 @@ class StandaloneCallbackServer:
                 slice_record = session.query(VideoSlice).filter(VideoSlice.id == slice_id).first()
                 if slice_record:
                     user_id, project_id = self._get_user_project_from_video(session, slice_record.video_id)
-                    # 检查切片的sliced_file_path，提取slice_uuid用于路径关联
-                    if slice_record.sliced_file_path:
-                        # 从路径中提取slice_uuid: users/{user_id}/projects/{project_id}/slices/{slice_uuid}/{filename}
-                        path_parts = slice_record.sliced_file_path.split('/')
-                        if len(path_parts) >= 6 and path_parts[4] == 'slices':
-                            slice_uuid = path_parts[5]
-                            object_name = f"users/{user_id}/projects/{project_id}/slices/{slice_uuid}/subtitles.srt"
-                            logger.info(f"✅ 使用切片UUID路径关联: slice_uuid={slice_uuid}")
-                        else:
-                            # 回退到简单命名
-                            object_name = f"users/{user_id}/projects/{project_id}/subtitles/slice_{slice_id}.srt"
-                            logger.warning(f"⚠️ 无法解析切片路径，使用简单命名")
-                    else:
-                        # 如果切片还没有文件路径，使用简单命名
-                        object_name = f"users/{user_id}/projects/{project_id}/subtitles/slice_{slice_id}.srt"
-                        logger.warning(f"⚠️ 切片没有文件路径，使用简单命名")
+                    # 统一使用标准的subtitles路径，避免路径不一致
+                    # 需要获取video_id来生成正确的文件名
+                    video_id = slice_record.video_id
+                    object_name = f"users/{user_id}/projects/{project_id}/subtitles/{video_id}_slice_{slice_id}.srt"
+                    logger.info(f"✅ 使用标准切片SRT路径: {object_name}")
                 else:
                     logger.error(f"❌ 未找到VideoSlice记录: id={slice_id}")
                     return None
@@ -859,22 +848,11 @@ class StandaloneCallbackServer:
                 sub_slice = session.query(VideoSubSlice).filter(VideoSubSlice.id == sub_slice_id).first()
                 if sub_slice:
                     user_id, project_id = self._get_user_project_from_video(session, sub_slice.parent_slice.video_id)
-                    # 检查子切片的sliced_file_path，提取slice_uuid用于路径关联
-                    if sub_slice.sliced_file_path:
-                        # 从路径中提取slice_uuid: users/{user_id}/projects/{project_id}/slices/{slice_uuid}/{filename}
-                        path_parts = sub_slice.sliced_file_path.split('/')
-                        if len(path_parts) >= 6 and path_parts[4] == 'slices':
-                            slice_uuid = path_parts[5]
-                            object_name = f"users/{user_id}/projects/{project_id}/slices/{slice_uuid}/sub_slice_{sub_slice_id}.srt"
-                            logger.info(f"✅ 使用切片UUID路径关联: slice_uuid={slice_uuid}")
-                        else:
-                            # 回退到简单命名
-                            object_name = f"users/{user_id}/projects/{project_id}/subtitles/sub_slice_{sub_slice_id}.srt"
-                            logger.warning(f"⚠️ 无法解析子切片路径，使用简单命名")
-                    else:
-                        # 如果子切片还没有文件路径，使用简单命名
-                        object_name = f"users/{user_id}/projects/{project_id}/subtitles/sub_slice_{sub_slice_id}.srt"
-                        logger.warning(f"⚠️ 子切片没有文件路径，使用简单命名")
+                    # 统一使用标准的subtitles路径，避免路径不一致
+                    # 需要获取video_id来生成正确的文件名
+                    video_id = sub_slice.parent_slice.video_id
+                    object_name = f"users/{user_id}/projects/{project_id}/subtitles/{video_id}_subslice_{sub_slice_id}.srt"
+                    logger.info(f"✅ 使用标准子切片SRT路径: {object_name}")
                 else:
                     logger.error(f"❌ 未找到VideoSubSlice记录: id={sub_slice_id}")
                     return None

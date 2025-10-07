@@ -527,368 +527,97 @@ class AudioProcessor:
         end_time: float = None,
         asr_service_url: str = None,
         asr_model_type: str = "whisper",  # 添加模型类型参数，默认为whisper
-        enable_tus_routing: bool = None,  # 启用TUS路由(默认从配置读取)
-        force_standard_asr: bool = False  # 强制使用标准ASR
+        enable_tus_routing: bool = None,  # 保留参数兼容性
+        force_standard_asr: bool = False  # 保留参数兼容性
     ) -> Dict[str, Any]:
-        """从音频文件生成SRT字幕文件 - 更新为直接处理音频文件"""
+        """从音频文件生成SRT字幕文件 - 统一使用TUS处理"""
 
         logger.info(f"开始生成SRT字幕: {audio_path}")
-
-        # 读取TUS路由配置
-        from app.core.config import settings
-        tus_routing_enabled = enable_tus_routing if enable_tus_routing is not None else getattr(settings, 'tus_enable_routing', True)
-
-        # 如果启用TUS路由且不强制使用标准ASR，则进行文件大小检测
-        if tus_routing_enabled and not force_standard_asr:
-            try:
-                from app.services.file_size_detector import file_size_detector
-
-                # 检测文件大小
-                size_info = file_size_detector.detect_file_size(audio_path)
-                logger.info(f"文件大小检测结果: {size_info['file_size_mb']:.2f}MB, 策略: {size_info['strategy']}")
-
-                # 如果文件大小超过阈值，使用TUS客户端
-                if size_info['use_tus']:
-                    logger.info(f"文件大小超过阈值 ({size_info['threshold_mb']}MB)，使用TUS客户端处理")
-
-                    from app.services.file_size_detector import asr_strategy_selector
-                    metadata = {
-                        'language': lang,
-                        'model': asr_model_type,
-                        'video_id': video_id,
-                        'project_id': project_id,
-                        'user_id': user_id
-                    }
-
-                    # 使用TUS客户端处理
-                    tus_result = await asr_strategy_selector._execute_tus_asr(audio_path, metadata)
-
-                    # 从TUS结果中提取SRT内容
-                    srt_content = tus_result.get('srt_content', '')
-
-                    # 生成SRT文件名和对象名称
-                    if custom_filename:
-                        srt_filename = custom_filename
-                    else:
-                        srt_filename = f"{video_id}.srt"
-
-                    srt_object_name = f"users/{user_id}/projects/{project_id}/subtitles/{srt_filename}"
-
-                    # 上传SRT内容到MinIO
-                    tmp_srt_path = None
-                    srt_url = None
-                    try:
-                        with tempfile.NamedTemporaryFile(mode='w', suffix='.srt', delete=False, encoding='utf-8') as tmp_srt_file:
-                            tmp_srt_file.write(srt_content)
-                            tmp_srt_path = tmp_srt_file.name
-
-                        # 上传到MinIO
-                        srt_url = await minio_service.upload_file(
-                            tmp_srt_path,
-                            srt_object_name,
-                            "text/srt"
-                        )
-
-                        # 清理临时文件
-                        if tmp_srt_path:
-                            import os
-                            if os.path.exists(tmp_srt_path):
-                                os.unlink(tmp_srt_path)
-                    except Exception as upload_error:
-                        logger.error(f"SRT文件上传失败: {upload_error}")
-                        # 清理临时文件
-                        if tmp_srt_path:
-                            import os
-                            if os.path.exists(tmp_srt_path):
-                                os.unlink(tmp_srt_path)
-                        raise
-
-                    return {
-                        'success': True,
-                        'strategy': 'tus',
-                        'srt_content': srt_content,
-                        'srt_filename': srt_filename,
-                        'minio_path': srt_url,
-                        'object_name': srt_object_name,
-                        'json_result_path': None,
-                        'total_segments': srt_content.count('\n\n') if srt_content else 0,
-                        'processing_stats': {
-                            'success_count': 1,
-                            'fail_count': 0,
-                            'total_files': 1
-                        },
-                        'asr_params': {
-                            'api_url': None,
-                            'lang': lang,
-                            'max_workers': max_workers
-                        },
-                        'task_id': tus_result.get('task_id'),
-                        'video_id': video_id,
-                        'project_id': project_id,
-                        'user_id': user_id,
-                        'file_size_info': size_info,
-                        'processing_info': tus_result.get('processing_info', {}),
-                        'audio_path': audio_path
-                    }
-                else:
-                    logger.info(f"文件大小在阈值范围内，使用标准ASR处理")
-
-            except Exception as e:
-                logger.warning(f"文件大小检测失败，回退到标准ASR处理: {e}")
-                # 如果检测失败，继续使用标准ASR处理
-        
-        # 优先使用传入的asr_service_url，其次是api_url，最后是默认配置
-        # 根据模型类型确定正确的端点路径
-        if asr_service_url:
-            base_url = asr_service_url.rstrip('/')
-        elif api_url:
-            base_url = api_url.rstrip('/')
-        else:
-            from app.core.config import settings
-            base_url = settings.asr_service_url.rstrip('/')
-
-        # 确保URL格式正确
-        if not base_url.startswith(('http://', 'https://')):
-            base_url = f"http://{base_url}"
-
-        # 根据模型类型确定正确的端点路径
-        if asr_model_type == "whisper":
-            # Whisper模型使用/inference路径
-            if "/inference" in base_url:
-                final_api_url = base_url
-            else:
-                final_api_url = f"{base_url}/inference"
-            logger.info(f"使用Whisper模型的ASR服务URL: {final_api_url}")
-        else:
-            # Sense模型使用/asr路径
-            if "/asr" in base_url:
-                final_api_url = base_url
-            else:
-                final_api_url = f"{base_url}/asr"
-            logger.info(f"使用Sense模型的ASR服务URL: {final_api_url}")
-
+        logger.info("统一使用TUS客户端处理ASR请求")
 
         try:
-            # 导入SRT生成模块和工具
-            import sys
-            import os
-            import shutil
-            sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
-            from wav_to_srt_direct_updated import process_directory
-            from app.services.asr_timestamp_utils import (
-                adjust_timestamps_with_duration,
-                create_srt_content,
-                validate_segments,
-                get_wav_duration
-            )
-            
-            # 如果提供了时间范围，先分割音频
-            audio_to_process = audio_path
-            temp_segmented_file = None
-            
-            if start_time is not None and end_time is not None:
-                logger.info(f"根据时间范围分割音频: {start_time}s - {end_time}s")
-                temp_segmented_file = await self.segment_audio_by_time(
-                    audio_path=audio_path,
-                    start_time=start_time,
-                    end_time=end_time
-                )
-                audio_to_process = temp_segmented_file
-                logger.info(f"使用分割后的音频文件: {audio_to_process}")
-                
-                # 检查分割后的文件是否存在和大小
-                if os.path.exists(audio_to_process):
-                    file_size = os.path.getsize(audio_to_process)
-                    logger.info(f"分割后文件大小: {file_size} bytes")
-                    if file_size < 100:
-                        logger.warning(f"警告: 分割后的音频文件可能为空，大小: {file_size} bytes")
-                        # 如果文件为空，直接返回错误，不提交给ASR服务
-                        raise Exception(f"分割后的音频文件为空，大小: {file_size} bytes，跳过ASR处理")
-            
-            # 创建临时目录
-            with tempfile.TemporaryDirectory() as temp_dir:
-                temp_path = Path(temp_dir)
-                
-                # 如果传入的是音频文件，创建临时目录并复制文件
-                if os.path.isfile(audio_to_process):
-                    import shutil
-                    temp_audio_dir = temp_path / "audio"
-                    temp_audio_dir.mkdir()
-                    dest_audio_path = temp_audio_dir / Path(audio_to_process).name
-                    shutil.copy2(audio_to_process, dest_audio_path)
-                    process_dir = str(temp_audio_dir)
-                else:
-                    # 如果传入的是目录，直接使用
-                    process_dir = audio_to_process
-                
-                # 处理音频文件生成SRT
-                import sys
-                import os
-                sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
-                from wav_to_srt_direct_updated import process_audio_file
-                
-                # 根据模型类型调整语言参数
-                # 对于sense模型，默认使用zh而不是auto
-                final_lang = lang if lang != "auto" or asr_model_type == "whisper" else "zh"
-                
-                # 检查process_dir是文件还是目录
-                if os.path.isfile(audio_to_process):
-                    # 处理单个音频文件
-                    logger.info(f"处理单个音频文件: {audio_to_process}")
-                    result = process_audio_file(
-                        file_path=audio_to_process,
-                        api_url=final_api_url,
-                        index=1,  # 为单个文件指定索引
-                        lang=final_lang,
-                        model_type=asr_model_type  # 传递模型类型参数
-                    )
-                    results = [result] if result else []
-                else:
-                    # 处理目录中的音频文件 - 这种情况现在很少见
-                    logger.info(f"处理音频文件目录: {process_dir}")
-                    
-                    # 对于目录处理，需要确保文件名格式正确
-                    wav_files = [f for f in os.listdir(process_dir) if f.endswith('.wav')]
-                    if wav_files:
-                        # 检查是否是分割文件格式 (xxx_yyy.wav)
-                        sample_file = wav_files[0]
-                        if '_' in sample_file and sample_file.split('_')[1].split('.')[0].isdigit():
-                            # 使用原有的目录处理方法
-                            results = process_directory(
-                                directory=process_dir,
-                                api_url=final_api_url,
-                                lang=final_lang,
-                                max_workers=max_workers
-                            )
-                        else:
-                            # 不是分割文件格式，逐个处理每个文件
-                            results = []
-                            for idx, wav_file in enumerate(wav_files, 1):
-                                file_path = os.path.join(process_dir, wav_file)
-                                result = process_audio_file(
-                                    file_path=file_path,
-                                    api_url=final_api_url,
-                                    index=idx,
-                                    lang=final_lang,
-                                    model_type=asr_model_type  # 传递模型类型参数
-                                )
-                                if result:
-                                    results.append(result)
-                    else:
-                        results = []
-                
-                # 添加WAV时长信息到结果中
-                for result in results:
-                    if 'error' not in result:
-                        wav_duration = get_wav_duration(result['file_path'])
-                        result['wav_duration'] = wav_duration
-                
-                # 统计结果
-                success_count = len([r for r in results if 'error' not in r])
-                fail_count = len([r for r in results if 'error' in r])
-                
-                if success_count == 0:
-                    raise Exception("没有成功处理的音频文件")
-                
-                # 使用增强版时间戳调整（基于wav_to_srt_direct_updated.py的修复）
-                # 如果提供了时间范围，使用start_time作为时间偏移量
-                time_offset = start_time if start_time is not None else 0.0
-                adjusted_segments = adjust_timestamps_with_duration(results, time_offset)
-                
-                # 验证和清理字幕片段
-                adjusted_segments = validate_segments(adjusted_segments)
-                
-                # 生成SRT文件
-                if custom_filename:
-                    srt_filename = custom_filename
-                else:
-                    srt_filename = f"{video_id}.srt"
-                srt_path = temp_path / srt_filename
-                
-                # 使用增强版SRT内容生成，带UTF-8 BOM
-                srt_content = create_srt_content(adjusted_segments)
-                with open(srt_path, 'w', encoding='utf-8-sig') as f:
-                    f.write(srt_content)
-                
-                # 上传SRT文件到MinIO
-                if custom_filename:
-                    # 使用自定义文件名生成对象名称
-                    srt_object_name = f"users/{user_id}/projects/{project_id}/subtitles/{custom_filename}"
-                else:
-                    # 使用原来的逻辑
-                    srt_object_name = minio_service.generate_srt_object_name(
-                        user_id, project_id, video_id
-                    )
-                
+            from app.services.file_size_detector import asr_strategy_selector
+            metadata = {
+                'language': lang,
+                'model': asr_model_type,
+                'video_id': video_id,
+                'project_id': project_id,
+                'user_id': user_id
+            }
+
+            # 使用TUS客户端处理
+            tus_result = await asr_strategy_selector._execute_tus_asr(audio_path, metadata)
+
+            # 从TUS结果中提取SRT内容
+            srt_content = tus_result.get('srt_content', '')
+
+            # 生成SRT文件名和对象名称
+            if custom_filename:
+                srt_filename = custom_filename
+            else:
+                srt_filename = f"{video_id}.srt"
+
+            srt_object_name = f"users/{user_id}/projects/{project_id}/subtitles/{srt_filename}"
+
+            # 上传SRT内容到MinIO
+            tmp_srt_path = None
+            srt_url = None
+            try:
+                with tempfile.NamedTemporaryFile(mode='w', suffix='.srt', delete=False, encoding='utf-8') as tmp_srt_file:
+                    tmp_srt_file.write(srt_content)
+                    tmp_srt_path = tmp_srt_file.name
+
+                # 上传到MinIO
                 srt_url = await minio_service.upload_file(
-                    str(srt_path),
+                    tmp_srt_path,
                     srt_object_name,
                     "text/srt"
                 )
-                
-                if not srt_url:
-                    raise Exception("SRT文件上传到MinIO失败")
-                
-                # 保存原始JSON结果
-                json_filename = f"{video_id}_asr_result.json"
-                json_path = temp_path / json_filename
-                import json
-                with open(json_path, 'w', encoding='utf-8-sig') as f:
-                    json.dump(results, f, ensure_ascii=False, indent=2)
-                
-                json_object_name = minio_service.generate_asr_json_object_name(
-                    user_id, project_id, video_id
-                )
-                
-                json_url = await minio_service.upload_file(
-                    str(json_path),
-                    json_object_name,
-                    "application/json"
-                )
-                
-                logger.info(f"SRT字幕生成完成，共 {len(adjusted_segments)} 条字幕")
-                
-                # 清理临时分割的音频文件
-                if temp_segmented_file and os.path.exists(temp_segmented_file):
-                    try:
-                        os.unlink(temp_segmented_file)
-                        logger.info(f"已清理临时分割音频文件: {temp_segmented_file}")
-                    except Exception as cleanup_error:
-                        logger.warning(f"清理临时分割音频文件失败: {cleanup_error}")
-                
-                return {
-                    'success': True,
-                    'strategy': 'standard',  # 标记为标准ASR策略
-                    'video_id': video_id,
-                    'srt_filename': srt_filename,
-                    'minio_path': srt_url,
-                    'object_name': srt_object_name,
-                    'json_result_path': json_url,
-                    'total_segments': len(adjusted_segments),
-                    'processing_stats': {
-                        'success_count': success_count,
-                        'fail_count': fail_count,
-                        'total_files': len(results)
-                    },
-                    'asr_params': {
-                        'api_url': api_url,
-                        'lang': lang,
-                        'max_workers': max_workers
-                    },
-                    'srt_content': srt_content,  # 添加SRT内容
-                    'project_id': project_id,
-                    'user_id': user_id,
-                    'audio_path': audio_path,
-                    'processing_info': {
-                        'model_type': asr_model_type,
-                        'final_api_url': final_api_url,
-                        'total_processing_time': time.time() - start_time if start_time is not None else 0
-                    }
-                }
-                
+
+                # 清理临时文件
+                if tmp_srt_path:
+                    import os
+                    if os.path.exists(tmp_srt_path):
+                        os.unlink(tmp_srt_path)
+            except Exception as upload_error:
+                logger.error(f"SRT文件上传失败: {upload_error}")
+                # 清理临时文件
+                if tmp_srt_path:
+                    import os
+                    if os.path.exists(tmp_srt_path):
+                        os.unlink(tmp_srt_path)
+                raise
+
+            return {
+                'success': True,
+                'strategy': 'tus',
+                'srt_content': srt_content,
+                'srt_filename': srt_filename,
+                'minio_path': srt_url,
+                'object_name': srt_object_name,
+                'json_result_path': None,
+                'total_segments': srt_content.count('\n\n') if srt_content else 0,
+                'processing_stats': {
+                    'success_count': 1,
+                    'fail_count': 0,
+                    'total_files': 1
+                },
+                'asr_params': {
+                    'api_url': None,
+                    'lang': lang,
+                    'max_workers': max_workers
+                },
+                'task_id': tus_result.get('task_id'),
+                'video_id': video_id,
+                'project_id': project_id,
+                'user_id': user_id,
+                'processing_info': tus_result.get('processing_info', {}),
+                'audio_path': audio_path
+            }
+
         except Exception as e:
-            logger.error(f"SRT字幕生成失败: {str(e)}", exc_info=True)
-            raise Exception(f"SRT字幕生成失败: {str(e)}")
+            logger.error(f"TUS ASR处理失败: {e}")
+            raise Exception(f"TUS ASR处理失败: {e}")
 
 # 全局实例
 audio_processor = AudioProcessor()
