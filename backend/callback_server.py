@@ -128,7 +128,9 @@ class StandaloneCallbackServer:
                 logger.info(f"使用环境变量数据库URL")
 
             # 使用同步引擎进行独立服务器的数据库操作
-            sync_database_url = database_url.replace('aiomysql://', 'mysql+pymysql://')
+            # 按照正确的方式转换数据库URL（参考app/core/database.py）
+            sync_database_url = database_url.replace("+aiomysql", "")
+            sync_database_url = sync_database_url.replace("mysql://", "mysql+pymysql://")
 
             self.db_engine = create_engine(sync_database_url, echo=False)
             self.db_session_factory = sessionmaker(bind=self.db_engine)
