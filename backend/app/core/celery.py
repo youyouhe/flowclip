@@ -85,7 +85,7 @@ celery_app.conf.update(
     
     # Redis相关选项
     broker_transport_options={
-        'visibility_timeout': 3600,  # 1小时
+        'visibility_timeout': 1800,  # 30分钟，减少任务可见性超时时间
         'max_retries': 5,
         'interval_start': 0,
         'interval_step': 1,
@@ -97,7 +97,7 @@ celery_app.conf.update(
     # 任务确认设置
     task_acks_late=True,  # 任务完成后才确认
     task_reject_on_worker_lost=True,  # 当worker丢失时拒绝任务
-    worker_prefetch_multiplier=1,  # 限制每个worker的预取任务数量
+    worker_prefetch_multiplier=4,  # 增加预取任务数量，让worker能同时获取更多任务
 )
 
 # 打印配置信息以便调试
