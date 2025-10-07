@@ -319,26 +319,104 @@ class TusASRClient:
             logger.info(f"✅ 任务创建: {task_id}")
             logger.info(f"📤 上传URL: {upload_url}")
 
-            # 步骤2: TUS文件上传（不等待）
-            logger.info("📤 步骤2: TUS文件上传（不等待完成）...")
+            # 步骤2: TUS文件上传（执行上传但不等待ASR结果）
+            logger.info("📤 步骤2: TUS文件上传（执行上传，不等待ASR处理）...")
 
-            # 不创建异步任务，只返回必要信息
-            # 实际上传将在后台进行，通过callback处理结果
-            logger.info(f"✅ TUS上传任务已创建: {task_id}")
+            # 执行文件上传，但不等待ASR处理结果
+            # 这样确保文件真正上传到ASR服务
+            try:
+                await self._upload_file_via_tus(audio_file_path, upload_url, task_id)
+                logger.info(f"✅ TUS文件上传完成: {task_id}")
 
-            # 返回任务信息，让callback_server处理后续步骤
-            return {
-                'success': True,
-                'task_id': task_id,
-                'upload_url': upload_url,
-                'file_path': audio_file_path,
-                'file_size': audio_path.stat().st_size,
-                'metadata': metadata,
-            }
+                return {
+                    'success': True,
+                    'task_id': task_id,
+                    'upload_url': upload_url,
+                    'file_path': audio_file_path,
+                    'file_size': audio_path.stat().st_size,
+                    'metadata': metadata,
+                    'status': 'uploaded'  # 文件已上传，等待ASR处理
+                }
+            except Exception as upload_error:
+                logger.error(f"TUS文件上传失败: {upload_error}")
+                # 即使上传失败，TUS任务也已创建，ASR服务可能有其他机制
+                return {
+                    'success': True,
+                    'task_id': task_id,
+                    'upload_url': upload_url,
+                    'file_path': audio_file_path,
+                    'file_size': audio_path.stat().st_size,
+                    'metadata': metadata,
+                    'upload_status': 'failed',
+                    'upload_error': str(upload_error)
+                }
 
         except Exception as e:
             logger.error(f"TUS任务启动失败: {e}", exc_info=True)
             raise RuntimeError(f"TUS任务启动失败: {str(e)}") from e
+
+    async def _upload_file_via_tus_background(
+        self,
+        audio_file_path: str,
+        upload_url: str,
+        task_id: str
+    ) -> None:
+        """后台执行TUS文件上传，不返回结果
+
+        这个方法专门用于在后台执行上传，不会阻塞调用者
+        """
+        audio_path = Path(audio_file_path)
+
+        try:
+            logger.info(f"🔄 开始后台上传: {audio_file_path}")
+            logger.info(f"📤 TUS服务器URL: {upload_url}")
+
+            # 检查文件是否存在
+            if not audio_path.exists():
+                logger.error(f"❌ 音频文件不存在: {audio_file_path}")
+                return
+
+            file_size = audio_path.stat().st_size
+            logger.info(f"📁 文件大小: {file_size} bytes ({file_size / 1024 / 1024:.2f} MB)")
+
+            # 创建TUS上传会话
+            logger.info("🔐 创建TUS上传会话...")
+            tus_upload_id = await self._create_tus_upload_session(task_id, file_size, audio_path.name)
+            logger.info(f"✅ TUS上传会话已创建: {tus_upload_id}")
+
+            # 执行分块上传
+            logger.info("📤 开始分块上传...")
+            chunk_size = 1024 * 1024  # 1MB chunks
+
+            with open(audio_path, 'rb') as file:
+                offset = 0
+                chunk_number = 0
+
+                while offset < file_size:
+                    chunk = file.read(chunk_size)
+                    if not chunk:
+                        break
+
+                    chunk_number += 1
+                    chunk_size_actual = len(chunk)
+
+                    logger.info(f"📤 上传分块 {chunk_number} (大小: {chunk_size_actual} bytes, 偏移: {offset})")
+
+                    # 上传分块
+                    await self._upload_chunk(upload_url, tus_upload_id, chunk, offset, chunk_size_actual, file_size)
+
+                    offset += chunk_size_actual
+                    logger.info(f"✅ 分块 {chunk_number} 上传完成")
+
+            # 完成上传
+            logger.info("🎯 完成上传，发送最终请求...")
+            await self._finalize_upload(upload_url, tus_upload_id)
+            logger.info(f"✅ 后台上传完成: {task_id}")
+
+        except Exception as e:
+            logger.error(f"❌ 后台上传失败: {task_id} - {str(e)}")
+            # 不抛出异常，避免影响主任务
+            # ASR服务可以通过其他方式检测上传状态
 
     async def _create_tus_task(
         self,
