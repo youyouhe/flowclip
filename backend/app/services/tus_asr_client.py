@@ -319,15 +319,14 @@ class TusASRClient:
             logger.info(f"✅ 任务创建: {task_id}")
             logger.info(f"📤 上传URL: {upload_url}")
 
-            # 步骤2: TUS文件上传（异步）
-            logger.info("📤 步骤2: 异步TUS文件上传...")
+            # 步骤2: TUS文件上传（不等待）
+            logger.info("📤 步骤2: TUS文件上传（不等待完成）...")
 
-            # 启动异步上传任务，但不等待完成
-            upload_task = asyncio.create_task(self._upload_file_via_tus(audio_file_path, upload_url))
+            # 不创建异步任务，只返回必要信息
+            # 实际上传将在后台进行，通过callback处理结果
+            logger.info(f"✅ TUS上传任务已创建: {task_id}")
 
-            logger.info(f"✅ TUS上传任务已启动: {task_id}")
-
-            # 返回任务信息，让调用者可以启动callback处理任务
+            # 返回任务信息，让callback_server处理后续步骤
             return {
                 'success': True,
                 'task_id': task_id,
@@ -335,7 +334,6 @@ class TusASRClient:
                 'file_path': audio_file_path,
                 'file_size': audio_path.stat().st_size,
                 'metadata': metadata,
-                'upload_task': upload_task  # 保留引用，防止任务被垃圾回收
             }
 
         except Exception as e:
