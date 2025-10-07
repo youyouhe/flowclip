@@ -677,24 +677,67 @@ class StandaloneCallbackServer:
                 return None
 
             # 保存到MinIO
-            from app.services.minio_client import minio_service
-            import io
+            try:
+                from app.services.minio_client import minio_service
+                import io
 
-            srt_bytes = srt_content.encode('utf-8-sig')  # 添加BOM以支持UTF-8
-            srt_stream = io.BytesIO(srt_bytes)
+                srt_bytes = srt_content.encode('utf-8-sig')  # 添加BOM以支持UTF-8
+                srt_stream = io.BytesIO(srt_bytes)
 
-            minio_service.internal_client.put_object(
-                bucket_name=settings.minio_bucket_name,
-                object_name=object_name,
-                data=srt_stream,
-                length=len(srt_bytes),
-                content_type='text/plain; charset=utf-8'
-            )
-            srt_stream.close()
+                # 尝试直接使用MinIO客户端连接
+                from minio import Minio
+                from app.core.config import settings
 
-            logger.info(f"✅ SRT文件已保存到MinIO: {object_name}")
+                # 从数据库动态加载MinIO配置
+                try:
+                    with get_sync_db() as db:
+                        db_configs = SystemConfigService.get_all_configs_sync(db)
+                        minio_endpoint = db_configs.get('minio_endpoint', getattr(settings, 'minio_endpoint', 'minio:9000'))
+                        minio_access_key = db_configs.get('minio_access_key', getattr(settings, 'minio_access_key', 'minioadmin'))
+                        minio_secret_key = db_configs.get('minio_secret_key', getattr(settings, 'minio_secret_key', 'minioadmin'))
+                        minio_bucket_name = db_configs.get('minio_bucket_name', getattr(settings, 'minio_bucket_name', 'youtube-videos'))
+                        minio_secure = db_configs.get('minio_secure', getattr(settings, 'minio_secure', False))
+                        if isinstance(minio_secure, str):
+                            minio_secure = minio_secure.lower() in ('true', '1', 'yes')
+                        logger.info(f"✅ 从数据库加载MinIO配置: {minio_endpoint}, secure={minio_secure}")
+                except Exception as config_error:
+                    logger.warning(f"⚠️ 从数据库加载MinIO配置失败，使用默认值: {config_error}")
+                    minio_endpoint = getattr(settings, 'minio_endpoint', 'minio:9000')
+                    minio_access_key = getattr(settings, 'minio_access_key', 'minioadmin')
+                    minio_secret_key = getattr(settings, 'minio_secret_key', 'minioadmin')
+                    minio_bucket_name = getattr(settings, 'minio_bucket_name', 'youtube-videos')
+                    minio_secure = getattr(settings, 'minio_secure', False)
 
-            return object_name
+                # 创建MinIO客户端
+                minio_client = Minio(
+                    endpoint=minio_endpoint,
+                    access_key=minio_access_key,
+                    secret_key=minio_secret_key,
+                    secure=minio_secure
+                )
+
+                # 确保bucket存在
+                if not minio_client.bucket_exists(minio_bucket_name):
+                    logger.info(f"📦 创建MinIO bucket: {minio_bucket_name}")
+                    minio_client.make_bucket(minio_bucket_name)
+
+                minio_client.put_object(
+                    bucket_name=minio_bucket_name,
+                    object_name=object_name,
+                    data=srt_stream,
+                    length=len(srt_bytes),
+                    content_type='text/plain; charset=utf-8'
+                )
+                srt_stream.close()
+
+                logger.info(f"✅ SRT文件已保存到MinIO: {object_name}")
+
+                return object_name
+
+            except Exception as minio_error:
+                logger.error(f"❌ MinIO保存失败: {minio_error}")
+                # 如果MinIO保存失败，返回None让系统使用原始URL
+                return None
 
         except Exception as e:
             logger.error(f"❌ 下载和保存SRT到MinIO失败: {e}", exc_info=True)
@@ -707,11 +750,12 @@ class StandaloneCallbackServer:
             from app.models.project import Project
 
             # 需要join到Project表来获取user_id
+            # Video没有user_id字段，需要通过Project关联获取
             video = session.query(Video).join(Project).filter(Video.id == video_id).first()
-            if video:
-                return video.user_id, video.project_id
+            if video and video.project:
+                return video.project.user_id, video.project_id
             else:
-                logger.error(f"❌ 未找到Video记录: id={video_id}")
+                logger.error(f"❌ 未找到Video记录或Project关联: id={video_id}")
                 return None, None
         except Exception as e:
             logger.error(f"❌ 获取用户项目信息失败: {e}")
