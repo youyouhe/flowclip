@@ -178,7 +178,7 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     container_name: flowclip-celery
-    command: python start_celery.py worker --loglevel=info --concurrency=5
+    command: python start_celery.py worker --loglevel=info --concurrency=10
     # 移除端口映射，不再需要从celery worker暴露回调端口
     environment:
       - DATABASE_URL=mysql+aiomysql://youtube_user:youtube_password@mysql:3306/youtube_slicer?charset=utf8mb4
