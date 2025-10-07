@@ -386,7 +386,7 @@ class StandaloneCallbackServer:
             if not processing_task:
                 # 最后尝试：查找最近的相关任务
                 logger.info(f"🔍 尝试查找最近的相关ProcessingTask（过去1小时内）")
-                from datetime import datetime, timedelta
+                from datetime import timedelta
                 one_hour_ago = datetime.utcnow() - timedelta(hours=1)
 
                 processing_task = session.query(ProcessingTask).filter(
@@ -400,6 +400,7 @@ class StandaloneCallbackServer:
             if not processing_task:
                 logger.error(f"❌ 未找到与TUS任务ID {task_id} 关联的ProcessingTask")
                 # 列出所有最近的ProcessingTask用于调试
+                from datetime import timedelta
                 recent_tasks = session.query(ProcessingTask).filter(
                     ProcessingTask.created_at >= datetime.utcnow() - timedelta(hours=2)
                 ).all()
