@@ -458,20 +458,55 @@ async def get_slice_srt_content(
                 detail="切片SRT文件不存在或未完成生成"
             )
         
-        # 从URL中提取对象名称
-        from urllib.parse import urlparse
-        parsed_url = urlparse(slice_data.srt_url)
-        object_name = parsed_url.path.lstrip('/')
-        
-        # 从MinIO读取SRT文件内容
+        # 判断SRT URL格式并处理
         try:
-            response = minio_service.internal_client.get_object(
-                settings.minio_bucket_name, 
-                object_name
+            if slice_data.srt_url.startswith('/api/v1/tasks/'):
+                # 如果是TUS API路径格式，通过HTTP请求获取SRT内容
+                task_id = slice_data.srt_url.split('/')[-2]
+                download_url = f"{settings.api_url.rstrip('/')}{slice_data.srt_url}"
+
+                logger.info(f"通过TUS API获取SRT内容: task_id={task_id}, download_url={download_url}")
+
+                import requests
+                headers = {}
+
+                # 添加API密钥（如果配置了）
+                if hasattr(settings, 'asr_api_key') and settings.asr_api_key:
+                    headers['X-API-Key'] = settings.asr_api_key
+
+                # 添加ngrok绕过头
+                headers['ngrok-skip-browser-warning'] = 'true'
+
+                response = requests.get(download_url, headers=headers, timeout=30)
+                if response.status_code == 200:
+                    content_bytes = response.content
+                else:
+                    logger.error(f"从TUS API获取SRT失败: status={response.status_code}, response={response.text}")
+                    raise HTTPException(
+                        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                        detail=f"从TUS API获取SRT失败: {response.status_code}"
+                    )
+            else:
+                # 如果是MinIO对象路径格式，直接从MinIO读取
+                from urllib.parse import urlparse
+                parsed_url = urlparse(slice_data.srt_url)
+                object_name = parsed_url.path.lstrip('/')
+
+                logger.info(f"从MinIO获取SRT内容: object_name={object_name}")
+
+                response = minio_service.internal_client.get_object(
+                    settings.minio_bucket_name,
+                    object_name
+                )
+                content_bytes = response.read()
+                response.close()
+                response.release_conn()
+        except Exception as e:
+            logger.error(f"读取SRT文件失败: {str(e)}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="读取SRT文件失败"
             )
-            content_bytes = response.read()
-            response.close()
-            response.release_conn()
             
             # 尝试多种编码解码字节内容
             try:
@@ -532,20 +567,55 @@ async def get_sub_slice_srt_content(
                 detail="子切片SRT文件不存在或未完成生成"
             )
         
-        # 从URL中提取对象名称
-        from urllib.parse import urlparse
-        parsed_url = urlparse(sub_slice_data.srt_url)
-        object_name = parsed_url.path.lstrip('/')
-        
-        # 从MinIO读取SRT文件内容
+        # 判断SRT URL格式并处理
         try:
-            response = minio_service.internal_client.get_object(
-                settings.minio_bucket_name, 
-                object_name
+            if sub_slice_data.srt_url.startswith('/api/v1/tasks/'):
+                # 如果是TUS API路径格式，通过HTTP请求获取SRT内容
+                task_id = sub_slice_data.srt_url.split('/')[-2]
+                download_url = f"{settings.api_url.rstrip('/')}{sub_slice_data.srt_url}"
+
+                logger.info(f"通过TUS API获取子切片SRT内容: task_id={task_id}, download_url={download_url}")
+
+                import requests
+                headers = {}
+
+                # 添加API密钥（如果配置了）
+                if hasattr(settings, 'asr_api_key') and settings.asr_api_key:
+                    headers['X-API-Key'] = settings.asr_api_key
+
+                # 添加ngrok绕过头
+                headers['ngrok-skip-browser-warning'] = 'true'
+
+                response = requests.get(download_url, headers=headers, timeout=30)
+                if response.status_code == 200:
+                    content_bytes = response.content
+                else:
+                    logger.error(f"从TUS API获取子切片SRT失败: status={response.status_code}, response={response.text}")
+                    raise HTTPException(
+                        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                        detail=f"从TUS API获取SRT失败: {response.status_code}"
+                    )
+            else:
+                # 如果是MinIO对象路径格式，直接从MinIO读取
+                from urllib.parse import urlparse
+                parsed_url = urlparse(sub_slice_data.srt_url)
+                object_name = parsed_url.path.lstrip('/')
+
+                logger.info(f"从MinIO获取子切片SRT内容: object_name={object_name}")
+
+                response = minio_service.internal_client.get_object(
+                    settings.minio_bucket_name,
+                    object_name
+                )
+                content_bytes = response.read()
+                response.close()
+                response.release_conn()
+        except Exception as e:
+            logger.error(f"读取子切片SRT文件失败: {str(e)}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="读取SRT文件失败"
             )
-            content_bytes = response.read()
-            response.close()
-            response.release_conn()
             
             # 尝试多种编码解码字节内容
             try:
