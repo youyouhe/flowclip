@@ -566,7 +566,14 @@ async def get_slice_srt_content(
                 logger.info(f"🔍 即将返回200状态码，数据类型: {type(result)}")
 
                 return result
-            
+
+        except Exception as e:
+            logger.error(f"❌ SRT内容处理失败: {str(e)}, exc_info=True")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"读取SRT文件失败: {str(e)}"
+            )
+
     except HTTPException:
         raise
     except Exception as e:
