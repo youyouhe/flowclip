@@ -436,7 +436,9 @@ async def get_slice_srt_content(
     db: AsyncSession = Depends(get_db)
 ):
     """获取切片的SRT字幕内容"""
-    
+
+    logger.info(f"🔍 开始处理切片SRT请求: slice_id={slice_id}")
+
     try:
         # 验证切片权限
         stmt = select(VideoSlice).join(Video).join(Project).where(
@@ -510,6 +512,8 @@ async def get_slice_srt_content(
                 content_bytes = response.read()
                 response.close()
                 response.release_conn()
+
+                logger.info(f"✅ MinIO读取成功: bytes={len(content_bytes)}")
         except Exception as e:
             logger.error(f"读取SRT文件失败: {str(e)}")
             raise HTTPException(
@@ -545,13 +549,25 @@ async def get_slice_srt_content(
                     }
                     subtitles.append(subtitle)
 
-            return {
+            result = {
                 "content": content,
                 "subtitles": subtitles,
                 "total_subtitles": len(subtitles),
                 "file_size": len(content.encode('utf-8'))
             }
-            
+
+        logger.info(f"🔍 切片SRT返回结果调试:")
+        logger.info(f"  - slice_id: {slice_id}")
+        logger.info(f"  - content长度: {len(result['content'])} 字符")
+        logger.info(f"  - content前100字符: {result['content'][:100]}")
+        logger.info(f"  - subtitles数量: {len(result['subtitles'])}")
+        logger.info(f"  - total_subtitles: {result['total_subtitles']}")
+        logger.info(f"  - file_size: {result['file_size']}")
+        logger.info(f"  - 返回数据类型: {type(result)}")
+        logger.info(f"  - 即将返回200状态码")
+
+        return result
+
         except Exception as e:
             logger.error(f"读取SRT文件失败: {str(e)}")
             raise HTTPException(
