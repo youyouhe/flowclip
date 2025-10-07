@@ -579,35 +579,24 @@ class AudioProcessor:
             if 'sub_slice_id' in metadata:
                 sub_slice_id = metadata['sub_slice_id']
 
-            # 启动callback处理任务（链式任务）
-            from app.tasks.subtasks.srt_task import process_tus_callback
-            callback_task = process_tus_callback.delay(
-                task_id=tus_task_id,
-                video_id=video_id,
-                project_id=project_id,
-                user_id=user_id,
-                slice_id=slice_id,
-                sub_slice_id=sub_slice_id,
-                original_celery_task_id=current_celery_task_id
-            )
-
-            logger.info(f"已启动callback处理任务: {callback_task.id}")
+            # 不需要额外的callback处理任务
+            # callback_server.py会独立处理数据库更新
+            logger.info(f"TUS任务已启动，callback_server将处理后续步骤")
 
             # 立即返回，释放worker
             return {
                 'success': True,
                 'strategy': 'tus_async',  # 标记为异步TUS处理
                 'task_id': tus_task_id,
-                'callback_task_id': callback_task.id,
                 'video_id': video_id,
                 'project_id': project_id,
                 'user_id': user_id,
                 'status': 'processing',  # 标记为处理中状态
-                'message': 'TUS任务已启动，等待callback处理',
+                'message': 'TUS任务已启动，等待callback_server处理',
                 'processing_info': {
                     'tus_task_id': tus_task_id,
-                    'callback_task_id': callback_task.id,
-                    'async_processing': True
+                    'async_processing': True,
+                    'callback_by_server': True
                 },
                 'audio_path': audio_path
             }
