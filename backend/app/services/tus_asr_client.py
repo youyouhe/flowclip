@@ -310,6 +310,17 @@ class TusASRClient:
             if not redis_available:
                 raise RuntimeError("独立回调管理器Redis不可用，无法启动异步TUS任务")
 
+            # 获取当前Celery任务ID
+            current_celery_task_id = None
+            try:
+                import celery
+                current_task = celery.current_task
+                if current_task:
+                    current_celery_task_id = current_task.request.id
+                    logger.info(f"🔗 当前Celery任务ID: {current_celery_task_id}")
+            except Exception as e:
+                logger.debug(f"无法获取当前Celery任务ID: {e}")
+
             # 步骤1: 创建ASR任务
             logger.info("📝 步骤1: 创建ASR任务...")
             task_info = await self._create_tus_task(audio_file_path, metadata)
@@ -318,6 +329,16 @@ class TusASRClient:
 
             logger.info(f"✅ 任务创建: {task_id}")
             logger.info(f"📤 上传URL: {upload_url}")
+
+            # 注册TUS任务与Celery task ID的关联
+            if current_celery_task_id and redis_available:
+                success = self.callback_manager.register_task(task_id, current_celery_task_id)
+                if success:
+                    logger.info(f"✅ TUS任务 {task_id} 已与Celery任务 {current_celery_task_id} 关联")
+                else:
+                    logger.warning(f"⚠️ TUS任务 {task_id} 注册失败")
+            else:
+                logger.warning(f"⚠️ 无法注册TUS任务关联: celery_task_id={current_celery_task_id}, redis_available={redis_available}")
 
             # 步骤2: TUS文件上传（执行上传但不等待ASR结果）
             logger.info("📤 步骤2: TUS文件上传（执行上传，不等待ASR处理）...")
