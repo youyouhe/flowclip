@@ -26,115 +26,56 @@ logger = logging.getLogger(__name__)
 class TusASRClient:
     """TUS ASR客户端，为FlowClip系统提供TUS协议支持"""
 
-    # 类级别属性初始化
-    _callback_running = False
-    _callback_server_thread = None
-
-    # 是否使用独立回调服务器
-    _use_standalone_callback = settings.tus_use_standalone_callback
-    _use_global_callback = settings.tus_use_global_callback and not settings.tus_use_standalone_callback
+    # 固定使用独立回调服务器和9090端口
+    _use_standalone_callback = True
+    _use_global_callback = False
 
     @classmethod
     def _process_signal_handler(cls, signum, frame):
         """处理进程级别的关闭信号"""
         logger.info(f"收到进程信号 {signum}，正在关闭回调服务器...")
-        cls._callback_running = False
-
-    @classmethod
-    def _ensure_callback_server_running(cls):
-        """确保进程级别的回调服务器正在运行"""
-        if cls._callback_running and cls._callback_server_thread and cls._callback_server_thread.is_alive():
-            logger.info("进程级别回调服务器已在运行")
-            return
-
-        # 如果服务器线程存在但不活跃，重置状态
-        if cls._callback_server_thread and not cls._callback_server_thread.is_alive():
-            logger.warning("检测到进程级别回调服务器线程已退出，重置状态")
-            cls._callback_running = False
-            cls._callback_server_thread = None
-
-        # 如果需要重新启动服务器，由调用方处理
-        # 这里只做检查，不启动服务器
-        logger.info("进程级别回调服务器检查完成")
+        # 独立回调服务器由独立服务管理，这里不需要处理
 
     def __init__(
         self,
         api_url: str = None,
         tus_url: str = None,
-        callback_port: int = None,
         callback_host: str = None,
         max_retries: int = None,
         timeout_seconds: int = None
     ):
         """
-        初始化TUS ASR客户端
+        初始化TUS ASR客户端 - 简化版本，只使用独立回调服务器9090端口
 
         Args:
             api_url: ASR API服务器URL
             tus_url: TUS上传服务器URL
-            callback_port: 回调监听端口
             callback_host: 回调主机IP
             max_retries: 最大重试次数
             timeout_seconds: 超时时间(秒)
         """
         from app.core.config import settings
 
-        # 首先使用提供的参数或settings中的默认值
+        # 从数据库加载配置
+        self._load_config_from_database()
+
+        # 使用固定的9090端口
+        self.callback_port = 9090
+        self.callback_host = callback_host or settings.tus_callback_host
+
+        # API配置
         self.api_url = (api_url or settings.tus_api_url).rstrip('/')
         self.tus_url = (tus_url or settings.tus_upload_url).rstrip('/')
-        self.callback_host = callback_host or settings.tus_callback_host
         self.max_retries = max_retries or settings.tus_max_retries
 
         # 确保超时设置不超过安全限制
         configured_timeout = timeout_seconds or settings.tus_timeout_seconds
         self.timeout_seconds = min(configured_timeout, 1700)  # 限制在1700秒以内
 
-        # 首先从数据库加载配置以确定回调模式
-        self._load_config_from_database_mode_only()
-
-        # 回调端口配置 - 支持固定端口模式
-        if self._use_standalone_callback:
-            # 独立回调服务器模式：使用固定端口
-            self.callback_port = getattr(settings, 'tus_callback_port', 9090)
-            logger.info(f"使用独立回调服务器模式，固定端口: {self.callback_port}")
-        elif self._use_global_callback:
-            # 使用全局回调服务器的固定端口
-            self.callback_port = getattr(settings, 'tus_callback_port', 9090)
-            logger.info(f"使用全局回调服务器模式，固定端口: {self.callback_port}")
-        else:
-            # 传统模式：自动为每个客户端分配不同的端口
-            if callback_port:
-                self.callback_port = callback_port
-            else:
-                self.callback_port = self._get_unique_callback_port()
-            logger.info(f"使用传统动态端口模式，分配端口: {self.callback_port}")
-
-        # 然后尝试从数据库动态更新配置（但不覆盖端口）
-        self._load_config_from_database_without_port()
-
-        # 内部状态管理
-        if self._use_standalone_callback:
-            # 独立回调服务器模式
-            self.completed_tasks = {}  # 保留兼容性，但实际不使用
-            self.callback_manager = standalone_callback_client
-            self.process_id = os.getpid()  # 记录进程ID用于日志
-            logger.info("使用独立回调服务器模式")
-        elif self._use_global_callback:
-            # 全局模式：使用全局管理器
-            self.completed_tasks = {}  # 保留兼容性，但实际不使用
-            self.callback_manager = global_callback_manager
-            self.process_id = os.getpid()  # 记录进程ID用于日志
-
-            # 确保全局回调服务器正在运行
-            self.callback_manager.ensure_server_running()
-            logger.info("全局回调服务器状态检查完成")
-        else:
-            # 传统模式：进程级别管理
-            self.completed_tasks = {}
-            self.process_id = os.getpid()  # 记录进程ID用于日志
-
-            # 检查进程级别回调服务器是否已启动
-            TusASRClient._ensure_callback_server_running()
+        # 内部状态管理 - 固定使用独立回调服务器
+        self.completed_tasks = {}  # 保留兼容性，但实际不使用
+        self.callback_manager = standalone_callback_client
+        self.process_id = os.getpid()  # 记录进程ID用于日志
 
         # 信号处理
         signal.signal(signal.SIGINT, TusASRClient._process_signal_handler)
@@ -143,13 +84,12 @@ class TusASRClient:
         logger.info(f"TUS ASR客户端初始化完成 (PID: {self.process_id}):")
         logger.info(f"  API URL: {self.api_url}")
         logger.info(f"  TUS URL: {self.tus_url}")
-        logger.info(f"  回调端口: {self.callback_port}")
+        logger.info(f"  回调端口: {self.callback_port} (固定独立模式)")
         logger.info(f"  回调主机: {self.callback_host}")
 
     def _load_config_from_database(self):
         """从数据库动态加载TUS配置"""
         try:
-            import asyncio
             from app.core.database import get_sync_db
             from app.services.system_config_service import SystemConfigService
 
@@ -158,78 +98,7 @@ class TusASRClient:
                 # 从数据库获取所有配置
                 db_configs = SystemConfigService.get_all_configs_sync(db)
 
-                # 更新TUS配置
-                for config_key, config_value in db_configs.items():
-                    if config_key == 'tus_api_url':
-                        self.api_url = config_value.rstrip('/')
-                        logger.info(f"从数据库加载TUS API URL: {self.api_url}")
-                    elif config_key == 'tus_upload_url':
-                        self.tus_url = config_value.rstrip('/')
-                        logger.info(f"从数据库加载TUS上传URL: {self.tus_url}")
-                    elif config_key == 'tus_callback_port':
-                        self.callback_port = int(config_value)
-                        logger.info(f"从数据库加载TUS回调端口: {self.callback_port}")
-                    elif config_key == 'tus_callback_host':
-                        self.callback_host = config_value
-                        logger.info(f"从数据库加载TUS回调主机: {self.callback_host}")
-                    elif config_key == 'tus_max_retries':
-                        self.max_retries = int(config_value)
-                        logger.info(f"从数据库加载TUS最大重试次数: {self.max_retries}")
-                    elif config_key == 'tus_timeout_seconds':
-                        self.timeout_seconds = int(config_value)
-                        logger.info(f"从数据库加载TUS超时时间: {self.timeout_seconds}")
-                    elif config_key == 'tus_file_size_threshold_mb':
-                        # 更新文件大小检测器的阈值
-                        from app.services.file_size_detector import file_size_detector
-                        threshold_mb = int(config_value)
-                        file_size_detector.threshold_mb = threshold_mb
-                        file_size_detector.threshold_bytes = threshold_mb * 1024 * 1024
-                        logger.info(f"从数据库加载TUS文件大小阈值: {threshold_mb}MB")
-
-        except Exception as e:
-            logger.warning(f"从数据库加载TUS配置失败: {e}，使用默认配置")
-
-    def _load_config_from_database_mode_only(self):
-        """仅从数据库加载回调模式配置，用于确定端口分配策略"""
-        try:
-            from app.core.database import get_sync_db
-            from app.services.system_config_service import SystemConfigService
-
-            # 使用同步数据库连接
-            with get_sync_db() as db:
-                # 只获取回调模式配置
-                callback_mode = SystemConfigService.get_config_sync(db, 'tus_callback_mode')
-                if callback_mode:
-                    callback_mode = callback_mode.lower()
-                    if callback_mode == 'standalone':
-                        self._use_standalone_callback = True
-                        self._use_global_callback = False
-                        logger.info(f"从数据库加载回调模式: 独立模式")
-                    elif callback_mode == 'global':
-                        self._use_standalone_callback = False
-                        self._use_global_callback = True
-                        logger.info(f"从数据库加载回调模式: 全局模式")
-                    else:
-                        self._use_standalone_callback = False
-                        self._use_global_callback = False
-                        logger.info(f"从数据库加载回调模式: 传统模式")
-
-        except Exception as e:
-            logger.warning(f"从数据库加载回调模式失败: {e}，使用默认配置")
-
-    def _load_config_from_database_without_port(self):
-        """从数据库动态加载TUS配置，但不覆盖端口设置"""
-        try:
-            import asyncio
-            from app.core.database import get_sync_db
-            from app.services.system_config_service import SystemConfigService
-
-            # 使用同步数据库连接
-            with get_sync_db() as db:
-                # 从数据库获取所有配置
-                db_configs = SystemConfigService.get_all_configs_sync(db)
-
-                # 更新TUS配置（不包括端口）
+                # 更新TUS配置（不包括回调端口，固定为9090）
                 for config_key, config_value in db_configs.items():
                     if config_key == 'tus_api_url':
                         self.api_url = config_value.rstrip('/')
@@ -253,38 +122,11 @@ class TusASRClient:
                         file_size_detector.threshold_mb = threshold_mb
                         file_size_detector.threshold_bytes = threshold_mb * 1024 * 1024
                         logger.info(f"从数据库加载TUS文件大小阈值: {threshold_mb}MB")
-                    elif config_key == 'tus_callback_mode':
-                        # 根据tus_callback_mode设置回调服务器模式
-                        callback_mode = config_value.lower()
-                        if callback_mode == 'standalone':
-                            self._use_standalone_callback = True
-                            self._use_global_callback = False
-                            logger.info(f"从数据库设置独立回调服务器模式")
-                        elif callback_mode == 'global':
-                            self._use_standalone_callback = False
-                            self._use_global_callback = True
-                            logger.info(f"从数据库设置全局回调服务器模式")
-                        else:
-                            logger.warning(f"未知的TUS回调模式: {callback_mode}，使用默认模式")
 
         except Exception as e:
             logger.warning(f"从数据库加载TUS配置失败: {e}，使用默认配置")
 
-
-    def _is_port_available(self, port):
-        """检查端口是否可用"""
-        try:
-            import socket
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            result = sock.connect_ex(('127.0.0.1', port))
-            sock.close()
-            # 如果连接成功，说明端口被占用
-            return result != 0
-        except Exception as e:
-            logger.error(f"检查端口 {port} 可用性时出错: {e}")
-            return False
-
+    
     async def process_audio_file(
         self,
         audio_file_path: str,
@@ -312,85 +154,6 @@ class TusASRClient:
         logger.info(f"文件大小: {audio_path.stat().st_size} bytes")
 
         try:
-            if self._use_global_callback:
-                # 全局模式：确保全局回调服务器正在运行
-                logger.info("全局模式：确保全局回调服务器正在运行...")
-                self.callback_manager.ensure_server_running()
-                await asyncio.sleep(1.0)  # 等待全局回调服务器启动
-
-                # 验证全局回调服务器是否启动
-                logger.info("开始验证全局回调服务器启动状态...")
-                port_ready = False
-                for attempt in range(5):
-                    try:
-                        import socket
-                        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                        sock.settimeout(1.0)  # 设置超时时间
-                        result = sock.connect_ex(('127.0.0.1', self.callback_port))
-                        sock.close()
-
-                        if result == 0:
-                            port_ready = True
-                            logger.info(f"✅ 验证成功：全局回调服务器已在端口 {self.callback_port} 启动并接受连接")
-                            break
-                        else:
-                            logger.warning(f"验证尝试 {attempt + 1}/5：全局回调服务器可能还未启动或未接受连接，端口 {self.callback_port}，等待重试...")
-                            await asyncio.sleep(2.0)
-                    except Exception as e:
-                        logger.warning(f"验证尝试 {attempt + 1}/5 出错: {e}")
-                        await asyncio.sleep(2.0)
-
-                if not port_ready:
-                    logger.error(f"❌ 全局回调服务器启动验证失败，端口 {self.callback_port} 无法连接")
-                    raise RuntimeError(f"全局回调服务器启动失败，端口 {self.callback_port} 无法访问")
-
-                # 检查全局回调服务器状态
-                if self.callback_manager._server_running:
-                    logger.info("全局回调服务器状态：正在运行")
-                    logger.info(f"全局管理器统计: {self.callback_manager.stats}")
-                else:
-                    logger.error("全局回调服务器状态：已停止运行")
-                    raise RuntimeError("全局回调服务器异常停止")
-
-            else:
-                # 传统模式：启动本地回调服务器
-                logger.info("传统模式：开始启动本地回调服务器...")
-                self._start_callback_server()
-                await asyncio.sleep(2.0)  # 等待本地回调服务器启动（延长等待时间）
-
-                # 验证本地回调服务器是否启动 - 多次尝试
-                logger.info("开始验证本地回调服务器启动状态...")
-                port_ready = False
-                for attempt in range(5):
-                    try:
-                        import socket
-                        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                        sock.settimeout(1.0)  # 设置超时时间
-                        result = sock.connect_ex(('127.0.0.1', self.callback_port))
-                        sock.close()
-
-                        if result == 0:
-                            port_ready = True
-                            logger.info(f"✅ 验证成功：本地回调服务器已在端口 {self.callback_port} 启动并接受连接")
-                            break
-                        else:
-                            logger.warning(f"验证尝试 {attempt + 1}/5：本地回调服务器可能还未启动或未接受连接，端口 {self.callback_port}，等待重试...")
-                            await asyncio.sleep(2.0)
-                    except Exception as e:
-                        logger.warning(f"验证尝试 {attempt + 1}/5 出错: {e}")
-                        await asyncio.sleep(2.0)
-
-                if not port_ready:
-                    logger.error(f"❌ 本地回调服务器启动验证失败，端口 {self.callback_port} 无法连接")
-                    raise RuntimeError(f"本地回调服务器启动失败，端口 {self.callback_port} 无法访问")
-
-                # 检查进程级别回调服务器线程是否仍在运行
-                if self.__class__._callback_server_thread and self.__class__._callback_server_thread.is_alive():
-                    logger.info("本地回调服务器线程状态：正在运行")
-                else:
-                    logger.error("本地回调服务器线程状态：已停止运行")
-                    raise RuntimeError("本地回调服务器线程异常停止")
-
             # 如果没有提供Celery任务ID，尝试获取当前任务的ID
             if not celery_task_id:
                 try:
@@ -402,7 +165,7 @@ class TusASRClient:
                 except Exception as e:
                     logger.debug(f"无法获取Celery任务ID: {e}")
 
-            # 执行TUS处理流程，传递Celery任务ID
+            # 执行TUS处理流程，传递Celery任务ID（固定使用独立回调服务器）
             result = await self._execute_tus_pipeline(audio_file_path, metadata or {}, celery_task_id)
             return result
 
@@ -430,48 +193,7 @@ class TusASRClient:
                         del self.completed_tasks[self.current_task_id]
             raise RuntimeError(f"TUS ASR处理失败: {str(e)}") from e
 
-    def _get_unique_callback_port(self) -> int:
-        """获取唯一的回调端口，使用Docker映射的端口范围"""
-        base_port = getattr(self, '__class__', TusASRClient)._base_port if hasattr(TusASRClient, '_base_port') else 9100
-        process_id = os.getpid()
-
-        # 在Docker映射的9000-9200范围内选择唯一端口
-        port = base_port + (process_id % 101)  # 9100 + 0-100 = 9100-9200
-
-        logger.info(f"为进程 {process_id} 分配唯一回调端口: {port} (Docker映射范围: 9100-9200)")
-        return port
-
-    def _get_available_port(self) -> int:
-        """动态查找可用的回调端口"""
-        base_port = 9100
-        max_ports = 100  # 最多尝试100个端口
-
-        for offset in range(max_ports):
-            port = base_port + offset
-            try:
-                import socket
-                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                result = sock.connect_ex(('127.0.0.1', port))
-                sock.close()
-
-                if result != 0:  # 端口可用
-                    logger.info(f"找到可用端口: {port}")
-                    return port
-                else:
-                    logger.debug(f"端口 {port} 被占用，尝试下一个")
-            except Exception as e:
-                logger.debug(f"检查端口 {port} 时出错: {e}")
-                continue
-
-        # 如果都不可用，返回一个尽量唯一的端口
-        import random
-        fallback_port = 10000 + random.randint(0, 999)
-        logger.warning(f"无法找到可用端口，使用随机端口: {fallback_port}")
-        return fallback_port
-
-    # 类变量
-    _base_port = 9100
-
+    
     async def _execute_tus_pipeline(
         self,
         audio_file_path: str,
@@ -483,17 +205,11 @@ class TusASRClient:
         start_time = time.time()  # 记录开始时间用于统计
 
         try:
-            # 检查回调管理器是否可用
-            redis_available = True
-            if self._use_standalone_callback:
-                # 独立回调客户端：检查Redis客户端是否存在
-                redis_available = self.callback_manager._redis_client is not None
-            elif self._use_global_callback:
-                # 全局回调管理器：检查Redis可用标志
-                redis_available = self.callback_manager._redis_available
+            # 检查独立回调管理器是否可用
+            redis_available = self.callback_manager._redis_client is not None
 
             if not redis_available:
-                logger.warning("⚠️ 回调管理器Redis不可用，回退到标准ASR处理")
+                logger.warning("⚠️ 独立回调管理器Redis不可用，回退到标准ASR处理")
                 return await self._fallback_to_standard_asr(audio_file_path, metadata, start_time)
 
             # 步骤1: 创建ASR任务
@@ -1308,124 +1024,7 @@ class TusASRClient:
             logger.error(f"生成回调URL失败: {e}", exc_info=True)
             return None
 
-    def _start_callback_server(self):
-        """启动回调服务器，自动处理端口冲突"""
-        # 检查进程级别回调服务器是否已启动
-        if self.__class__._callback_running and self.__class__._callback_server_thread and self.__class__._callback_server_thread.is_alive():
-            logger.info(f"进程级别回调服务器已在运行 (PID: {self.process_id}, 端口: {self.callback_port})")
-            return
-
-        # 检查端口是否可用
-        port_available = self._is_port_available(self.callback_port)
-        if not port_available:
-            logger.warning(f"端口 {self.callback_port} 不可用，尝试更换端口")
-            self.callback_port = self._get_available_port()
-            logger.info(f"更换到新端口: {self.callback_port}")
-
-        # 设置进程级别服务器状态
-        self.__class__._callback_running = True
-
-        logger.info(f"准备启动回调服务器线程，端口: {self.callback_port}")
-        self.__class__._callback_server_thread = threading.Thread(target=self._run_callback_server, name=f"CallbackServer-{self.callback_port}")
-        self.__class__._callback_server_thread.daemon = True
-        self.__class__._callback_server_thread.start()
-        logger.info(f"回调服务器线程已启动，线程ID: {self.__class__._callback_server_thread.ident}")
-
-        # 小睡一会儿确保线程开始执行
-        time.sleep(0.5)
-
-    def _run_callback_server(self):
-        """运行回调服务器"""
-        async def callback_handler(request):
-            try:
-                logger.info("回调处理程序被触发")
-                logger.info(f"请求方法: {request.method}")
-                logger.info(f"请求头: {dict(request.headers)}")
-                logger.info(f"请求远程地址: {request.remote}")
-
-                # 检查内容类型
-                content_type = request.headers.get('Content-Type', '')
-                logger.info(f"内容类型: {content_type}")
-
-                payload = await request.json()
-                logger.info(f"收到回调: {json.dumps(payload, indent=2)}")
-
-                task_id = payload.get('task_id')
-                logger.info(f"处理任务ID: {task_id}")
-                logger.info(f"当前完成任务键: {list(self.completed_tasks.keys())}")
-
-                if task_id in self.completed_tasks:
-                    logger.info(f"在完成任务中找到任务 {task_id}")
-                    future = self.completed_tasks[task_id]
-
-                    if not future.done():
-                        logger.info(f"任务 {task_id} 的Future未完成，正在处理...")
-                        if payload.get('status') == 'completed':
-                            logger.info(f"任务 {task_id} 完成，设置结果")
-                            # 对于完成的任务，稍后下载SRT内容
-                            # 标记完成并让轮询回退处理下载
-                            # 确保srt_url是完整URL（如果不是相对URL）
-                            srt_url = payload.get('srt_url')
-                            logger.info(f"原始srt_url: {srt_url}")
-                            if srt_url and not srt_url.startswith('http'):
-                                srt_url = f"{self.api_url}{srt_url}"
-                                logger.info(f"修改后的srt_url: {srt_url}")
-                            future.set_result({'status': 'completed', 'task_id': task_id, 'srt_url': srt_url})
-                            logger.info(f"为任务 {task_id} 设置结果")
-                        else:
-                            error_msg = payload.get('error_message', '任务失败')
-                            logger.info(f"任务 {task_id} 失败，错误: {error_msg}")
-                            future.set_exception(RuntimeError(error_msg))
-                            logger.info(f"为任务 {task_id} 设置异常")
-                    else:
-                        logger.info(f"任务 {task_id} 的Future已完成")
-
-                    # 清理
-                    logger.info(f"从完成任务中清理任务 {task_id}")
-                    if task_id in self.completed_tasks:
-                        del self.completed_tasks[task_id]
-                    logger.info(f"任务 {task_id} 已从完成任务中移除")
-
-                else:
-                    logger.warning(f"在完成任务中未找到任务 {task_id}")
-                    logger.info(f"可用任务ID: {list(self.completed_tasks.keys())}")
-
-                logger.info("返回OK响应")
-                return web.Response(text='OK')
-
-            except Exception as e:
-                logger.error(f"回调错误: {e}")
-                logger.exception(e)  # 记录完整回溯
-                return web.Response(status=500, text=str(e))
-
-        async def create_app():
-            app = web.Application()
-            app.router.add_post('/callback', callback_handler)
-
-            runner = web.AppRunner(app)
-            await runner.setup()
-            site = web.TCPSite(runner, '0.0.0.0', self.callback_port)
-            await site.start()
-
-            logger.info(f"回调服务器启动于端口 {self.callback_port}")
-            if self.callback_host == "auto":
-                logger.info(f"回调URL (自动检测): http://[YOUR_LOCAL_IP]:{self.callback_port}/callback")
-            else:
-                logger.info(f"回调URL: http://{self.callback_host}:{self.callback_port}/callback")
-
-            # 保持运行
-            while self.__class__._callback_running:
-                await asyncio.sleep(1)
-
-        try:
-            # 创建新的事件循环用于回调服务器
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            loop.run_until_complete(create_app())
-        except Exception as e:
-            logger.error(f"回调服务器失败: {e}")
-            logger.exception(e)
-
+    
 
 # 全局实例
 tus_asr_client = TusASRClient()
