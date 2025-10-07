@@ -566,14 +566,28 @@ class StandaloneCallbackServer:
             from app.core.config import settings
             from app.models.video import Video
             from app.models.video_slice import VideoSlice, VideoSubSlice
+            from app.services.system_config_service import SystemConfigService
+            from app.core.database import get_sync_db
             import requests
 
+            # 从数据库动态加载TUS API配置
+            try:
+                with get_sync_db() as db:
+                    db_configs = SystemConfigService.get_all_configs_sync(db)
+                    tus_api_url = db_configs.get('tus_api_url', getattr(settings, 'tus_api_url', 'http://localhost:8000'))
+                    logger.info(f"✅ 从数据库加载TUS API URL: {tus_api_url}")
+            except Exception as config_error:
+                logger.warning(f"⚠️ 从数据库加载TUS API配置失败，使用默认值: {config_error}")
+                tus_api_url = getattr(settings, 'tus_api_url', 'http://localhost:8000')
+
             # 构建TUS下载URL
-            tus_api_url = getattr(settings, 'tus_api_url', 'http://localhost:8000')
             if srt_url.startswith('/'):
                 download_url = f"{tus_api_url.rstrip('/')}{srt_url}"
             else:
                 download_url = srt_url
+
+            logger.info(f"🔗 最终使用的TUS服务URL: {tus_api_url}")
+            logger.info(f"🎯 完整下载URL: {download_url}")
 
             logger.info(f"🔄 开始从TUS服务下载SRT: {download_url}")
 
