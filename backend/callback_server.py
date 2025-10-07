@@ -460,16 +460,17 @@ class StandaloneCallbackServer:
 
             # 从processing_task的input_data中获取任务信息
             input_data = processing_task.input_data or {}
-            video_id = input_data.get('video_id')
+            video_id = input_data.get('video_id') or processing_task.video_id  # 优先使用input_data中的，回退到ProcessingTask.video_id
             slice_id = input_data.get('slice_id')
             sub_slice_id = input_data.get('sub_slice_id')
 
             # 增加调试信息
             logger.info(f"📋 ProcessingTask.input_data: {input_data}")
+            logger.info(f"📋 ProcessingTask.video_id: {processing_task.video_id}")
             logger.info(f"📋 提取的ID: video_id={video_id}, slice_id={slice_id}, sub_slice_id={sub_slice_id}")
 
             # 如果input_data中没有ID信息，尝试从其他地方获取
-            if not any([video_id, slice_id, sub_slice_id]):
+            if not any([slice_id, sub_slice_id]):  # 注意：我们主要需要的是slice_id或sub_slice_id，video_id已经有了
                 logger.info(f"🔍 input_data中没有ID信息，尝试从其他地方获取")
 
                 # 尝试从task_metadata中解析
@@ -500,7 +501,7 @@ class StandaloneCallbackServer:
             # 下载SRT内容并保存到MinIO
             minio_srt_url = None
             try:
-                if any([video_id, slice_id, sub_slice_id]):
+                if video_id:  # 只要有video_id就可以保存到MinIO
                     minio_srt_url = self._download_and_store_srt(session, srt_url, video_id, slice_id, sub_slice_id)
                     if minio_srt_url:
                         logger.info(f"✅ SRT文件已保存到MinIO: {minio_srt_url}")
