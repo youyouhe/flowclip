@@ -237,11 +237,11 @@ class StateManager:
         stmt = select(ProcessingStatus).where(ProcessingStatus.video_id == video_id)
         result = await self.db.execute(stmt)
         status_record = result.scalar_one_or_none()
-        
+
         if not status_record:
             status_record = ProcessingStatus(video_id=video_id)
             self.db.add(status_record)
-        
+
         # 根据任务类型更新对应字段
         if task_type == ProcessingTaskType.DOWNLOAD:
             status_record.download_status = status
@@ -250,6 +250,32 @@ class StateManager:
             status_record.extract_audio_status = status
             status_record.extract_audio_progress = progress
         elif task_type == ProcessingTaskType.GENERATE_SRT:
+            # ⚠️ 重要修复：检查是否是切片相关的SRT任务
+            # 如果是切片或子切片的SRT任务，不要更新原视频的ProcessingStatus
+            try:
+                # 获取当前任务以检查input_data
+                stmt_task = select(ProcessingTask).filter(
+                    ProcessingTask.video_id == video_id,
+                    ProcessingTask.task_type == ProcessingTaskType.GENERATE_SRT
+                ).order_by(ProcessingTask.created_at.desc())
+                result_task = await self.db.execute(stmt_task)
+                current_task = result_task.scalar_one_or_none()
+
+                if current_task and current_task.input_data:
+                    input_data = current_task.input_data
+                    slice_id = input_data.get('slice_id')
+                    sub_slice_id = input_data.get('sub_slice_id')
+
+                    # 如果是切片或子切片的SRT任务，不更新原视频状态
+                    if slice_id or sub_slice_id:
+                        logger.warning(f"⚠️ 切片/子切片SRT任务状态更新，跳过原视频状态更新: video_id={video_id}, slice_id={slice_id}, sub_slice_id={sub_slice_id}")
+                        return  # 不更新原视频的ProcessingStatus
+                        # 这里只是记录日志，不修改状态
+            except Exception as check_error:
+                logger.warning(f"检查SRT任务上下文失败: {check_error}")
+                # 如果检查失败，继续原来的逻辑（保持向后兼容）
+
+            # 只有在不是切片任务的情况下才更新SRT状态
             status_record.generate_srt_status = status
             status_record.generate_srt_progress = progress
         
@@ -416,11 +442,11 @@ class StateManager:
         status_record = self.db.query(ProcessingStatus).filter(
             ProcessingStatus.video_id == video_id
         ).first()
-        
+
         if not status_record:
             status_record = ProcessingStatus(video_id=video_id)
             self.db.add(status_record)
-        
+
         # 根据任务类型更新对应字段
         if task_type == ProcessingTaskType.DOWNLOAD:
             status_record.download_status = status
@@ -429,6 +455,32 @@ class StateManager:
             status_record.extract_audio_status = status
             status_record.extract_audio_progress = progress
         elif task_type == ProcessingTaskType.GENERATE_SRT:
+            # ⚠️ 重要修复：检查是否是切片相关的SRT任务
+            # 如果是切片或子切片的SRT任务，不要更新原视频的ProcessingStatus
+            try:
+                # 获取当前任务以检查input_data
+                current_task = self.db.query(ProcessingTask).filter(
+                    ProcessingTask.video_id == video_id,
+                    ProcessingTask.task_type == ProcessingTaskType.GENERATE_SRT
+                ).order_by(ProcessingTask.created_at.desc()).first()
+
+                if current_task and current_task.input_data:
+                    input_data = current_task.input_data
+                    slice_id = input_data.get('slice_id')
+                    sub_slice_id = input_data.get('sub_slice_id')
+
+                    # 如果是切片或子切片的SRT任务，不更新原视频状态
+                    if slice_id or sub_slice_id:
+                        logger = logging.getLogger(__name__)
+                        logger.warning(f"⚠️ 切片/子切片SRT任务状态更新，跳过原视频状态更新: video_id={video_id}, slice_id={slice_id}, sub_slice_id={sub_slice_id}")
+                        return  # 不更新原视频的ProcessingStatus
+                        # 这里只是记录日志，不修改状态
+            except Exception as check_error:
+                logger = logging.getLogger(__name__)
+                logger.warning(f"检查SRT任务上下文失败: {check_error}")
+                # 如果检查失败，继续原来的逻辑（保持向后兼容）
+
+            # 只有在不是切片任务的情况下才更新SRT状态
             status_record.generate_srt_status = status
             status_record.generate_srt_progress = progress
         
