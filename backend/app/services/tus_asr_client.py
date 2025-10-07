@@ -325,7 +325,7 @@ class TusASRClient:
             # 执行文件上传，但不等待ASR处理结果
             # 这样确保文件真正上传到ASR服务
             try:
-                await self._upload_file_via_tus(audio_file_path, upload_url, task_id)
+                await self._upload_file_via_tus(audio_file_path, upload_url)
                 logger.info(f"✅ TUS文件上传完成: {task_id}")
 
                 return {
