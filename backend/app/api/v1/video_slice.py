@@ -512,8 +512,6 @@ async def get_slice_srt_content(
                 content_bytes = response.read()
                 response.close()
                 response.release_conn()
-
-                logger.info(f"✅ MinIO读取成功: bytes={len(content_bytes)}")
         except Exception as e:
             logger.error(f"读取SRT文件失败: {str(e)}")
             raise HTTPException(
@@ -556,17 +554,9 @@ async def get_slice_srt_content(
                 "file_size": len(content.encode('utf-8'))
             }
 
-        logger.info(f"🔍 切片SRT返回结果调试:")
-        logger.info(f"  - slice_id: {slice_id}")
-        logger.info(f"  - content长度: {len(result['content'])} 字符")
-        logger.info(f"  - content前100字符: {result['content'][:100]}")
-        logger.info(f"  - subtitles数量: {len(result['subtitles'])}")
-        logger.info(f"  - total_subtitles: {result['total_subtitles']}")
-        logger.info(f"  - file_size: {result['file_size']}")
-        logger.info(f"  - 返回数据类型: {type(result)}")
-        logger.info(f"  - 即将返回200状态码")
+            logger.info(f"🔍 切片SRT返回结果: slice_id={slice_id}, content长度={len(content)}, subtitles数量={len(subtitles)}")
 
-        return result
+            return result
 
         except Exception as e:
             logger.error(f"读取SRT文件失败: {str(e)}")
