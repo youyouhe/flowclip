@@ -512,14 +512,17 @@ async def get_slice_srt_content(
                 content_bytes = response.read()
                 response.close()
                 response.release_conn()
+
+                logger.info(f"✅ MinIO读取成功: bytes={len(content_bytes)}")
         except Exception as e:
-            logger.error(f"读取SRT文件失败: {str(e)}")
+            logger.error(f"❌ MinIO读取失败: {str(e)}, exc_info=True")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="读取SRT文件失败"
             )
 
             # 尝试多种编码解码字节内容
+            logger.info(f"🔍 开始解码SRT内容...")
             try:
                 content = content_bytes.decode('utf-8')
             except UnicodeDecodeError:
@@ -547,23 +550,27 @@ async def get_slice_srt_content(
                     }
                     subtitles.append(subtitle)
 
-            result = {
-                "content": content,
-                "subtitles": subtitles,
-                "total_subtitles": len(subtitles),
-                "file_size": len(content.encode('utf-8'))
-            }
+            try:
+                result = {
+                    "content": content,
+                    "subtitles": subtitles,
+                    "total_subtitles": len(subtitles),
+                    "file_size": len(content.encode('utf-8'))
+                }
 
-            logger.info(f"🔍 切片SRT返回结果: slice_id={slice_id}, content长度={len(content)}, subtitles数量={len(subtitles)}")
+                logger.info(f"🔍 切片SRT返回结果: slice_id={slice_id}, content长度={len(content)}, subtitles数量={len(subtitles)}")
+                logger.info(f"🔍 即将返回200状态码，数据类型: {type(result)}")
 
-            return result
+                return result
 
-        except Exception as e:
-            logger.error(f"读取SRT文件失败: {str(e)}")
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="读取SRT文件失败"
-            )
+            except Exception as e:
+                logger.error(f"❌ 构造返回结果失败: {str(e)}, exc_info=True")
+                logger.error(f"❌ content长度: {len(content) if 'content' in locals() else 'undefined'}")
+                logger.error(f"❌ subtitles长度: {len(subtitles) if 'subtitles' in locals() else 'undefined'}")
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="读取SRT文件失败"
+                )
             
     except HTTPException:
         raise
