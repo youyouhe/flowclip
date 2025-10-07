@@ -165,12 +165,34 @@ class StandaloneCallbackServer:
     async def callback_handler(self, request):
         """处理TUS回调请求"""
         try:
+            # 只接受POST请求
+            if request.method != 'POST':
+                logger.warning(f"拒绝非POST请求: {request.method} from {request.remote}")
+                return web.Response(status=405, text='Method Not Allowed')
+
+            # 验证Content-Type
+            content_type = request.headers.get('Content-Type', '')
+            if 'application/json' not in content_type:
+                logger.warning(f"拒绝非JSON请求: Content-Type={content_type} from {request.remote}")
+                return web.Response(status=400, text='Invalid Content-Type')
+
+            # 检查User-Agent
+            user_agent = request.headers.get('User-Agent', '')
+            if 'Tus-ASR-Task-Manager' not in user_agent:
+                logger.warning(f"拒绝可疑请求: User-Agent={user_agent}, Remote={request.remote}")
+                return web.Response(status=403, text='Forbidden')
+
             current_time = time.time()
             logger.info("🔔 收到TUS回调请求")
             logger.info(f"时间: {current_time}")
             logger.info(f"请求头: {dict(request.headers)}")
 
-            payload = await request.json()
+            try:
+                payload = await request.json()
+            except Exception as json_error:
+                logger.error(f"JSON解析失败: {json_error} from {request.remote}")
+                return web.Response(status=400, text='Invalid JSON')
+
             logger.info(f"回调数据: {json.dumps(payload, indent=2)}")
 
             task_id = payload.get('task_id')

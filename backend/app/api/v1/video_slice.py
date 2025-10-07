@@ -492,9 +492,14 @@ async def get_slice_srt_content(
                     )
             else:
                 # 如果是MinIO对象路径格式，直接从MinIO读取
-                from urllib.parse import urlparse
-                parsed_url = urlparse(slice_data.srt_url)
-                object_name = parsed_url.path.lstrip('/')
+                if slice_data.srt_url.startswith(('http://', 'https://')):
+                    # 如果是完整URL，解析出object_name
+                    from urllib.parse import urlparse
+                    parsed_url = urlparse(slice_data.srt_url)
+                    object_name = parsed_url.path.lstrip('/')
+                else:
+                    # 如果是相对路径，直接使用
+                    object_name = slice_data.srt_url
 
                 logger.info(f"从MinIO获取SRT内容: object_name={object_name}")
 
