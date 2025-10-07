@@ -463,9 +463,13 @@ async def get_slice_srt_content(
             if slice_data.srt_url.startswith('/api/v1/tasks/'):
                 # 如果是TUS API路径格式，通过HTTP请求获取SRT内容
                 task_id = slice_data.srt_url.split('/')[-2]
-                download_url = f"{settings.api_url.rstrip('/')}{slice_data.srt_url}"
+
+                # 使用TUS API URL，而不是我们自己的API URL
+                tus_api_url = getattr(settings, 'tus_api_url', settings.api_url)
+                download_url = f"{tus_api_url.rstrip('/')}{slice_data.srt_url}"
 
                 logger.info(f"通过TUS API获取SRT内容: task_id={task_id}, download_url={download_url}")
+                logger.info(f"使用TUS服务URL: {tus_api_url}")
 
                 import requests
                 headers = {}
@@ -572,9 +576,13 @@ async def get_sub_slice_srt_content(
             if sub_slice_data.srt_url.startswith('/api/v1/tasks/'):
                 # 如果是TUS API路径格式，通过HTTP请求获取SRT内容
                 task_id = sub_slice_data.srt_url.split('/')[-2]
-                download_url = f"{settings.api_url.rstrip('/')}{sub_slice_data.srt_url}"
+
+                # 使用TUS API URL，而不是我们自己的API URL
+                tus_api_url = getattr(settings, 'tus_api_url', settings.api_url)
+                download_url = f"{tus_api_url.rstrip('/')}{sub_slice_data.srt_url}"
 
                 logger.info(f"通过TUS API获取子切片SRT内容: task_id={task_id}, download_url={download_url}")
+                logger.info(f"使用TUS服务URL: {tus_api_url}")
 
                 import requests
                 headers = {}

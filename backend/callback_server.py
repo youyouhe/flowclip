@@ -458,21 +458,36 @@ class StandaloneCallbackServer:
             slice_id = input_data.get('slice_id')
             sub_slice_id = input_data.get('sub_slice_id')
 
+            # 下载SRT内容并保存到MinIO
+            minio_srt_url = None
+            try:
+                minio_srt_url = self._download_and_store_srt(session, srt_url, video_id, slice_id, sub_slice_id)
+                if minio_srt_url:
+                    logger.info(f"✅ SRT文件已保存到MinIO: {minio_srt_url}")
+                else:
+                    logger.warning("⚠️ SRT文件保存到MinIO失败，将使用原始URL")
+            except Exception as e:
+                logger.error(f"❌ 下载和保存SRT到MinIO失败: {e}")
+                logger.warning("⚠️ 继续使用原始TUS URL")
+
+            # 使用MinIO URL（如果成功），否则使用原始TUS URL
+            final_srt_url = minio_srt_url if minio_srt_url else srt_url
+
             if slice_id:
                 # 更新VideoSlice记录
                 video_slice = session.query(VideoSlice).filter(VideoSlice.id == slice_id).first()
                 if video_slice:
-                    video_slice.srt_url = srt_url
+                    video_slice.srt_url = final_srt_url
                     video_slice.srt_processing_status = "completed"
-                    logger.info(f"✅ 已更新VideoSlice: id={slice_id}, srt_url={srt_url}")
+                    logger.info(f"✅ 已更新VideoSlice: id={slice_id}, srt_url={final_srt_url}")
 
             elif sub_slice_id:
                 # 更新VideoSubSlice记录
                 sub_slice = session.query(VideoSubSlice).filter(VideoSubSlice.id == sub_slice_id).first()
                 if sub_slice:
-                    sub_slice.srt_url = srt_url
+                    sub_slice.srt_url = final_srt_url
                     sub_slice.srt_processing_status = "completed"
-                    logger.info(f"✅ 已更新VideoSubSlice: id={sub_slice_id}, srt_url={srt_url}")
+                    logger.info(f"✅ 已更新VideoSubSlice: id={sub_slice_id}, srt_url={final_srt_url}")
 
             elif video_id:
                 # 更新Video记录（原视频的SRT任务）
@@ -544,6 +559,112 @@ class StandaloneCallbackServer:
         except Exception as e:
             logger.error(f"❌ 从Redis获取Celery任务ID失败: {e}")
             return None
+
+    def _download_and_store_srt(self, session, srt_url: str, video_id: int = None, slice_id: int = None, sub_slice_id: int = None) -> Optional[str]:
+        """从TUS服务下载SRT内容并保存到MinIO"""
+        try:
+            from app.core.config import settings
+            from app.models.video import Video
+            from app.models.video_slice import VideoSlice, VideoSubSlice
+            import requests
+
+            # 构建TUS下载URL
+            tus_api_url = getattr(settings, 'tus_api_url', 'http://localhost:8000')
+            if srt_url.startswith('/'):
+                download_url = f"{tus_api_url.rstrip('/')}{srt_url}"
+            else:
+                download_url = srt_url
+
+            logger.info(f"🔄 开始从TUS服务下载SRT: {download_url}")
+
+            # 设置请求头
+            headers = {}
+            if hasattr(settings, 'asr_api_key') and settings.asr_api_key:
+                headers['X-API-Key'] = settings.asr_api_key
+            headers['ngrok-skip-browser-warning'] = 'true'
+
+            # 下载SRT内容
+            response = requests.get(download_url, headers=headers, timeout=30)
+            if response.status_code != 200:
+                logger.error(f"❌ 下载SRT失败: HTTP {response.status_code}")
+                return None
+
+            srt_content = response.text
+            logger.info(f"✅ SRT内容下载成功，大小: {len(srt_content)} 字符")
+
+            # 确定MinIO存储路径和用户信息
+            user_id = None
+            project_id = None
+
+            if slice_id:
+                # 从VideoSlice获取用户和项目信息
+                slice_record = session.query(VideoSlice).filter(VideoSlice.id == slice_id).first()
+                if slice_record:
+                    user_id, project_id = self._get_user_project_from_video(session, slice_record.video_id)
+                    object_name = f"users/{user_id}/projects/{project_id}/subtitles/slice_{slice_id}.srt"
+                else:
+                    logger.error(f"❌ 未找到VideoSlice记录: id={slice_id}")
+                    return None
+
+            elif sub_slice_id:
+                # 从VideoSubSlice获取用户和项目信息
+                sub_slice = session.query(VideoSubSlice).filter(VideoSubSlice.id == sub_slice_id).first()
+                if sub_slice:
+                    user_id, project_id = self._get_user_project_from_video(session, sub_slice.slice.video_id)
+                    object_name = f"users/{user_id}/projects/{project_id}/subtitles/sub_slice_{sub_slice_id}.srt"
+                else:
+                    logger.error(f"❌ 未找到VideoSubSlice记录: id={sub_slice_id}")
+                    return None
+
+            elif video_id:
+                # 直接从Video获取用户和项目信息
+                user_id, project_id = self._get_user_project_from_video(session, video_id)
+                object_name = f"users/{user_id}/projects/{project_id}/subtitles/{video_id}.srt"
+
+            else:
+                logger.error("❌ 无法确定SRT存储路径：缺少video_id/slice_id/sub_slice_id")
+                return None
+
+            # 保存到MinIO
+            from app.services.minio_client import minio_service
+            import io
+
+            srt_bytes = srt_content.encode('utf-8-sig')  # 添加BOM以支持UTF-8
+            srt_stream = io.BytesIO(srt_bytes)
+
+            minio_service.internal_client.put_object(
+                bucket_name=settings.minio_bucket_name,
+                object_name=object_name,
+                data=srt_stream,
+                length=len(srt_bytes),
+                content_type='text/plain; charset=utf-8'
+            )
+            srt_stream.close()
+
+            logger.info(f"✅ SRT文件已保存到MinIO: {object_name}")
+
+            return object_name
+
+        except Exception as e:
+            logger.error(f"❌ 下载和保存SRT到MinIO失败: {e}", exc_info=True)
+            return None
+
+    def _get_user_project_from_video(self, session, video_id: int) -> tuple:
+        """从video_id获取user_id和project_id"""
+        try:
+            from app.models.video import Video
+            from app.models.project import Project
+
+            # 需要join到Project表来获取user_id
+            video = session.query(Video).join(Project).filter(Video.id == video_id).first()
+            if video:
+                return video.user_id, video.project_id
+            else:
+                logger.error(f"❌ 未找到Video记录: id={video_id}")
+                return None, None
+        except Exception as e:
+            logger.error(f"❌ 获取用户项目信息失败: {e}")
+            return None, None
 
     def run(self):
         """运行服务器"""
