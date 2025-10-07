@@ -94,6 +94,12 @@ class SystemConfigService:
         """获取所有配置项的同步版本"""
         configs = db.query(SystemConfig).all()
         return {config.key: config.value for config in configs}
+
+    @staticmethod
+    def get_config_sync(db: Session, key: str) -> Optional[str]:
+        """获取单个配置项的同步版本"""
+        config = db.query(SystemConfig).filter(SystemConfig.key == key).first()
+        return config.value if config else None
     
     
     @staticmethod
