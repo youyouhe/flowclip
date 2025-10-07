@@ -138,7 +138,12 @@ class StandaloneCallbackServer:
             test_session.execute("SELECT 1")
             test_session.close()
 
-            logger.info(f"✅ 数据库连接成功: {sync_database_url.split('@')[-1]}")
+            # 安全地显示数据库连接信息
+            try:
+                db_info = sync_database_url.split('@')[-1] if '@' in sync_database_url else sync_database_url.split('://')[0] + '://***'
+                logger.info(f"✅ 数据库连接成功: {db_info}")
+            except Exception as display_error:
+                logger.info(f"✅ 数据库连接成功")
 
         except Exception as e:
             logger.error(f"❌ 数据库连接失败: {e}")
@@ -513,12 +518,21 @@ class StandaloneCallbackServer:
             # 检查所有可能的映射键（这种效率较低，但作为回退方案）
             for key_pattern in ["tus_celery_mapping:*"]:
                 matching_keys = self._redis_client.keys(key_pattern)
+                logger.info(f"🔍 找到 {len(matching_keys)} 个映射键")
                 for key in matching_keys:
                     mapping_value = self._redis_client.get(key)
-                    if mapping_value and mapping_value.decode('utf-8') == task_id:
-                        celery_task_id = key.decode('utf-8').split(':', 1)[1]  # 提取Celery任务ID
-                        logger.info(f"✅ 通过映射找到Celery任务ID: {celery_task_id}")
-                        return celery_task_id
+                    if mapping_value:
+                        try:
+                            decoded_value = mapping_value.decode('utf-8')
+                            logger.debug(f"映射键 {key.decode('utf-8')} -> {decoded_value}")
+                            if decoded_value == task_id:
+                                celery_task_id = key.decode('utf-8').split(':', 1)[1]  # 提取Celery任务ID
+                                logger.info(f"✅ 通过映射找到Celery任务ID: {celery_task_id}")
+                                return celery_task_id
+                        except Exception as decode_error:
+                            logger.debug(f"解码映射值失败: {decode_error}")
+                    else:
+                        logger.debug(f"映射键 {key.decode('utf-8')} 没有值")
 
             logger.info(f"⚠️ 未找到TUS任务ID {task_id} 对应的Celery任务ID")
             return None
