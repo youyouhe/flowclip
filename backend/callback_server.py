@@ -412,6 +412,12 @@ class StandaloneCallbackServer:
                 return
 
             logger.info(f"✅ 找到关联任务: ProcessingTask.id={processing_task.id}, celery_task_id={processing_task.celery_task_id}")
+            logger.info(f"📋 ProcessingTask详细信息:")
+            logger.info(f"  - task_type: {processing_task.task_type}")
+            logger.info(f"  - task_name: {processing_task.task_name}")
+            logger.info(f"  - video_id: {processing_task.video_id}")
+            logger.info(f"  - input_data: {processing_task.input_data}")
+            logger.info(f"  - task_metadata: {processing_task.task_metadata}")
 
             # 更新ProcessingTask状态
             processing_task.status = ProcessingTaskStatus.SUCCESS
@@ -458,14 +464,51 @@ class StandaloneCallbackServer:
             slice_id = input_data.get('slice_id')
             sub_slice_id = input_data.get('sub_slice_id')
 
+            # 增加调试信息
+            logger.info(f"📋 ProcessingTask.input_data: {input_data}")
+            logger.info(f"📋 提取的ID: video_id={video_id}, slice_id={slice_id}, sub_slice_id={sub_slice_id}")
+
+            # 如果input_data中没有ID信息，尝试从其他地方获取
+            if not any([video_id, slice_id, sub_slice_id]):
+                logger.info(f"🔍 input_data中没有ID信息，尝试从其他地方获取")
+
+                # 尝试从task_metadata中解析
+                if processing_task.task_metadata:
+                    import json
+                    try:
+                        metadata = json.loads(processing_task.task_metadata) if isinstance(processing_task.task_metadata, str) else processing_task.task_metadata
+                        video_id = video_id or metadata.get('video_id')
+                        slice_id = slice_id or metadata.get('slice_id')
+                        sub_slice_id = sub_slice_id or metadata.get('sub_slice_id')
+                        logger.info(f"📋 从task_metadata解析的ID: video_id={video_id}, slice_id={slice_id}, sub_slice_id={sub_slice_id}")
+                    except Exception as parse_error:
+                        logger.warning(f"⚠️ 解析task_metadata失败: {parse_error}")
+
+                # 如果还是没有，尝试通过任务类型推断
+                if not any([video_id, slice_id, sub_slice_id]):
+                    task_type = processing_task.task_type or ''
+                    logger.info(f"🔍 通过任务类型推断: {task_type}")
+
+                    if 'video' in task_type.lower() and 'transcript' in task_type.lower():
+                        # 视频转录任务，可能需要通过其他方式关联
+                        logger.info(f"📋 这是视频转录任务，但缺少关联ID")
+
+                    elif 'slice' in task_type.lower():
+                        # 切片任务，可能需要查找最近的切片
+                        logger.info(f"📋 这是切片处理任务")
+
             # 下载SRT内容并保存到MinIO
             minio_srt_url = None
             try:
-                minio_srt_url = self._download_and_store_srt(session, srt_url, video_id, slice_id, sub_slice_id)
-                if minio_srt_url:
-                    logger.info(f"✅ SRT文件已保存到MinIO: {minio_srt_url}")
+                if any([video_id, slice_id, sub_slice_id]):
+                    minio_srt_url = self._download_and_store_srt(session, srt_url, video_id, slice_id, sub_slice_id)
+                    if minio_srt_url:
+                        logger.info(f"✅ SRT文件已保存到MinIO: {minio_srt_url}")
+                    else:
+                        logger.warning("⚠️ SRT文件保存到MinIO失败，将使用原始URL")
                 else:
-                    logger.warning("⚠️ SRT文件保存到MinIO失败，将使用原始URL")
+                    logger.warning(f"⚠️ 无法确定存储路径：video_id={video_id}, slice_id={slice_id}, sub_slice_id={sub_slice_id}")
+                    logger.warning("⚠️ 将使用原始TUS URL作为SRT地址")
             except Exception as e:
                 logger.error(f"❌ 下载和保存SRT到MinIO失败: {e}")
                 logger.warning("⚠️ 继续使用原始TUS URL")
@@ -673,7 +716,8 @@ class StandaloneCallbackServer:
                 object_name = f"users/{user_id}/projects/{project_id}/subtitles/{video_id}.srt"
 
             else:
-                logger.error("❌ 无法确定SRT存储路径：缺少video_id/slice_id/sub_slice_id")
+                logger.warning("⚠️ 无法确定SRT存储路径：缺少video_id/slice_id/sub_slice_id")
+                logger.info("📋 将跳过MinIO保存，使用原始TUS URL")
                 return None
 
             # 保存到MinIO
