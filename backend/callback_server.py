@@ -456,6 +456,19 @@ class StandaloneCallbackServer:
                 updates['srt_content'] = srt_content
                 logger.info(f"✅ 通过callback添加SRT内容，长度: {len(srt_content)} 字符")
 
+                # 计算字幕条数
+                try:
+                    # 按字幕块分割并计算条数
+                    blocks = srt_content.strip().split('\n\n')
+                    subtitle_count = len([block for block in blocks if block.strip()])
+                    updates['total_segments'] = subtitle_count
+                    logger.info(f"✅ 计算字幕条数: {subtitle_count} 条")
+                except Exception as count_error:
+                    logger.warning(f"⚠️ 计算字幕条数失败: {count_error}")
+                    # 使用简单的换行符作为备选计算
+                    updates['total_segments'] = srt_content.count('\n\n') + 1 if srt_content.strip() else 0
+                    logger.info(f"✅ 使用备选方法计算字幕条数: {updates['total_segments']} 条")
+
             # 合并更新数据
             existing_output_data.update(updates)
 
