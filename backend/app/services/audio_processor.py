@@ -545,73 +545,70 @@ class AudioProcessor:
                 'user_id': user_id
             }
 
-            # 使用TUS客户端处理
-            tus_result = await asr_strategy_selector._execute_tus_asr(audio_path, metadata)
+            # 使用TUS客户端处理 - 只启动上传，不等待结果
+            from app.services.tus_asr_client import tus_asr_client
 
-            # 从TUS结果中提取SRT内容
-            srt_content = tus_result.get('srt_content', '')
-
-            # 生成SRT文件名和对象名称
-            if custom_filename:
-                srt_filename = custom_filename
-            else:
-                srt_filename = f"{video_id}.srt"
-
-            srt_object_name = f"users/{user_id}/projects/{project_id}/subtitles/{srt_filename}"
-
-            # 上传SRT内容到MinIO
-            tmp_srt_path = None
-            srt_url = None
+            # 获取Celery任务ID
+            current_celery_task_id = None
             try:
-                with tempfile.NamedTemporaryFile(mode='w', suffix='.srt', delete=False, encoding='utf-8') as tmp_srt_file:
-                    tmp_srt_file.write(srt_content)
-                    tmp_srt_path = tmp_srt_file.name
+                import celery
+                current_task = celery.current_task
+                if current_task:
+                    current_celery_task_id = current_task.request.id
+                    logger.info(f"当前Celery任务ID: {current_celery_task_id}")
+            except Exception as e:
+                logger.debug(f"无法获取当前Celery任务ID: {e}")
 
-                # 上传到MinIO
-                srt_url = await minio_service.upload_file(
-                    tmp_srt_path,
-                    srt_object_name,
-                    "text/srt"
-                )
+            # 启动TUS任务（不等待结果）
+            logger.info("启动TUS上传任务...")
+            tus_task_result = await tus_asr_client._start_tus_task_only(audio_path, metadata)
+            tus_task_id = tus_task_result.get('task_id')
 
-                # 清理临时文件
-                if tmp_srt_path:
-                    import os
-                    if os.path.exists(tmp_srt_path):
-                        os.unlink(tmp_srt_path)
-            except Exception as upload_error:
-                logger.error(f"SRT文件上传失败: {upload_error}")
-                # 清理临时文件
-                if tmp_srt_path:
-                    import os
-                    if os.path.exists(tmp_srt_path):
-                        os.unlink(tmp_srt_path)
-                raise
+            if not tus_task_id:
+                raise Exception("TUS任务启动失败，未获取到任务ID")
 
+            logger.info(f"TUS任务已启动，task_id: {tus_task_id}")
+
+            # 提取slice_id和sub_slice_id信息用于链式任务
+            slice_id = None
+            sub_slice_id = None
+
+            # 从metadata中获取slice_id和sub_slice_id
+            if 'slice_id' in metadata:
+                slice_id = metadata['slice_id']
+            if 'sub_slice_id' in metadata:
+                sub_slice_id = metadata['sub_slice_id']
+
+            # 启动callback处理任务（链式任务）
+            from app.tasks.subtasks.srt_task import process_tus_callback
+            callback_task = process_tus_callback.delay(
+                task_id=tus_task_id,
+                video_id=video_id,
+                project_id=project_id,
+                user_id=user_id,
+                slice_id=slice_id,
+                sub_slice_id=sub_slice_id,
+                original_celery_task_id=current_celery_task_id
+            )
+
+            logger.info(f"已启动callback处理任务: {callback_task.id}")
+
+            # 立即返回，释放worker
             return {
                 'success': True,
-                'strategy': 'tus',
-                'srt_content': srt_content,
-                'srt_filename': srt_filename,
-                'minio_path': srt_url,
-                'object_name': srt_object_name,
-                'json_result_path': None,
-                'total_segments': srt_content.count('\n\n') if srt_content else 0,
-                'processing_stats': {
-                    'success_count': 1,
-                    'fail_count': 0,
-                    'total_files': 1
-                },
-                'asr_params': {
-                    'api_url': None,
-                    'lang': lang,
-                    'max_workers': max_workers
-                },
-                'task_id': tus_result.get('task_id'),
+                'strategy': 'tus_async',  # 标记为异步TUS处理
+                'task_id': tus_task_id,
+                'callback_task_id': callback_task.id,
                 'video_id': video_id,
                 'project_id': project_id,
                 'user_id': user_id,
-                'processing_info': tus_result.get('processing_info', {}),
+                'status': 'processing',  # 标记为处理中状态
+                'message': 'TUS任务已启动，等待callback处理',
+                'processing_info': {
+                    'tus_task_id': tus_task_id,
+                    'callback_task_id': callback_task.id,
+                    'async_processing': True
+                },
                 'audio_path': audio_path
             }
 

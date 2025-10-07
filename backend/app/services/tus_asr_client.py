@@ -294,6 +294,54 @@ class TusASRClient:
             elapsed_time = time.time() - start_time if 'start_time' in locals() else 0
             raise RuntimeError(f"TUS处理流水线执行失败: {str(e)} (已处理 {elapsed_time:.1f} 秒)") from e
 
+    async def _start_tus_task_only(
+        self,
+        audio_file_path: str,
+        metadata: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """只启动TUS任务，不等待结果 - 用于链式任务处理"""
+        audio_path = Path(audio_file_path)
+
+        try:
+            logger.info(f"🚀 启动TUS任务: {audio_file_path}")
+
+            # 检查独立回调管理器是否可用
+            redis_available = self.callback_manager._redis_client is not None
+            if not redis_available:
+                raise RuntimeError("独立回调管理器Redis不可用，无法启动异步TUS任务")
+
+            # 步骤1: 创建ASR任务
+            logger.info("📝 步骤1: 创建ASR任务...")
+            task_info = await self._create_tus_task(audio_file_path, metadata)
+            task_id = task_info['task_id']
+            upload_url = task_info['upload_url']
+
+            logger.info(f"✅ 任务创建: {task_id}")
+            logger.info(f"📤 上传URL: {upload_url}")
+
+            # 步骤2: TUS文件上传（异步）
+            logger.info("📤 步骤2: 异步TUS文件上传...")
+
+            # 启动异步上传任务，但不等待完成
+            upload_task = asyncio.create_task(self._upload_file_via_tus(audio_file_path, upload_url))
+
+            logger.info(f"✅ TUS上传任务已启动: {task_id}")
+
+            # 返回任务信息，让调用者可以启动callback处理任务
+            return {
+                'success': True,
+                'task_id': task_id,
+                'upload_url': upload_url,
+                'file_path': audio_file_path,
+                'file_size': audio_path.stat().st_size,
+                'metadata': metadata,
+                'upload_task': upload_task  # 保留引用，防止任务被垃圾回收
+            }
+
+        except Exception as e:
+            logger.error(f"TUS任务启动失败: {e}", exc_info=True)
+            raise RuntimeError(f"TUS任务启动失败: {str(e)}") from e
+
     async def _create_tus_task(
         self,
         audio_file_path: str,

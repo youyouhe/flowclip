@@ -715,3 +715,167 @@ def generate_srt(self, video_id: str, project_id: int, user_id: int, split_files
             print(f"Failed to update task status: {type(status_error).__name__}: {status_error}")
         
         raise Exception(f"{error_type}: {error_msg}")
+
+
+@shared_task(
+    bind=True,
+    name='app.tasks.video_tasks.process_tus_callback',
+    autoretry_for=(Exception,),
+    retry_kwargs={'max_retries': 3, 'countdown': 30},
+    retry_backoff=True,
+    retry_jitter=True
+)
+def process_tus_callback(self, task_id: str, video_id: str, project_id: int, user_id: int,
+                         slice_id: int = None, sub_slice_id: int = None,
+                         original_celery_task_id: str = None) -> Dict[str, Any]:
+    """处理TUS callback结果的后台任务
+
+    这个任务专门用于等待TUS处理结果，不阻塞主SRT任务的worker
+    """
+    import asyncio
+    from app.services.tus_asr_client import tus_asr_client
+
+    print(f"DEBUG: 开始处理TUS callback - task_id: {task_id}, video_id: {video_id}")
+
+    try:
+        # 创建异步事件循环
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
+        async def wait_for_callback():
+            """等待TUS callback结果"""
+            try:
+                # 等待TUS结果（设置合理的超时时间）
+                safe_timeout = min(tus_asr_client.timeout_seconds, 1700)  # 留出缓冲时间
+                print(f"DEBUG: 等待TUS结果，task_id: {task_id}, 超时: {safe_timeout}s")
+
+                # 使用独立回调管理器等待结果
+                if tus_asr_client.callback_manager._redis_client is not None:
+                    result_data = await tus_asr_client.callback_manager.wait_for_result(task_id, safe_timeout)
+
+                    if result_data and isinstance(result_data, dict) and result_data.get('status') == 'completed':
+                        print(f"DEBUG: TUS callback完成，task_id: {task_id}")
+                        return result_data
+                    else:
+                        raise Exception(f"TUS任务未完成或结果异常: {result_data}")
+                else:
+                    raise Exception("TUS回调管理器不可用")
+
+            except asyncio.TimeoutError:
+                raise Exception(f"TUS callback等待超时: {task_id}")
+
+        # 运行异步等待
+        result_data = loop.run_until_complete(wait_for_callback())
+
+        # 处理callback结果
+        srt_url = result_data.get('srt_url')
+        srt_content = result_data.get('srt_content')
+
+        if not srt_url and not srt_content:
+            raise Exception("TUS callback未返回有效的SRT内容")
+
+        # 如果有srt_url但没有srt_content，下载内容
+        if srt_url and not srt_content:
+            print(f"DEBUG: 下载SRT内容，URL: {srt_url}")
+            async def download_srt():
+                return await tus_asr_client._download_srt_content(srt_url)
+            srt_content = loop.run_until_complete(download_srt())
+
+        # 更新数据库中的SRT信息
+        with get_sync_db() as db:
+            try:
+                if sub_slice_id:
+                    # 更新子切片的SRT信息
+                    from app.models import VideoSubSlice
+                    sub_slice = db.query(VideoSubSlice).filter(VideoSubSlice.id == sub_slice_id).first()
+                    if sub_slice:
+                        sub_slice.srt_url = srt_url
+                        sub_slice.srt_processing_status = "completed"
+                        print(f"DEBUG: 更新子切片SRT信息: sub_slice_id={sub_slice_id}, srt_url={srt_url}")
+                    else:
+                        print(f"DEBUG: 未找到子切片记录: sub_slice_id={sub_slice_id}")
+
+                elif slice_id:
+                    # 更新切片的SRT信息
+                    from app.models import VideoSlice
+                    slice_record = db.query(VideoSlice).filter(VideoSlice.id == slice_id).first()
+                    if slice_record:
+                        slice_record.srt_url = srt_url
+                        slice_record.srt_processing_status = "completed"
+                        print(f"DEBUG: 更新切片SRT信息: slice_id={slice_id}, srt_url={srt_url}")
+                    else:
+                        print(f"DEBUG: 未找到切片记录: slice_id={slice_id}")
+
+                # 更新原始Celery任务的状态（如果提供了原始任务ID）
+                if original_celery_task_id:
+                    from app.services.state_manager import get_state_manager
+                    state_manager = get_state_manager(db)
+
+                    # 查找对应的处理任务记录
+                    from app.models import ProcessingTask
+                    processing_task = db.query(ProcessingTask).filter(
+                        ProcessingTask.celery_task_id == original_celery_task_id
+                    ).first()
+
+                    if processing_task:
+                        state_manager.update_task_status_sync(
+                            task_id=processing_task.id,
+                            status=ProcessingTaskStatus.SUCCESS,
+                            progress=100,
+                            message="TUS callback处理完成",
+                            output_data={
+                                'strategy': 'tus',
+                                'task_id': task_id,
+                                'srt_url': srt_url,
+                                'srt_content': srt_content[:1000] + '...' if len(srt_content) > 1000 else srt_content
+                            }
+                        )
+                        print(f"DEBUG: 更新原始任务状态: {original_celery_task_id}")
+
+                db.commit()
+                print(f"DEBUG: 数据库更新完成")
+
+            except Exception as db_error:
+                print(f"DEBUG: 数据库更新失败: {db_error}")
+                db.rollback()
+                raise
+
+        # 清理事件循环
+        loop.close()
+
+        return {
+            'status': 'success',
+            'task_id': task_id,
+            'srt_url': srt_url,
+            'video_id': video_id,
+            'slice_id': slice_id,
+            'sub_slice_id': sub_slice_id
+        }
+
+    except Exception as e:
+        print(f"ERROR: TUS callback处理失败 - {type(e).__name__}: {e}")
+
+        # 尝试更新原始任务状态为失败
+        if original_celery_task_id:
+            try:
+                with get_sync_db() as db:
+                    from app.services.state_manager import get_state_manager
+                    from app.models import ProcessingTask
+                    state_manager = get_state_manager(db)
+
+                    processing_task = db.query(ProcessingTask).filter(
+                        ProcessingTask.celery_task_id == original_celery_task_id
+                    ).first()
+
+                    if processing_task:
+                        state_manager.update_task_status_sync(
+                            task_id=processing_task.id,
+                            status=ProcessingTaskStatus.FAILURE,
+                            progress=0,
+                            message=f"TUS callback处理失败: {str(e)}"
+                        )
+                        print(f"DEBUG: 更新原始任务失败状态: {original_celery_task_id}")
+            except Exception as status_error:
+                print(f"DEBUG: 更新失败状态也出错: {status_error}")
+
+        raise
