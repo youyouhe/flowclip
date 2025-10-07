@@ -338,6 +338,45 @@ def generate_srt(self, video_id: str, project_id: int, user_id: int, split_files
                         asr_model_type=asr_model_type  # 传递模型类型
                     )
                 )
+
+                # 如果TUS处理已完成但需要等待callback，则等待
+                if result.get('strategy') == 'tus' and result.get('success'):
+                    logger.info(f"TUS处理已启动，等待callback完成: task_id={result.get('task_id')}")
+
+                    # 等待callback完成的最大时间（5分钟）
+                    max_wait_time = 300
+                    wait_interval = 2  # 每2秒检查一次
+                    waited_time = 0
+
+                    while waited_time < max_wait_time:
+                        try:
+                            with get_sync_db() as db:
+                                task = db.query(ProcessingTask).filter(
+                                    ProcessingTask.celery_task_id == celery_task_id
+                                ).first()
+
+                                if task and task.output_data and task.output_data.get('callback_processed'):
+                                    logger.info(f"✅ TUS callback处理完成，继续任务")
+                                    # 更新result为callback处理后的完整结果
+                                    if task.output_data.get('srt_content'):
+                                        logger.info(f"✅ 从callback获取到SRT内容，长度: {len(task.output_data['srt_content'])}")
+                                        result['srt_content'] = task.output_data['srt_content']
+                                        result['minio_path'] = task.output_data.get('minio_path', result.get('minio_path'))
+                                        result['srt_url'] = task.output_data.get('srt_url', result.get('srt_url'))
+                                        result['total_segments'] = task.output_data.get('total_segments', result.get('total_segments', 0))
+                                    break
+
+                        except Exception as check_error:
+                            logger.warning(f"检查callback状态失败: {check_error}")
+
+                        logger.info(f"等待TUS callback... 已等待 {waited_time}s")
+                        time.sleep(wait_interval)  # 使用同步sleep
+                        waited_time += wait_interval
+
+                    if waited_time >= max_wait_time:
+                        logger.warning(f"⚠️ TUS callback等待超时 ({max_wait_time}s)，但任务可能仍在处理")
+                    else:
+                        logger.info(f"✅ TUS callback等待完成，总耗时 {waited_time}s")
                 
                 if result.get('success'):
                     # 保存SRT生成结果到数据库 - 使用同步版本
