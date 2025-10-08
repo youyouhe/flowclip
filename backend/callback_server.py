@@ -215,7 +215,22 @@ class StandaloneCallbackServer:
             if payload.get('status') == 'completed':
                 logger.info(f"✅ 任务 {task_id} 完成，保存结果")
                 self._complete_task(task_id, payload)
+            elif payload.get('status') == 'failed':
+                # 增强失败callback处理
+                error_msg = payload.get('error_message', '任务失败')
+                failed_at = payload.get('failed_at')
+                filename = payload.get('filename', '')
+
+                logger.error(f"❌ 任务 {task_id} 失败: {error_msg}")
+                if filename:
+                    logger.error(f"📁 失败文件: {filename}")
+                if failed_at:
+                    logger.error(f"⏰ 失败时间: {failed_at}")
+
+                # 保存详细的失败信息
+                self._fail_task(task_id, error_msg, payload)
             else:
+                # 兼容其他失败状态
                 error_msg = payload.get('error_message', '任务失败')
                 logger.error(f"❌ 任务 {task_id} 失败: {error_msg}")
                 self._fail_task(task_id, error_msg)
@@ -265,18 +280,41 @@ class StandaloneCallbackServer:
         except Exception as e:
             logger.error(f"❌ 保存任务结果失败: {e}")
 
-    def _fail_task(self, task_id: str, error_message: str):
+    def _fail_task(self, task_id: str, error_message: str, full_payload: Dict[str, Any] = None):
         """标记任务失败"""
         try:
             current_time = time.time()
 
-            # 保存失败结果
+            # 保存详细的失败结果
             result_data = {
                 'task_id': task_id,
                 'error_message': error_message,
                 'completed_at': current_time,
                 'status': 'failed'
             }
+
+            # 如果有完整的payload，添加更多详细信息
+            if full_payload:
+                # 保留所有原始失败信息
+                result_data.update(full_payload)
+
+                # 记录详细失败信息到日志
+                filename = full_payload.get('filename', '')
+                failed_at = full_payload.get('failed_at', '')
+                error_type = full_payload.get('error_type', '')
+
+                if filename:
+                    logger.info(f"📁 失败文件名: {filename}")
+                if failed_at:
+                    logger.info(f"⏰ TUS服务失败时间: {failed_at}")
+                    result_data['tus_failed_at'] = failed_at
+                if error_type:
+                    logger.info(f"🔍 错误类型: {error_type}")
+                    result_data['error_type'] = error_type
+
+            # 添加callback服务器处理时间
+            result_data['callback_processed_at'] = current_time
+            result_data['callback_received'] = True
 
             result_key = self._get_result_key(task_id)
             self._redis_client.setex(
@@ -292,7 +330,10 @@ class StandaloneCallbackServer:
             # 更新统计
             self._increment_stats('failed_tasks')
 
-            logger.info(f"✅ 任务 {task_id} 失败状态已保存")
+            logger.info(f"✅ 任务 {task_id} 失败状态已保存 (包含详细信息)")
+
+            # 更新数据库中的任务状态
+            self._update_database_task_status(task_id, result_data)
 
         except Exception as e:
             logger.error(f"❌ 保存失败状态失败: {e}")
@@ -441,66 +482,106 @@ class StandaloneCallbackServer:
             logger.info(f"  - input_data: {processing_task.input_data}")
             logger.info(f"  - task_metadata: {processing_task.task_metadata}")
 
-            # 下载SRT内容并保存到MinIO，同时获取SRT文本内容
-            srt_content = None
-            srt_url = result.get('srt_url')
-            if srt_url:
-                try:
-                    srt_content = self._download_srt_content_for_db(srt_url)
-                    logger.info(f"✅ SRT内容下载成功，大小: {len(srt_content) if srt_content else 0} 字符")
-                except Exception as e:
-                    logger.error(f"❌ 下载SRT内容失败: {e}")
-                    srt_content = None
+            # 检查任务状态并分别处理成功和失败情况
+            is_failed = result.get('status') == 'failed'
 
-            # 更新ProcessingTask状态，包含SRT文本内容以保持前端兼容性
-            processing_task.status = ProcessingTaskStatus.SUCCESS
-            processing_task.progress = 100.0
-            processing_task.completed_at = datetime.utcnow()
+            if is_failed:
+                # 处理失败状态
+                error_message = result.get('error_message', 'TUS ASR处理失败')
 
-            # 重要：不要覆盖已存在的output_data，而是合并更新
-            # Celery任务可能已经存储了重要信息（如srt_content）
-            existing_output_data = processing_task.output_data or {}
+                logger.error(f"❌ 处理任务失败: {task_id}")
+                logger.error(f"💔 失败原因: {error_message}")
 
-            logger.info(f"📋 现有的output_data字段: {list(existing_output_data.keys())}")
-            if existing_output_data.get('srt_content'):
-                logger.info(f"✅ 现有output_data已包含SRT内容，长度: {len(existing_output_data['srt_content'])} 字符")
+                # 更新ProcessingTask状态为失败
+                processing_task.status = ProcessingTaskStatus.FAILED
+                processing_task.progress = 0.0  # 失败时进度归零
+                processing_task.completed_at = datetime.utcnow()
+                processing_task.message = f"TUS ASR处理失败: {error_message} (任务ID: {task_id})"
 
-            # 只更新必要的字段，保留Celery任务已存储的数据
-            updates = {
-                'callback_processed': True,  # 标记callback已处理
-                'callback_received_at': time.time(),
-                'tus_task_id': task_id,
-                'tus_result': result  # 保存原始TUS回调结果
-            }
+                # 更新output_data，保留失败信息
+                existing_output_data = processing_task.output_data or {}
+                failure_updates = {
+                    'callback_processed': True,
+                    'callback_received_at': time.time(),
+                    'tus_task_id': task_id,
+                    'tus_result': result,  # 保存完整的失败回调结果
+                    'error_details': {
+                        'tus_error_message': error_message,
+                        'tus_failed_at': result.get('failed_at'),
+                        'tus_filename': result.get('filename'),
+                        'tus_error_type': result.get('error_type'),
+                        'callback_processed_at': time.time()
+                    }
+                }
 
-            # 如果Celery任务没有存储SRT内容，而我们又下载到了，则添加
-            if srt_content and not existing_output_data.get('srt_content'):
-                updates['srt_content'] = srt_content
-                logger.info(f"✅ 通过callback添加SRT内容，长度: {len(srt_content)} 字符")
+                # 合并失败信息
+                existing_output_data.update(failure_updates)
+                processing_task.output_data = existing_output_data
 
-                # 计算字幕条数
-                try:
-                    # 按字幕块分割并计算条数
-                    blocks = srt_content.strip().split('\n\n')
-                    subtitle_count = len([block for block in blocks if block.strip()])
-                    updates['total_segments'] = subtitle_count
-                    logger.info(f"✅ 计算字幕条数: {subtitle_count} 条")
-                except Exception as count_error:
-                    logger.warning(f"⚠️ 计算字幕条数失败: {count_error}")
-                    # 使用简单的换行符作为备选计算
-                    updates['total_segments'] = srt_content.count('\n\n') + 1 if srt_content.strip() else 0
-                    logger.info(f"✅ 使用备选方法计算字幕条数: {updates['total_segments']} 条")
+                logger.info(f"✅ 失败状态已更新到数据库: task_id={task_id}, processing_task_id={processing_task.id}")
 
-            # 合并更新数据
-            existing_output_data.update(updates)
+            else:
+                # 处理成功状态（原有逻辑）
+                # 下载SRT内容并保存到MinIO，同时获取SRT文本内容
+                srt_content = None
+                srt_url = result.get('srt_url')
+                if srt_url:
+                    try:
+                        srt_content = self._download_srt_content_for_db(srt_url)
+                        logger.info(f"✅ SRT内容下载成功，大小: {len(srt_content) if srt_content else 0} 字符")
+                    except Exception as e:
+                        logger.error(f"❌ 下载SRT内容失败: {e}")
+                        srt_content = None
 
-            # 更新processing_task的output_data
-            processing_task.output_data = existing_output_data
-            logger.info(f"✅ 已合并更新output_data，总字段数: {len(processing_task.output_data)}")
-            processing_task.message = f"TUS ASR处理完成 (任务ID: {task_id})"
+                # 更新ProcessingTask状态，包含SRT文本内容以保持前端兼容性
+                processing_task.status = ProcessingTaskStatus.SUCCESS
+                processing_task.progress = 100.0
+                processing_task.completed_at = datetime.utcnow()
 
-            # 根据任务类型更新相关表
-            self._update_related_records(session, processing_task, result)
+                # 重要：不要覆盖已存在的output_data，而是合并更新
+                # Celery任务可能已经存储了重要信息（如srt_content）
+                existing_output_data = processing_task.output_data or {}
+
+                logger.info(f"📋 现有的output_data字段: {list(existing_output_data.keys())}")
+                if existing_output_data.get('srt_content'):
+                    logger.info(f"✅ 现有output_data已包含SRT内容，长度: {len(existing_output_data['srt_content'])} 字符")
+
+                # 只更新必要的字段，保留Celery任务已存储的数据
+                updates = {
+                    'callback_processed': True,  # 标记callback已处理
+                    'callback_received_at': time.time(),
+                    'tus_task_id': task_id,
+                    'tus_result': result  # 保存原始TUS回调结果
+                }
+
+                # 如果Celery任务没有存储SRT内容，而我们又下载到了，则添加
+                if srt_content and not existing_output_data.get('srt_content'):
+                    updates['srt_content'] = srt_content
+                    logger.info(f"✅ 通过callback添加SRT内容，长度: {len(srt_content)} 字符")
+
+                    # 计算字幕条数
+                    try:
+                        # 按字幕块分割并计算条数
+                        blocks = srt_content.strip().split('\n\n')
+                        subtitle_count = len([block for block in blocks if block.strip()])
+                        updates['total_segments'] = subtitle_count
+                        logger.info(f"✅ 计算字幕条数: {subtitle_count} 条")
+                    except Exception as count_error:
+                        logger.warning(f"⚠️ 计算字幕条数失败: {count_error}")
+                        # 使用简单的换行符作为备选计算
+                        updates['total_segments'] = srt_content.count('\n\n') + 1 if srt_content.strip() else 0
+                        logger.info(f"✅ 使用备选方法计算字幕条数: {updates['total_segments']} 条")
+
+                # 合并更新数据
+                existing_output_data.update(updates)
+
+                # 更新processing_task的output_data
+                processing_task.output_data = existing_output_data
+                logger.info(f"✅ 已合并更新output_data，总字段数: {len(processing_task.output_data)}")
+                processing_task.message = f"TUS ASR处理完成 (任务ID: {task_id})"
+
+                # 根据任务类型更新相关表
+                self._update_related_records(session, processing_task, result)
 
             session.commit()
             logger.info(f"✅ 数据库任务状态已更新: task_id={task_id}, processing_task_id={processing_task.id}")
