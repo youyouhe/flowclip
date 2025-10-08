@@ -222,72 +222,40 @@ class TusASRClient:
             logger.info(f"✅ 任务创建: {task_id}")
             logger.info(f"📤 上传URL: {upload_url}")
 
+            # 步骤1.5: 立即注册TUS任务映射关系（在上传前注册）
+            if redis_available and celery_task_id:
+                logger.info(f"🔗 立即注册TUS任务映射: {task_id} -> {celery_task_id}")
+                registration_success = self.callback_manager.register_task(task_id, celery_task_id)
+                if registration_success:
+                    logger.info(f"✅ TUS任务映射注册成功: {task_id} -> {celery_task_id}")
+                else:
+                    logger.warning(f"⚠️ TUS任务映射注册失败: {task_id} -> {celery_task_id}")
+            else:
+                logger.warning(f"⚠️ 无法注册TUS任务映射: redis_available={redis_available}, celery_task_id={celery_task_id}")
+
             # 步骤2: TUS文件上传
             logger.info("📤 步骤2: TUS文件上传...")
             await self._upload_file_via_tus(audio_file_path, upload_url)
             logger.info("✅ 文件上传完成")
 
-            # 步骤3: 等待ASR处理结果
-            logger.info("🎧 步骤3: 等待ASR处理...")
-            logger.info(f"准备等待任务 {task_id} 的结果")
-            srt_content = await self._wait_for_tus_results(task_id, celery_task_id)
-            logger.info("✅ ASR处理完成")
+            # 步骤3: TUS任务提交完成（异步处理由callback服务器负责）
+            logger.info("🎧 步骤3: TUS任务提交完成")
+            logger.info(f"✅ 文件已上传，TUS ASR任务 {task_id} 将异步处理")
+            logger.info(f"📝 处理结果将通过回调服务器异步更新到数据库")
 
-            # 上传SRT内容到MinIO（如果需要的话）
-            srt_url = None
-            if srt_content:
-                # 从metadata中获取用户和项目信息
-                user_id = metadata.get('user_id', 1)
-                project_id = metadata.get('project_id', 1)
-                video_id = metadata.get('video_id', 'unknown')
-
-                # 生成对象名称
-                srt_filename = f"{video_id}.srt"
-                srt_object_name = f"users/{user_id}/projects/{project_id}/subtitles/{srt_filename}"
-
-                # 上传到MinIO
-                try:
-                    tmp_srt_path = None
-                    try:
-                        with tempfile.NamedTemporaryFile(mode='w', suffix='.srt', delete=False, encoding='utf-8') as tmp_srt_file:
-                            tmp_srt_file.write(srt_content)
-                            tmp_srt_path = tmp_srt_file.name
-
-                        from app.services.minio_client import minio_service
-                        srt_url = await minio_service.upload_file(
-                            tmp_srt_path,
-                            srt_object_name,
-                            "text/srt"
-                        )
-
-                        # 清理临时文件
-                        if tmp_srt_path:
-                            import os
-                            if os.path.exists(tmp_srt_path):
-                                os.unlink(tmp_srt_path)
-                    except Exception as upload_error:
-                        logger.error(f"SRT文件上传失败: {upload_error}")
-                        # 清理临时文件
-                        if tmp_srt_path:
-                            import os
-                            if os.path.exists(tmp_srt_path):
-                                os.unlink(tmp_srt_path)
-                        raise
-                except Exception as e:
-                    logger.error(f"上传SRT到MinIO失败: {e}")
-
+            # 不等待ASR结果，直接返回提交状态
+            # 实际的ASR结果处理由callback服务器负责
             return {
                 'success': True,
                 'strategy': 'tus',
                 'task_id': task_id,
-                'srt_content': srt_content,
-                'srt_url': srt_url,  # 添加SRT URL
-                'minio_path': srt_url,  # 兼容性字段
-                'object_name': srt_object_name if 'srt_object_name' in locals() else None,
+                'status': 'submitted',  # 已提交，等待异步处理
+                'message': f'TUS ASR任务已提交，任务ID: {task_id}，结果将通过异步回调处理',
                 'file_path': audio_file_path,
                 'metadata': metadata,
-                'processing_time': time.time() - start_time if 'start_time' in locals() else 0,
-                'file_size': audio_path.stat().st_size if 'audio_path' in locals() else 0
+                'processing_time': time.time() - start_time,
+                'file_size': audio_path.stat().st_size,
+                'async_processing': True  # 标记这是异步处理
             }
         except Exception as e:
             logger.error(f"TUS处理流水线执行失败: {e}", exc_info=True)
@@ -727,12 +695,22 @@ class TusASRClient:
                 # 独立回调服务器模式
                 logger.info(f"使用独立回调服务器模式等待任务 {task_id} (超时: {safe_timeout}s)")
 
-                # 向独立回调服务器注册任务，传递Celery任务ID
-                if self.callback_manager.register_task(task_id, celery_task_id):
-                    logger.info(f"任务 {task_id} 已向独立回调服务器注册 (Celery任务ID: {celery_task_id})")
+                # 检查任务是否已注册（避免重复注册）
+                task_key = f"tus_callback:{task_id}"
+                is_already_registered = self.callback_manager._redis_client.exists(task_key)
 
-                    # 等待回调结果
-                    result_data = await self.callback_manager.wait_for_result(task_id, safe_timeout)
+                if is_already_registered:
+                    logger.info(f"✅ 任务 {task_id} 已在独立回调服务器注册，跳过重复注册")
+                else:
+                    # 向独立回调服务器注册任务，传递Celery任务ID
+                    logger.info(f"🔄 任务 {task_id} 未注册，现在进行注册 (Celery任务ID: {celery_task_id})")
+                    if self.callback_manager.register_task(task_id, celery_task_id):
+                        logger.info(f"任务 {task_id} 已向独立回调服务器注册 (Celery任务ID: {celery_task_id})")
+                    else:
+                        logger.error(f"❌ 任务 {task_id} 注册失败")
+
+                # 等待回调结果
+                result_data = await self.callback_manager.wait_for_result(task_id, safe_timeout)
 
                     if result_data and isinstance(result_data, dict):
                         logger.info(f"任务 {task_id} 结果已获取: {result_data}")

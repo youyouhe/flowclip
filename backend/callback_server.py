@@ -429,6 +429,33 @@ class StandaloneCallbackServer:
             celery_task_id = self._get_celery_task_id_from_redis(task_id)
             logger.info(f"📋 从Redis获取到的Celery任务ID: {celery_task_id}")
 
+            # 详细调试：检查Redis中的所有相关键
+            if not celery_task_id:
+                logger.warning(f"🔍 未找到Celery任务ID，调试Redis状态:")
+                try:
+                    # 检查任务键
+                    task_key = self._get_task_key(task_id)
+                    task_exists = self._redis_client.exists(task_key)
+                    logger.info(f"  - 任务键 {task_key} 存在: {task_exists}")
+
+                    # 检查结果键
+                    result_key = self._get_result_key(task_id)
+                    result_exists = self._redis_client.exists(result_key)
+                    logger.info(f"  - 结果键 {result_key} 存在: {result_exists}")
+
+                    # 检查所有映射键
+                    all_mapping_keys = self._redis_client.keys("tus_celery_mapping:*")
+                    logger.info(f"  - 总映射键数量: {len(all_mapping_keys)}")
+
+                    # 检查最近创建的任务键
+                    recent_task_keys = self._redis_client.keys(f"{self.redis_key_prefix}*")
+                    logger.info(f"  - 最近任务键数量: {len(recent_task_keys)}")
+                    if len(recent_task_keys) > 0:
+                        logger.info(f"  - 最近的任务键示例: {[key.decode('utf-8') for key in recent_task_keys[:3]]}")
+
+                except Exception as debug_error:
+                    logger.error(f"调试Redis状态失败: {debug_error}")
+
             processing_task = None
             if celery_task_id:
                 # 优先通过Celery任务ID查找
@@ -459,6 +486,8 @@ class StandaloneCallbackServer:
 
                 if processing_task:
                     logger.info(f"✅ 通过时间窗口找到关联任务: TUS任务ID {task_id} -> ProcessingTask.id={processing_task.id}")
+                    # 尝试事后恢复映射关系
+                    self._try_restore_mapping(task_id, processing_task.celery_task_id)
 
             if not processing_task:
                 logger.error(f"❌ 未找到与TUS任务ID {task_id} 关联的ProcessingTask")
@@ -833,6 +862,34 @@ class StandaloneCallbackServer:
         except Exception as e:
             logger.error(f"❌ 从Redis获取Celery任务ID失败: {e}")
             return None
+
+    def _try_restore_mapping(self, task_id: str, celery_task_id: str):
+        """尝试恢复TUS任务ID与Celery任务ID的映射关系"""
+        try:
+            if not celery_task_id:
+                logger.warning(f"⚠️ 无法恢复映射：Celery任务ID为空")
+                return
+
+            logger.info(f"🔄 尝试恢复映射关系: {task_id} -> {celery_task_id}")
+
+            # 检查映射是否已存在
+            mapping_key = f"tus_celery_mapping:{celery_task_id}"
+            existing_mapping = self._redis_client.get(mapping_key)
+            if existing_mapping:
+                logger.info(f"✅ 映射已存在，跳过恢复")
+                return
+
+            # 创建映射关系
+            self._redis_client.setex(
+                mapping_key,
+                1800,  # 30分钟过期（较短，因为这是事后恢复）
+                task_id
+            )
+
+            logger.info(f"✅ 映射关系恢复成功: {task_id} -> {celery_task_id}")
+
+        except Exception as e:
+            logger.error(f"❌ 恢复映射关系失败: {e}")
 
     def _download_and_store_srt(self, session, srt_url: str, video_id: int = None, slice_id: int = None, sub_slice_id: int = None) -> Optional[str]:
         """从TUS服务下载SRT内容并保存到MinIO"""

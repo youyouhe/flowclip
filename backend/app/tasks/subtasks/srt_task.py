@@ -346,56 +346,25 @@ def generate_srt(self, video_id: str, project_id: int, user_id: int, split_files
                     )
                 )
 
-                # 如果TUS处理已完成但需要等待callback，则等待
+                # TUS异步处理：Celery任务只负责提交，不等待callback
                 if result.get('strategy') == 'tus' and result.get('success'):
-                    logger.info(f"TUS处理已启动，等待callback完成: task_id={result.get('task_id')}")
+                    logger.info(f"✅ TUS任务提交成功: task_id={result.get('task_id')}")
+                    logger.info(f"📝 ASR处理将由callback服务器异步完成，Celery任务结束")
 
-                    # 等待callback完成的最大时间（5分钟）
-                    max_wait_time = 300
-                    wait_interval = 2  # 每2秒检查一次
-                    waited_time = 0
-
-                    while waited_time < max_wait_time:
-                        try:
-                            with get_sync_db() as db:
-                                task = db.query(ProcessingTask).filter(
-                                    ProcessingTask.celery_task_id == celery_task_id
-                                ).first()
-
-                                if task and task.output_data and task.output_data.get('callback_processed'):
-                                    logger.info(f"✅ TUS callback处理完成，继续任务")
-                                    # 更新result为callback处理后的完整结果
-                                    if task.output_data.get('srt_content'):
-                                        logger.info(f"✅ 从callback获取到SRT内容，长度: {len(task.output_data['srt_content'])}")
-                                        result['srt_content'] = task.output_data['srt_content']
-                                        result['minio_path'] = task.output_data.get('minio_path', result.get('minio_path'))
-                                        result['srt_url'] = task.output_data.get('srt_url', result.get('srt_url'))
-                                        result['total_segments'] = task.output_data.get('total_segments', result.get('total_segments', 0))
-                                    break
-
-                        except Exception as check_error:
-                            logger.warning(f"检查callback状态失败: {check_error}")
-
-                        logger.info(f"等待TUS callback... 已等待 {waited_time}s")
-                        time.sleep(wait_interval)  # 使用同步sleep
-                        waited_time += wait_interval
-
-                    if waited_time >= max_wait_time:
-                        logger.warning(f"⚠️ TUS callback等待超时 ({max_wait_time}s)，但任务可能仍在处理")
-                    else:
-                        logger.info(f"✅ TUS callback等待完成，总耗时 {waited_time}s")
+                    # Celery任务完成，后续处理由callback服务器负责
+                    # 不需要等待，让callback服务器处理所有的数据库更新和SRT下载
                 
                 if result.get('success'):
-                    # 对于异步TUS处理，只标记任务为启动状态，不处理数据库更新
-                    # 数据库更新由callback_server.py处理
-                    strategy = result.get('strategy', 'tus_async')
+                    strategy = result.get('strategy', 'standard')
 
-                    if strategy == 'tus_async':
-                        # 异步TUS处理 - 只返回任务启动信息
+                    if strategy == 'tus':
+                        # TUS异步处理 - Celery任务完成，callback服务器负责后续处理
                         self.update_state(state='SUCCESS', meta={
-                            'progress': 10,
+                            'progress': 15,
                             'stage': ProcessingStage.GENERATE_SRT,
-                            'message': 'TUS任务已启动，等待callback处理'
+                            'message': f'TUS ASR任务已提交 (ID: {result.get("task_id")})，等待异步处理',
+                            'tus_task_id': result.get('task_id'),
+                            'async_processing': True
                         })
                         return {
                             'status': 'processing',

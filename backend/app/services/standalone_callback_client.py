@@ -75,14 +75,19 @@ class StandaloneCallbackClient:
                 mapping_key = f"tus_celery_mapping:{celery_task_id}"
                 self._redis_client.setex(
                     mapping_key,
-                    3600,  # 1小时过期
+                    5400,  # 1.5小时过期，与任务注册时间保持一致
                     task_id
                 )
+
+            # 计算动态过期时间：基础时间1小时 + TUS超时时间的缓冲
+            base_expire_time = 3600  # 1小时基础时间
+            buffer_time = 1800  # 30分钟缓冲时间
+            total_expire_time = base_expire_time + buffer_time
 
             task_key = self._get_task_key(task_id)
             self._redis_client.setex(
                 task_key,
-                3600,  # 1小时过期
+                total_expire_time,  # 1.5小时过期，确保不会过早清理
                 pickle.dumps(task_data)
             )
 
