@@ -712,20 +712,20 @@ class TusASRClient:
                 # 等待回调结果
                 result_data = await self.callback_manager.wait_for_result(task_id, safe_timeout)
 
-                    if result_data and isinstance(result_data, dict):
-                        logger.info(f"任务 {task_id} 结果已获取: {result_data}")
+                if result_data and isinstance(result_data, dict):
+                    logger.info(f"任务 {task_id} 结果已获取: {result_data}")
 
-                        if result_data.get('status') == 'completed':
-                            result_task_id = result_data.get('task_id')
-                            srt_url = result_data.get('srt_url', f"{self.api_url}/api/v1/tasks/{result_task_id}/download")
-                            logger.info(f"准备下载SRT内容，URL: {srt_url}")
-                            # 如果srt_url是相对路径（不以http开头），转换为完整URL
-                            if srt_url and not srt_url.startswith('http'):
-                                srt_url = f"{self.api_url}{srt_url}"
-                                logger.info(f"转换后的SRT URL: {srt_url}")
-                            srt_content = await self._download_srt_content(srt_url)
-                            logger.info(f"SRT内容下载完成，长度: {len(srt_content) if srt_content else 0}")
-                            return srt_content
+                    if result_data.get('status') == 'completed':
+                        result_task_id = result_data.get('task_id')
+                        srt_url = result_data.get('srt_url', f"{self.api_url}/api/v1/tasks/{result_task_id}/download")
+                        logger.info(f"准备下载SRT内容，URL: {srt_url}")
+                        # 如果srt_url是相对路径（不以http开头），转换为完整URL
+                        if srt_url and not srt_url.startswith('http'):
+                            srt_url = f"{self.api_url}{srt_url}"
+                            logger.info(f"转换后的SRT URL: {srt_url}")
+                        srt_content = await self._download_srt_content(srt_url)
+                        logger.info(f"SRT内容下载完成，长度: {len(srt_content) if srt_content else 0}")
+                        return srt_content
                     else:
                         logger.error(f"任务 {task_id} 未收到有效结果")
                         raise RuntimeError(f"任务 {task_id} 未收到有效结果")
