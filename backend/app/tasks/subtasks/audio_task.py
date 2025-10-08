@@ -298,11 +298,30 @@ def extract_audio(self, video_id: str, project_id: int, user_id: int, video_mini
                             }
                             await db.commit()
                     
-                    # 使用同步方式运行异步函数，避免事件循环问题
-                    loop = asyncio.new_event_loop()
-                    asyncio.set_event_loop(loop)
-                    loop.run_until_complete(_update_audio_path())
-                    loop.close()
+                    # 使用同步数据库操作避免事件循环问题
+                    from app.core.database import SessionLocal
+                    from sqlalchemy import select
+                    from app.models.video import Video
+
+                    db = SessionLocal()
+                    try:
+                        stmt = select(Video).where(Video.id == int(video_id))
+                        video_result = db.execute(stmt)
+                        video = video_result.scalar_one()
+
+                        # 更新音频路径和时长信息到processing_metadata
+                        if not video.processing_metadata:
+                            video.processing_metadata = {}
+                        video.processing_metadata['audio_path'] = result['minio_path']
+                        video.processing_metadata['audio_info'] = {
+                            'duration': result.get('duration', 0),
+                            'audio_filename': result.get('audio_filename'),
+                            'file_size': result.get('file_size'),
+                            'audio_format': result.get('audio_format')
+                        }
+                        db.commit()
+                    finally:
+                        db.close()
                 except Exception as e:
                     print(f"更新音频路径失败: {e}")
                 
