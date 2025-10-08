@@ -60,7 +60,7 @@ def extract_slice_audio(self, video_id: str, project_id: int, user_id: int, vide
             print(f"Error ensuring processing task exists: {e}")
             return False
     
-    def _update_task_status(celery_task_id: str, status: str, progress: float, message: str = None, error: str = None):
+    def _update_task_status(celery_task_id: str, status: str, progress: float, message: str = None, error: str = None, video_id: str = None):
         """更新任务状态 - 同步版本，确保任务存在"""
         # 如果这个任务是作为子任务运行的，不创建处理任务记录
         if not create_processing_task:
@@ -105,7 +105,7 @@ def extract_slice_audio(self, video_id: str, project_id: int, user_id: int, vide
         if not celery_task_id:
             celery_task_id = "unknown"
             
-        _update_task_status(celery_task_id, ProcessingTaskStatus.RUNNING, 10, "开始提取切片音频")
+        _update_task_status(celery_task_id, ProcessingTaskStatus.RUNNING, 10, "开始提取切片音频", video_id=video_id)
         self.update_state(state='PROGRESS', meta={'progress': 10, 'stage': ProcessingStage.EXTRACT_AUDIO, 'message': '开始提取切片音频'})
         
         # 总是提取切片音频，不使用父视频音频优化
@@ -132,7 +132,7 @@ def extract_slice_audio(self, video_id: str, project_id: int, user_id: int, vide
                     else:
                         object_name = video_minio_path
                 
-                _update_task_status(celery_task_id, ProcessingTaskStatus.RUNNING, 30, "正在下载视频文件")
+                _update_task_status(celery_task_id, ProcessingTaskStatus.RUNNING, 30, "正在下载视频文件", video_id=video_id)
                 self.update_state(state='PROGRESS', meta={'progress': 30, 'stage': ProcessingStage.EXTRACT_AUDIO, 'message': '正在下载视频文件'})
                 
                 video_url = run_async(minio_service.get_file_url(object_name, expiry=3600))
@@ -146,7 +146,7 @@ def extract_slice_audio(self, video_id: str, project_id: int, user_id: int, vide
                     for chunk in response.iter_content(chunk_size=8192):
                         f.write(chunk)
                 
-                _update_task_status(celery_task_id, ProcessingTaskStatus.RUNNING, 70, "正在提取音频")
+                _update_task_status(celery_task_id, ProcessingTaskStatus.RUNNING, 70, "正在提取音频", video_id=video_id)
                 self.update_state(state='PROGRESS', meta={'progress': 70, 'stage': ProcessingStage.EXTRACT_AUDIO, 'message': '正在提取音频'})
                 
                 result = run_async(
@@ -222,12 +222,12 @@ def extract_slice_audio(self, video_id: str, project_id: int, user_id: int, vide
                             stage=ProcessingStage.EXTRACT_AUDIO
                         )
                     else:
-                        _update_task_status(celery_task_id, ProcessingTaskStatus.SUCCESS, 100, "切片音频提取完成")
+                        _update_task_status(celery_task_id, ProcessingTaskStatus.SUCCESS, 100, "切片音频提取完成", video_id=video_id)
             except Exception as e:
                 print(f"状态更新失败: {e}")
                 # 回退到原来的状态更新方式
                 try:
-                    _update_task_status(celery_task_id, ProcessingTaskStatus.SUCCESS, 100, "切片音频提取完成")
+                    _update_task_status(celery_task_id, ProcessingTaskStatus.SUCCESS, 100, "切片音频提取完成", video_id=video_id)
                 except Exception as fallback_error:
                     print(f"回退状态更新也失败: {fallback_error}")
             self.update_state(state='SUCCESS', meta={'progress': 100, 'stage': ProcessingStage.EXTRACT_AUDIO, 'message': '切片音频提取完成'})
@@ -312,7 +312,7 @@ def extract_slice_audio(self, video_id: str, project_id: int, user_id: int, vide
             error_details = traceback.format_stack()
             
             try:
-                _update_task_status(celery_task_id, ProcessingTaskStatus.FAILURE, 0, f"{error_type}: {error_msg}")
+                _update_task_status(celery_task_id, ProcessingTaskStatus.FAILURE, 0, f"{error_type}: {error_msg}", video_id=video_id)
             except Exception as status_error:
                 print(f"Failed to update task status: {type(status_error).__name__}: {status_error}")
             
@@ -347,10 +347,11 @@ def extract_slice_audio(self, video_id: str, project_id: int, user_id: int, vide
         
         try:
             _update_task_status(
-                self.request.id, 
-                ProcessingTaskStatus.FAILURE, 
-                0, 
-                f"{error_type}: {error_msg}"
+                self.request.id,
+                ProcessingTaskStatus.FAILURE,
+                0,
+                f"{error_type}: {error_msg}",
+                video_id=video_id
             )
         except Exception as status_error:
             print(f"Failed to update task status: {type(status_error).__name__}: {status_error}")

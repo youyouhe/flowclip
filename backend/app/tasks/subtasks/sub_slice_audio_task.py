@@ -60,7 +60,7 @@ def extract_sub_slice_audio(self, video_id: str, project_id: int, user_id: int, 
             print(f"Error ensuring processing task exists: {e}")
             return False
     
-    def _update_task_status(celery_task_id: str, status: str, progress: float, message: str = None, error: str = None):
+    def _update_task_status(celery_task_id: str, status: str, progress: float, message: str = None, error: str = None, video_id: str = None):
         """更新任务状态 - 同步版本，确保任务存在"""
         # 如果这个任务是作为子任务运行的，不创建处理任务记录
         if not create_processing_task:
@@ -327,7 +327,7 @@ def extract_sub_slice_audio(self, video_id: str, project_id: int, user_id: int, 
             error_details = traceback.format_stack()
             
             try:
-                _update_task_status(celery_task_id, ProcessingTaskStatus.FAILURE, 0, f"{error_type}: {error_msg}")
+                _update_task_status(celery_task_id, ProcessingTaskStatus.FAILURE, 0, f"{error_type}: {error_msg}", video_id=video_id)
             except Exception as status_error:
                 print(f"Failed to update task status: {type(status_error).__name__}: {status_error}")
             
@@ -362,10 +362,11 @@ def extract_sub_slice_audio(self, video_id: str, project_id: int, user_id: int, 
         
         try:
             _update_task_status(
-                self.request.id, 
-                ProcessingTaskStatus.FAILURE, 
-                0, 
-                f"{error_type}: {error_msg}"
+                self.request.id,
+                ProcessingTaskStatus.FAILURE,
+                0,
+                f"{error_type}: {error_msg}",
+                video_id=video_id
             )
         except Exception as status_error:
             print(f"Failed to update task status: {type(status_error).__name__}: {status_error}")
