@@ -746,7 +746,7 @@ async def get_sub_slice_srt_content(
             detail=f"获取失败: {str(e)}"
         )
 
-@router.get("/slice-sub-slices/{slice_id}", response_model=List[VideoSubSliceSchema])
+@router.get("/slice-sub-slices/{slice_id}", response_model=List[VideoSubSliceSchema], operation_id="get_slice_sub_slices")
 async def get_slice_sub_slices(
     slice_id: int,
     current_user: User = Depends(get_current_user),
