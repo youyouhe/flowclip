@@ -80,8 +80,11 @@ def extract_video_audio(self, video_id: str, project_id: int, user_id: int, vide
                     task = db.query(ProcessingTask).filter(
                         ProcessingTask.celery_task_id == celery_task_id
                     ).first()
-                    
+
                     if task:
+                        # 在函数内部导入Video模型，避免作用域问题
+                        from app.models import Video
+
                         # 更新视频记录的进度状态
                         video = db.query(Video).filter(Video.id == task.video_id).first()
                         if video:
@@ -90,7 +93,7 @@ def extract_video_audio(self, video_id: str, project_id: int, user_id: int, vide
                             video.processing_message = message or ""
                             db.commit()
                             print(f"数据库状态已更新 - video_id: {task.video_id}, progress: {progress}")
-                            
+
             except Exception as db_error:
                 print(f"数据库更新失败: {db_error}")
                 
