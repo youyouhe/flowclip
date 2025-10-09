@@ -763,17 +763,35 @@ class StandaloneCallbackServer:
                 # 更新VideoSlice记录
                 video_slice = session.query(VideoSlice).filter(VideoSlice.id == slice_id).first()
                 if video_slice:
+                    # 1. 先保存SRT URL
                     video_slice.srt_url = final_srt_url
-                    video_slice.srt_processing_status = "completed"
-                    logger.info(f"✅ 已更新VideoSlice: id={slice_id}, srt_url={final_srt_url}")
+                    logger.info(f"🔗 SRT URL已保存: slice_id={slice_id}, srt_url={final_srt_url}")
+
+                    # 2. 验证SRT URL确实有效后再设置状态为completed
+                    if final_srt_url:
+                        video_slice.srt_processing_status = "completed"
+                        logger.info(f"✅ VideoSlice状态已更新为completed: id={slice_id}, srt_url={final_srt_url}")
+                    else:
+                        logger.warning(f"⚠️ SRT URL为空，不更新状态: slice_id={slice_id}")
+                        video_slice.srt_processing_status = "failed"
+                        video_slice.srt_error_message = "SRT URL保存失败"
 
             elif sub_slice_id:
                 # 更新VideoSubSlice记录
                 sub_slice = session.query(VideoSubSlice).filter(VideoSubSlice.id == sub_slice_id).first()
                 if sub_slice:
+                    # 1. 先保存SRT URL
                     sub_slice.srt_url = final_srt_url
-                    sub_slice.srt_processing_status = "completed"
-                    logger.info(f"✅ 已更新VideoSubSlice: id={sub_slice_id}, srt_url={final_srt_url}")
+                    logger.info(f"🔗 SRT URL已保存: sub_slice_id={sub_slice_id}, srt_url={final_srt_url}")
+
+                    # 2. 验证SRT URL确实有效后再设置状态为completed
+                    if final_srt_url:
+                        sub_slice.srt_processing_status = "completed"
+                        logger.info(f"✅ VideoSubSlice状态已更新为completed: id={sub_slice_id}, srt_url={final_srt_url}")
+                    else:
+                        logger.warning(f"⚠️ SRT URL为空，不更新状态: sub_slice_id={sub_slice_id}")
+                        sub_slice.srt_processing_status = "failed"
+                        sub_slice.srt_error_message = "SRT URL保存失败"
 
             elif video_id and not slice_id and not sub_slice_id:
                 # 只有在既没有slice_id也没有sub_slice_id时，才更新原视频的记录

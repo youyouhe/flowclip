@@ -388,9 +388,18 @@ def generate_srt(self, video_id: str, project_id: int, user_id: int, split_files
                                         from app.models import VideoSlice
                                         slice_record = db.query(VideoSlice).filter(VideoSlice.id == slice_id).first()
                                         if slice_record:
+                                            # 1. 先保存SRT URL
                                             slice_record.srt_url = srt_url
-                                            slice_record.srt_processing_status = "completed"
-                                            print(f"已更新切片: slice_id={slice_id}, srt_url={srt_url}")
+                                            print(f"🔗 SRT URL已保存: slice_id={slice_id}, srt_url={srt_url}")
+
+                                            # 2. 验证SRT URL确实有效后再设置状态为completed
+                                            if srt_url:
+                                                slice_record.srt_processing_status = "completed"
+                                                print(f"✅ 切片状态已更新为completed: slice_id={slice_id}, srt_url={srt_url}")
+                                            else:
+                                                print(f"⚠️ SRT URL为空，不更新状态: slice_id={slice_id}")
+                                                slice_record.srt_processing_status = "failed"
+                                                slice_record.srt_error_message = "SRT URL保存失败"
                                         else:
                                             print(f"未找到切片记录: slice_id={slice_id}")
                                     elif sub_slice_id:
@@ -398,9 +407,18 @@ def generate_srt(self, video_id: str, project_id: int, user_id: int, split_files
                                         from app.models import VideoSubSlice
                                         sub_slice_record = db.query(VideoSubSlice).filter(VideoSubSlice.id == sub_slice_id).first()
                                         if sub_slice_record:
+                                            # 1. 先保存SRT URL
                                             sub_slice_record.srt_url = srt_url
-                                            sub_slice_record.srt_processing_status = "completed"
-                                            print(f"已更新子切片: sub_slice_id={sub_slice_id}, srt_url={srt_url}")
+                                            print(f"🔗 SRT URL已保存: sub_slice_id={sub_slice_id}, srt_url={srt_url}")
+
+                                            # 2. 验证SRT URL确实有效后再设置状态为completed
+                                            if srt_url:
+                                                sub_slice_record.srt_processing_status = "completed"
+                                                print(f"✅ 子切片状态已更新为completed: sub_slice_id={sub_slice_id}, srt_url={srt_url}")
+                                            else:
+                                                print(f"⚠️ SRT URL为空，不更新状态: sub_slice_id={sub_slice_id}")
+                                                sub_slice_record.srt_processing_status = "failed"
+                                                sub_slice_record.srt_error_message = "SRT URL保存失败"
                                         else:
                                             print(f"未找到子切片记录: sub_slice_id={sub_slice_id}")
                                     else:
@@ -541,9 +559,19 @@ def generate_srt(self, video_id: str, project_id: int, user_id: int, split_files
                                             from app.models import VideoSubSlice
                                             sub_slice_record = db.query(VideoSubSlice).filter(VideoSubSlice.id == sub_slice_id).first()
                                             if sub_slice_record:
+                                                # 1. 先保存SRT URL
                                                 sub_slice_record.srt_url = srt_url
-                                                sub_slice_record.srt_processing_status = "completed"
                                                 print(f"DEBUG: 设置子切片SRT URL: sub_slice_id={sub_slice_id}, srt_url={srt_url}")
+
+                                                # 2. 验证SRT URL确实有效后再设置状态为completed
+                                                if srt_url:
+                                                    sub_slice_record.srt_processing_status = "completed"
+                                                    print(f"✅ TUS子切片状态已更新为completed: sub_slice_id={sub_slice_id}, srt_url={srt_url}")
+                                                else:
+                                                    print(f"⚠️ TUS SRT URL为空，不更新状态: sub_slice_id={sub_slice_id}")
+                                                    sub_slice_record.srt_processing_status = "failed"
+                                                    sub_slice_record.srt_error_message = "TUS SRT URL保存失败"
+
                                                 print(f"已更新子切片: sub_slice_id={sub_slice_id}, srt_url={srt_url}")
                                             else:
                                                 print(f"DEBUG: 未找到子切片记录: sub_slice_id={sub_slice_id}")
