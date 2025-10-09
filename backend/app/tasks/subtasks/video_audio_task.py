@@ -230,12 +230,17 @@ def extract_video_audio(self, video_id: str, project_id: int, user_id: int, vide
                 
                 # 更新视频的音频路径和时长信息
                 try:
+                    from sqlalchemy import select
+
                     async def _update_audio_path():
                         async with AsyncSessionLocal() as db:
+                            # 在函数内部导入Video模型，避免作用域问题
+                            from app.models import Video
+
                             stmt = select(Video).where(Video.id == int(video_id))
                             video_result = await db.execute(stmt)
                             video = video_result.scalar_one()
-                            
+
                             # 更新音频路径和时长信息到processing_metadata
                             if not video.processing_metadata:
                                 video.processing_metadata = {}
@@ -248,7 +253,7 @@ def extract_video_audio(self, video_id: str, project_id: int, user_id: int, vide
                             }
                             await db.commit()
                             print(f"已更新视频音频路径: video_id={video_id}, audio_path={result['minio_path']}")
-                    
+
                     run_async(_update_audio_path())
                 except Exception as e:
                     print(f"更新音频路径失败: {e}")

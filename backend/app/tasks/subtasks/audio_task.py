@@ -277,15 +277,17 @@ def extract_audio(self, video_id: str, project_id: int, user_id: int, video_mini
                 self.update_state(state='SUCCESS', meta={'progress': 100, 'stage': ProcessingStage.EXTRACT_AUDIO, 'message': '音频提取完成'})
                 # 更新视频的音频路径和时长信息
                 try:
+                    from sqlalchemy import select
+
                     async def _update_audio_path():
                         async with AsyncSessionLocal() as db:
-                            from sqlalchemy import select
-                            from app.models.video import Video
-                            
+                            # 在函数内部导入Video模型，避免作用域问题
+                            from app.models import Video
+
                             stmt = select(Video).where(Video.id == int(video_id))
                             video_result = await db.execute(stmt)
                             video = video_result.scalar_one()
-                            
+
                             # 更新音频路径和时长信息到processing_metadata
                             if not video.processing_metadata:
                                 video.processing_metadata = {}
@@ -297,14 +299,15 @@ def extract_audio(self, video_id: str, project_id: int, user_id: int, video_mini
                                 'audio_format': result.get('audio_format')
                             }
                             await db.commit()
-                    
-                    # 使用同步数据库操作避免事件循环问题
-                    from app.core.database import SessionLocal
-                    from sqlalchemy import select
-                    from app.models.video import Video
 
-                    db = SessionLocal()
+                    # 使用同步数据库操作避免事件循环问题
+                    from app.core.database import SyncSessionLocal
+
+                    db = SyncSessionLocal()
                     try:
+                        # 在函数内部导入Video模型，避免作用域问题
+                        from app.models import Video
+
                         stmt = select(Video).where(Video.id == int(video_id))
                         video_result = db.execute(stmt)
                         video = video_result.scalar_one()
