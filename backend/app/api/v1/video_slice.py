@@ -349,7 +349,7 @@ async def get_video_slices(
             detail=f"获取失败: {str(e)}"
         )
 
-@router.get("/slice-detail/{slice_id}", response_model=VideoSliceSchema)
+@router.get("/slice-detail/{slice_id}", response_model=VideoSliceSchema, operation_id="get_slice_detail")
 async def get_slice_detail(
     slice_id: int,
     current_user: User = Depends(get_current_user),
