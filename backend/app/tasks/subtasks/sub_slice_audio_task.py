@@ -23,21 +23,32 @@ logger = logging.getLogger(__name__)
 def extract_sub_slice_audio(self, video_id: str, project_id: int, user_id: int, video_minio_path: str, sub_slice_id: int, create_processing_task: bool = True, trigger_srt_after_audio: bool = False) -> Dict[str, Any]:
     """Extract audio from video sub-slice using ffmpeg"""
     
-    def _ensure_processing_task_exists(celery_task_id: str, video_id: int) -> bool:
+    def _ensure_processing_task_exists(celery_task_id: str, video_id: str) -> bool:
         """确保处理任务记录存在"""
         try:
             with get_sync_db() as db:
                 state_manager = get_state_manager(db)
-                
+
                 # 检查任务是否已存在
                 task = db.query(ProcessingTask).filter(
                     ProcessingTask.celery_task_id == celery_task_id
                 ).first()
-                
+
                 if not task:
+                    # 验证video_id参数
+                    if video_id is None or video_id == "None" or video_id == "":
+                        print(f"Error: Invalid video_id parameter: {video_id}")
+                        return False
+
+                    try:
+                        video_id_int = int(video_id)
+                    except (ValueError, TypeError):
+                        print(f"Error: Cannot convert video_id to int: {video_id}")
+                        return False
+
                     # 创建新的处理任务记录
                     task = ProcessingTask(
-                        video_id=int(video_id),
+                        video_id=video_id_int,
                         task_type=ProcessingTaskType.EXTRACT_AUDIO,
                         task_name="子切片音频提取",
                         celery_task_id=celery_task_id,

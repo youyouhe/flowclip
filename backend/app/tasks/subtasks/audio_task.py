@@ -43,17 +43,28 @@ def extract_audio(self, video_id: str, project_id: int, user_id: int, video_mini
     except Exception as config_error:
         print(f"重新加载MinIO配置失败: {config_error}")
     
-    def _ensure_processing_task_exists(celery_task_id: str, video_id: int) -> bool:
+    def _ensure_processing_task_exists(celery_task_id: str, video_id: str) -> bool:
         """确保处理任务记录存在"""
         try:
             with get_sync_db() as db:
                 state_manager = get_state_manager(db)
-                
+
+                # 验证video_id参数
+                if video_id is None or video_id == "None" or video_id == "":
+                    print(f"Error: Invalid video_id parameter: {video_id}")
+                    return False
+
+                try:
+                    video_id_int = int(video_id)
+                except (ValueError, TypeError):
+                    print(f"Error: Cannot convert video_id to int: {video_id}")
+                    return False
+
                 # 尝试创建任务记录，如果已存在则忽略
                 try:
                     from app.core.constants import ProcessingTaskType
                     task = ProcessingTask(
-                        video_id=int(video_id),
+                        video_id=video_id_int,
                         task_type=ProcessingTaskType.EXTRACT_AUDIO,
                         task_name="音频提取",
                         celery_task_id=celery_task_id,

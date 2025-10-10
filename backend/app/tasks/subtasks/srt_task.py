@@ -53,11 +53,22 @@ def generate_srt(self, video_id: str, project_id: int, user_id: int, split_files
     except Exception as config_error:
         print(f"重新加载MinIO配置失败: {config_error}")
     
-    def _ensure_processing_task_exists(celery_task_id: str, video_id: int, slice_id: int = None, sub_slice_id: int = None) -> bool:
+    def _ensure_processing_task_exists(celery_task_id: str, video_id: str, slice_id: int = None, sub_slice_id: int = None) -> bool:
         """确保处理任务记录存在"""
         try:
             with get_sync_db() as db:
                 state_manager = get_state_manager(db)
+
+                # 验证video_id参数
+                if video_id is None or video_id == "None" or video_id == "":
+                    print(f"Error: Invalid video_id parameter: {video_id}")
+                    return False
+
+                try:
+                    video_id_int = int(video_id)
+                except (ValueError, TypeError):
+                    print(f"Error: Cannot convert video_id to int: {video_id}")
+                    return False
 
                 # 构建input_data，包含关联信息
                 input_data = {"direct_audio": True}
@@ -69,7 +80,7 @@ def generate_srt(self, video_id: str, project_id: int, user_id: int, split_files
                 # 尝试创建任务记录，如果已存在则忽略
                 try:
                     task = ProcessingTask(
-                        video_id=int(video_id),
+                        video_id=video_id_int,
                         task_type=ProcessingTaskType.GENERATE_SRT,
                         task_name="字幕生成",
                         celery_task_id=celery_task_id,
