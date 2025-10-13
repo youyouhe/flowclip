@@ -267,4 +267,6 @@ if __name__ == "__main__":
         http='h11',  # 使用h11作为HTTP解析器，更适合大文件上传
         ws_ping_interval=20,  # WebSocket ping间隔
         ws_ping_timeout=20,  # WebSocket ping超时
+        access_log=False,  # 禁用访问日志
+        log_level="warning"  # 只显示警告和错误日志
     )

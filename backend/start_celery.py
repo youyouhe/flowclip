@@ -26,34 +26,30 @@ logger = logging.getLogger(__name__)
 reload_thread = None
 reload_stop_event = threading.Event()
 
-def load_system_configs(max_retries=10, retry_interval=3):
+def load_system_configs(max_retries=10, retry_interval=3, silent=False):
     """从数据库加载系统配置，带重试机制"""
     for attempt in range(max_retries):
         try:
             # 显式加载环境变量
             dotenv_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.env')
             load_dotenv(dotenv_path)
-            
+
             # 导入必要的模块
             from app.core.database import get_sync_db
             from app.services.system_config_service import SystemConfigService
             from app.core.config import settings
             from app.services.minio_client import minio_service
-            
-            # 打印加载前的配置
-            logger.info(f"加载前的minio_public_endpoint: {settings.minio_public_endpoint}")
-            
+
             # 获取数据库会话并加载配置
             db = get_sync_db()
             SystemConfigService.update_settings_from_db_sync(db)
             db.close()
-            
+
             # 重新加载MinIO客户端配置
             minio_service.reload_config()
-            
-            # 打印加载后的配置
-            logger.info(f"加载后的minio_public_endpoint: {settings.minio_public_endpoint}")
-            logger.info("系统配置从数据库加载成功")
+
+            if not silent:
+                logger.info("系统配置从数据库加载成功")
             return True
         except Exception as e:
             logger.warning(f"从数据库加载系统配置失败 (尝试 {attempt + 1}/{max_retries}): {e}")
@@ -68,8 +64,9 @@ def load_system_configs(max_retries=10, retry_interval=3):
 def reload_configs_periodically(interval=60):
     """定期重新加载系统配置"""
     while not reload_stop_event.wait(interval):
-        logger.info("定期重新加载系统配置...")
-        load_system_configs()
+        # 静默重新加载配置，只在出错时记录日志
+        if not load_system_configs(silent=True):
+            pass  # load_system_configs 内部已经记录了错误日志
 
 def signal_handler(signum, frame):
     """信号处理函数，用于优雅关闭"""
