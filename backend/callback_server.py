@@ -178,7 +178,7 @@ class StandaloneCallbackServer:
 
             # 检查User-Agent
             user_agent = request.headers.get('User-Agent', '')
-            if 'Tus-ASR-Task-Manager' not in user_agent:
+            if 'Tus-ASR-Task-Manager' not in user_agent and 'Tus-ASR-Callback-Service' not in user_agent:
                 logger.warning(f"拒绝可疑请求: User-Agent={user_agent}, Remote={request.remote}")
                 return web.Response(status=403, text='Forbidden')
 
