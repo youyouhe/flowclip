@@ -35,7 +35,7 @@ services:
     # 移除端口映射，只在内部网络访问以增强安全性
     volumes:
       - redis_data:/data
-    command: redis-server --appendonly yes --maxmemory 1gb --maxmemory-policy allkeys-lru --protected-mode yes
+    command: redis-server --appendonly yes --maxmemory 1gb --maxmemory-policy allkeys-lru --protected-mode no
     networks:
       - flowclip-network
     healthcheck:
