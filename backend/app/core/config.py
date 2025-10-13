@@ -20,7 +20,7 @@ class Settings(BaseSettings):
     mysql_database: str = "youtube_slicer"
     
     # MinIO
-    minio_endpoint: str = "localhost:9000"
+    minio_endpoint: str = "minio:9000"
     minio_public_endpoint: Optional[str] = None
     minio_access_key: str = "minioadmin"
     minio_secret_key: str = "minioadmin"
@@ -28,7 +28,7 @@ class Settings(BaseSettings):
     minio_secure: bool = False
     
     # Redis
-    redis_url: str = "redis://localhost:6379"
+    redis_url: str = "redis://redis:6379"
     
     # Security
     secret_key: str = "your-secret-key-here-change-this-in-production"
@@ -201,7 +201,7 @@ chapters (子主题/章节列表):
     port: int = 8000
     reload: bool = False
     sqlalchemy_echo: bool = False
-    api_base_url: str = "http://localhost:8000"
+    api_base_url: str = "http://backend:8000"
     frontend_url: Optional[str] = None
     
     # Temporary directory

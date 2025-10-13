@@ -58,7 +58,7 @@ class StandaloneCallbackServer:
     def __init__(self):
         self.callback_port = int(os.getenv('CALLBACK_PORT', '9090'))
         self.callback_host = os.getenv('CALLBACK_HOST', '0.0.0.0')
-        self.redis_url = os.getenv('REDIS_URL', 'redis://localhost:6379')
+        self.redis_url = os.getenv('REDIS_URL', 'redis://redis:6379')
         self.redis_key_prefix = os.getenv('REDIS_KEY_PREFIX', 'tus_callback:')
         self.result_key_prefix = os.getenv('REDIS_RESULT_PREFIX', 'tus_result:')
         self.stats_key = os.getenv('REDIS_STATS_KEY', 'tus_callback_stats')
