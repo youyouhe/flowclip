@@ -84,7 +84,7 @@ async def get_video_processing_status(
         "overall_status": overall_status or {}
     }
 
-@router.get("/tasks/{task_id}", response_model=ProcessingTaskResponse, operation_id="get_task_status_detail")
+c
 async def get_processing_task(
     task_id: int,
     current_user: User = Depends(get_current_user),
@@ -156,7 +156,7 @@ async def get_video_tasks(
     
     return list(tasks)
 
-@router.get("/celery/{celery_task_id}", response_model=TaskStatusResponse)
+@router.get("/celery/{celery_task_id}", response_model=TaskStatusResponse, operation_id="get_celery_task_status")
 async def get_celery_task_status(
     celery_task_id: str,
     current_user: User = Depends(get_current_user),
