@@ -91,7 +91,7 @@ class GlobalCallbackManager:
             else:
                 # 回退到配置文件中的设置
                 from app.core.config import settings
-                redis_url = getattr(settings, 'redis_url', 'redis://localhost:6379/0')
+                redis_url = getattr(settings, 'redis_url', 'redis://redis:6379/0')
 
             logger.info(f"🔗 尝试连接Redis: {redis_url}")
 

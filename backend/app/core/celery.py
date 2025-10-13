@@ -8,7 +8,7 @@ dotenv_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__fil
 load_dotenv(dotenv_path)
 
 # 直接从环境变量获取Redis URL，如果没有则使用设置中的值或默认值
-redis_url = os.getenv('REDIS_URL') or settings.redis_url or 'redis://localhost:6379'
+redis_url = os.getenv('REDIS_URL') or settings.redis_url or 'redis://redis:6379'
 print(f"Celery使用Redis URL: {redis_url}")
 
 # 确保URL格式正确，包含协议前缀

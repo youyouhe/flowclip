@@ -130,7 +130,7 @@ def _get_proxy_url(resource_path: str) -> str:
             return final_url
         else:
             # 如果完全没有配置，使用默认值
-            return f"http://localhost:9000/{settings.minio_bucket_name}/{resource_path}"
+            return f"http://minio:9000/{settings.minio_bucket_name}/{resource_path}"
     
     # 在事件循环中运行异步函数
     try:
