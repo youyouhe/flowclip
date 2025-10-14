@@ -1,5 +1,6 @@
 import os
 import io
+import logging
 from typing import Optional, Dict, Any
 from pathlib import Path
 from datetime import timedelta
@@ -9,6 +10,8 @@ from urllib.parse import urlparse
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
 from app.core.config import settings
+
+logger = logging.getLogger(__name__)
 
 class MinioService:
     """MinIO文件存储服务"""
@@ -77,14 +80,14 @@ class MinioService:
             secure=settings.minio_secure
         )
         
-        print(f"DEBUG: _reload_config 完成，public_client endpoint: {self.public_client._base_url.host}")
+        logger.debug(f"MinIO配置重新加载完成，public_client endpoint: {self.public_client._base_url.host}")
         
         self.bucket_name = settings.minio_bucket_name
         # print(f"DEBUG: 使用的存储桶名称: {self.bucket_name}")
     
     def reload_config(self):
         """公共方法：重新加载配置"""
-        print(f"DEBUG: reload_config 方法被调用")
+        logger.debug("MinIO配置重新加载")
         self._reload_config()
         
     async def ensure_bucket_exists(self) -> bool:
@@ -215,9 +218,7 @@ class MinioService:
 
     async def get_file_url(self, object_name: str, expiry: int = 3600) -> Optional[str]:
         """获取文件的预签名URL"""
-        print(f"DEBUG: get_file_url 调用 - object_name: {object_name}, expiry: {expiry}")
-        print(f"DEBUG: 当前public_client endpoint: {self.public_client._base_url.host}")
-        print(f"DEBUG: 当前bucket_name: {self.bucket_name}")
+        logger.debug(f"获取文件预签名URL - object_name: {object_name}, expiry: {expiry}")
         
         def _get_url():
             try:
@@ -228,13 +229,11 @@ class MinioService:
                     expires=timedelta(seconds=expiry)
                 )
                 
-                print(f"DEBUG: 生成的预签名URL: {url}")
-                # 直接返回预签名URL，不进行验证
-                # 因为验证可能因为请求头等问题失败，但URL本身是有效的
+                logger.debug(f"成功生成预签名URL: {object_name}")
                 return url
-                    
+
             except S3Error as e:
-                print(f"✗ 获取URL失败: {e}")
+                logger.error(f"获取预签名URL失败: {e}")
                 return None
         
         return await asyncio.get_event_loop().run_in_executor(
@@ -257,20 +256,18 @@ class MinioService:
     
     async def file_exists(self, object_name: str) -> bool:
         """检查文件是否存在"""
-        print(f"DEBUG: 检查文件是否存在 - 对象名称: {object_name}, 存储桶: {self.bucket_name}")
         def _exists():
             try:
                 stat = self.internal_client.stat_object(self.bucket_name, object_name)
-                print(f"DEBUG: 文件存在 - 对象名称: {object_name}, 大小: {stat.size}")
+                logger.debug(f"文件存在 - 对象名称: {object_name}, 大小: {stat.size}")
                 return True
             except S3Error as e:
-                print(f"DEBUG: 文件不存在或访问失败 - 对象名称: {object_name}, 错误: {e}")
+                logger.debug(f"文件不存在或访问失败 - 对象名称: {object_name}, 错误: {e}")
                 return False
-        
+
         result = await asyncio.get_event_loop().run_in_executor(
             self.executor, _exists
         )
-        print(f"DEBUG: 文件存在性检查结果 - 对象名称: {object_name}, 结果: {result}")
         return result
     
     def generate_object_name(self, user_id: int, project_id: int, filename: str) -> str:
@@ -371,6 +368,4 @@ class MinioService:
 
 # 全局实例
 from app.core.config import settings
-print(f"DEBUG: MinIO服务初始化时的minio_public_endpoint: {settings.minio_public_endpoint}")
 minio_service = MinioService()
-print(f"DEBUG: MinIO服务初始化完成，public_client endpoint: {minio_service.public_client._base_url.host}")

@@ -261,7 +261,7 @@ class SystemConfigService:
 
                 setattr(settings, settings_attr, converted_value)
         
-        print(f"DEBUG: 更新后settings.minio_public_endpoint: {settings.minio_public_endpoint}")
+        # debug日志已移除，使用proper logging
     
     @staticmethod
     def get_configurable_items() -> List[Dict[str, str]]:
