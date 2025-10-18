@@ -417,6 +417,7 @@ class AsrTestResponse(BaseModel):
 async def test_asr_service(
     file: UploadFile = File(...),
     model_type: str = Form("whisper"),
+    asr_api_key: str = Form(None),
     db: Session = Depends(get_db),
     current_user = Depends(get_current_active_user)
 ):
@@ -426,12 +427,15 @@ async def test_asr_service(
         
         # 获取数据库中的配置
         db_configs = await SystemConfigService.get_all_configs(db)
-        
+
         # 获取ASR服务配置
         asr_service_url = db_configs.get("asr_service_url", settings.asr_service_url)
         asr_model_type = db_configs.get("asr_model_type", getattr(settings, "asr_model_type", "whisper"))
-        
-        logger.info(f"ASR配置: url={asr_service_url}, model_type={asr_model_type}")
+
+        # API密钥优先使用传递的参数，如果没有则使用数据库配置
+        final_asr_api_key = asr_api_key or db_configs.get("asr_api_key", getattr(settings, "asr_api_key", None))
+
+        logger.info(f"ASR配置: url={asr_service_url}, model_type={asr_model_type}, has_api_key={bool(final_asr_api_key)}")
         
         # 根据模型类型确定服务URL和端点
         if model_type == "whisper":
@@ -462,18 +466,23 @@ async def test_asr_service(
         file_content = await file.read()
         logger.info(f"文件大小: {len(file_content)} bytes")
         
+        # 准备请求头
+        headers = {}
+        if final_asr_api_key:
+            headers['Authorization'] = f'Bearer {final_asr_api_key}'
+
         # 使用aiohttp发送请求
         async with aiohttp.ClientSession() as session:
             # 准备请求数据
             data = aiohttp.FormData()
             data.add_field('file', file_content, filename=file.filename, content_type=file.content_type)
-            
+
             # 添加参数
             for key, value in params.items():
                 data.add_field(key, str(value))
-            
+
             try:
-                async with session.post(endpoint, data=data, timeout=aiohttp.ClientTimeout(total=300)) as response:
+                async with session.post(endpoint, data=data, headers=headers, timeout=aiohttp.ClientTimeout(total=300)) as response:
                     logger.info(f"ASR服务响应状态: {response.status}")
                     
                     if response.status == 200:
