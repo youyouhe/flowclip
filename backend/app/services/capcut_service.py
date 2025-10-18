@@ -442,7 +442,127 @@ class CapCutService:
                     time.sleep(2 ** attempt)
                 else:
                     raise Exception(f"添加字幕失败: {str(e)}")
-    
+
+    async def query_draft_status(self, task_id: str, max_retries: int = 3) -> Dict[str, Any]:
+        """查询草稿状态"""
+        for attempt in range(max_retries):
+            try:
+                logger.info(f"查询草稿状态 - 任务ID: {task_id} (尝试 {attempt + 1}/{max_retries})")
+                # 准备请求头
+                headers = {"Content-Type": "application/json"}
+                if self.api_key:
+                    headers["X-API-KEY"] = self.api_key
+
+                response = requests.post(
+                    f"{self.base_url}/query_draft_status",
+                    json={"task_id": task_id},
+                    headers=headers,
+                    timeout=30
+                )
+                response.raise_for_status()
+                result = response.json()
+                logger.info(f"草稿状态查询成功: {result}")
+                return result
+            except requests.exceptions.Timeout:
+                logger.warning(f"查询草稿状态超时 (尝试 {attempt + 1}/{max_retries})")
+                if attempt < max_retries - 1:
+                    time.sleep(2 ** attempt)
+                else:
+                    raise Exception("查询草稿状态超时")
+            except requests.exceptions.ConnectionError as e:
+                logger.error(f"查询草稿状态连接错误 (尝试 {attempt + 1}/{max_retries}): {str(e)}")
+                if attempt < max_retries - 1:
+                    time.sleep(2 ** attempt)
+                else:
+                    raise Exception(f"无法连接到CapCut服务: {str(e)}")
+            except requests.exceptions.RequestException as e:
+                logger.error(f"查询草稿状态请求错误 (尝试 {attempt + 1}/{max_retries}): {str(e)}")
+                if attempt < max_retries - 1:
+                    time.sleep(2 ** attempt)
+                else:
+                    raise Exception(f"查询草稿状态失败: {str(e)}")
+            except json.JSONDecodeError as e:
+                logger.error(f"解析草稿状态响应JSON失败: {str(e)}")
+                raise Exception(f"解析草稿状态响应失败: {str(e)}")
+            except Exception as e:
+                logger.error(f"查询草稿状态未知错误: {str(e)}")
+                if attempt < max_retries - 1:
+                    time.sleep(2 ** attempt)
+                else:
+                    raise Exception(f"查询草稿状态失败: {str(e)}")
+
+    async def save_draft_and_wait_result(self, draft_id: str, draft_folder: str, timeout: int = 300, poll_interval: int = 3) -> Dict[str, Any]:
+        """异步保存草稿并等待最终结果"""
+        logger.info(f"开始异步保存草稿 {draft_id} 并等待结果")
+
+        # 1. 提交保存任务
+        save_result = await self.save_draft(draft_id, draft_folder)
+
+        if not save_result.get("success"):
+            raise Exception(f"提交保存任务失败: {save_result.get('error', '未知错误')}")
+
+        # 检查是否已经包含draft_url（向后兼容）
+        if "output" in save_result and "draft_url" in save_result["output"] and save_result["output"]["draft_url"]:
+            logger.info(f"草稿保存成功（同步模式）: {save_result['output']['draft_url']}")
+            return {
+                "success": True,
+                "draft_url": save_result["output"]["draft_url"],
+                "task_id": None
+            }
+
+        # 2. 异步模式 - 提取task_id并轮询
+        task_info = save_result.get("output", {})
+        task_id = task_info.get("task_id")
+
+        if not task_id:
+            raise Exception(f"保存任务返回异步响应但缺少task_id: {save_result}")
+
+        logger.info(f"任务已提交到队列，开始轮询 - 任务ID: {task_id}")
+
+        # 3. 轮询查询状态
+        import time
+        start_time = time.time()
+
+        while time.time() - start_time < timeout:
+            try:
+                status_result = await self.query_draft_status(task_id)
+
+                if not status_result.get("success"):
+                    logger.warning(f"查询状态失败，继续轮询: {status_result.get('error', '未知错误')}")
+                    time.sleep(poll_interval)
+                    continue
+
+                status_info = status_result.get("output", {})
+                status = status_info.get("status")
+                progress = status_info.get("progress", 0)
+                message = status_info.get("message", "")
+
+                logger.info(f"任务状态: {status}, 进度: {progress}%, 消息: {message}")
+
+                # 4. 检查是否完成
+                if status == "completed":
+                    draft_url = status_info.get("draft_url")
+                    if not draft_url:
+                        raise Exception(f"任务完成但缺少draft_url: {status_result}")
+
+                    logger.info(f"任务完成! Draft URL: {draft_url}")
+                    return {
+                        "success": True,
+                        "draft_url": draft_url,
+                        "task_id": task_id
+                    }
+                elif status == "failed":
+                    error_msg = status_info.get("message", "任务失败")
+                    raise Exception(f"CapCut任务失败: {error_msg}")
+
+                time.sleep(poll_interval)
+
+            except Exception as e:
+                logger.error(f"轮询过程中出错: {e}")
+                time.sleep(poll_interval)
+
+        raise Exception(f"任务超时 ({timeout}秒) - 任务ID: {task_id}")
+
     async def save_draft(self, draft_id: str, draft_folder: str, max_retries: int = 3) -> Dict[str, Any]:
         """保存草稿"""
         for attempt in range(max_retries):

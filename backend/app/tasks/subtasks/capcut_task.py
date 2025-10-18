@@ -876,43 +876,47 @@ def export_slice_to_capcut(self, slice_id: int, draft_folder: str, user_id: int 
             _update_task_status(celery_task_id, ProcessingTaskStatus.RUNNING, 90, "保存草稿")
             self.update_state(state='PROGRESS', meta={'progress': 90, 'stage': ProcessingStage.CAPCUT_EXPORT, 'message': '保存草稿'})
             
-            # 保存草稿
+            # 保存草稿（异步轮询）
             try:
-                save_result = asyncio.run(capcut_service.save_draft(
+                print(f"DEBUG: 开始异步保存草稿并等待结果")
+                _update_task_status(celery_task_id, ProcessingTaskStatus.RUNNING, 90, "保存草稿并等待结果")
+                self.update_state(state='PROGRESS', meta={'progress': 90, 'stage': ProcessingStage.CAPCUT_EXPORT, 'message': '保存草稿并等待结果'})
+
+                save_result = asyncio.run(capcut_service.save_draft_and_wait_result(
                     draft_id=draft_id,
                     draft_folder=draft_folder,
-                    max_retries=3
+                    timeout=300,  # 5分钟超时
+                    poll_interval=3   # 每3秒查询一次
                 ))
-                
-                # 解析CapCut服务返回的数据结构
-                if save_result.get("success") and save_result.get("output"):
-                    draft_url = save_result["output"].get("draft_url")
-                    # 检查draft_url是否存在且非空
-                    if not draft_url or draft_url == "":
-                        # 如果draft_url为空，记录警告但不抛出异常
-                        print(f"警告: 返回的draft_url为空: {save_result}")
-                        draft_url = None
+
+                if save_result.get("success"):
+                    draft_url = save_result.get("draft_url")
+                    print(f"草稿保存成功: {draft_url}")
+
+                    # 更新切片的CapCut导出状态
+                    slice_obj.capcut_draft_url = draft_url
+                    slice_obj.capcut_status = "completed"
+                    db.commit()
+
+                    print(f"DEBUG: CapCut导出任务完成 - 切片ID: {slice_id}")
+                    _update_task_status(celery_task_id, ProcessingTaskStatus.SUCCESS, 100, "CapCut导出完成")
+                    self.update_state(state='SUCCESS', meta={'progress': 100, 'stage': ProcessingStage.CAPCUT_EXPORT, 'message': 'CapCut导出完成'})
+
+                    return {
+                        "success": True,
+                        "message": "导出成功",
+                        "draft_url": draft_url,
+                        "slice_id": slice_id
+                    }
                 else:
-                    raise Exception(f"保存草稿失败: 服务返回错误: {save_result}")
-                
-                print(f"草稿保存成功: {draft_url}")
-                # 更新切片的CapCut导出状态
-                slice_obj.capcut_draft_url = draft_url
-                slice_obj.capcut_status = "completed"
-                db.commit()
-                
-                print(f"DEBUG: CapCut导出任务完成 - 切片ID: {slice_id}")
-                _update_task_status(celery_task_id, ProcessingTaskStatus.SUCCESS, 100, "CapCut导出完成")
-                self.update_state(state='SUCCESS', meta={'progress': 100, 'stage': ProcessingStage.CAPCUT_EXPORT, 'message': 'CapCut导出完成'})
-                
-                return {
-                    "success": True,
-                    "message": "导出成功",
-                    "draft_url": draft_url,
-                    "slice_id": slice_id
-                }
+                    raise Exception(f"保存草稿失败: {save_result.get('error', '未知错误')}")
+
             except Exception as e:
                 print(f"保存草稿失败: {e}")
+                # 更新切片状态为失败
+                slice_obj.capcut_status = "failed"
+                slice_obj.capcut_error_message = str(e)
+                db.commit()
                 raise Exception(f"保存草稿失败: {e}")
             
     except Exception as e:
