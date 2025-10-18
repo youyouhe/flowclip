@@ -466,11 +466,6 @@ async def test_asr_service(
         file_content = await file.read()
         logger.info(f"文件大小: {len(file_content)} bytes")
         
-        # 准备请求头
-        headers = {}
-        if final_asr_api_key:
-            headers['Authorization'] = f'Bearer {final_asr_api_key}'
-
         # 使用aiohttp发送请求
         async with aiohttp.ClientSession() as session:
             # 准备请求数据
@@ -480,6 +475,19 @@ async def test_asr_service(
             # 添加参数
             for key, value in params.items():
                 data.add_field(key, str(value))
+
+            # 尝试多种API密钥传递方式
+            if final_asr_api_key:
+                # 方式1: 作为表单字段添加API密钥
+                data.add_field('api_key', final_asr_api_key)
+                logger.info(f"添加API密钥到表单数据")
+
+            # 准备请求头（同时尝试Authorization头）
+            headers = {}
+            if final_asr_api_key:
+                headers['Authorization'] = f'Bearer {final_asr_api_key}'
+                headers['X-API-Key'] = final_asr_api_key  # 尝试另一种常见的API密钥头
+                logger.info(f"添加API密钥到请求头: Authorization and X-API-Key")
 
             try:
                 async with session.post(endpoint, data=data, headers=headers, timeout=aiohttp.ClientTimeout(total=300)) as response:
