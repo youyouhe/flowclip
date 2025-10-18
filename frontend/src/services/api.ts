@@ -285,13 +285,18 @@ export const asrAPI = {
   getStatus: () =>
     api.get('/asr/status'),
   // 测试ASR服务 (通过后端代理)
-  testAsrService: async (file: File, modelType: string = 'whisper') => {
+  testAsrService: async (file: File, modelType: string = 'whisper', asrApiKey?: string) => {
     const formData = new FormData();
     formData.append('file', file);
     formData.append('model_type', modelType);
-    
-    console.log('🔧 Testing ASR service through backend proxy:', { modelType });
-    
+
+    // 如果提供了asr_api_key，添加到表单数据中
+    if (asrApiKey) {
+      formData.append('asr_api_key', asrApiKey);
+    }
+
+    console.log('🔧 Testing ASR service through backend proxy:', { modelType, hasApiKey: !!asrApiKey });
+
     try {
       const response = await api.post('/system/test-asr', formData, {
         headers: {
@@ -299,7 +304,7 @@ export const asrAPI = {
         },
         timeout: 300000, // 5分钟超时
       });
-      
+
       console.log('🔧 ASR service test response:', response.data);
       return response;
     } catch (error) {

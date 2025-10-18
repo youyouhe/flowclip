@@ -146,12 +146,18 @@ const SystemConfig: React.FC = () => {
       setAsrTesting(true);
       setAsrTestResult(null);
 
-      // 获取当前表单中的ASR模型类型配置
+      // 获取当前表单中的ASR相关配置
       const formValues = form.getFieldsValue();
       const asrModelType = formValues.asr_model_type || 'whisper';
+      const asrApiKey = formValues.asr_api_key;
 
-      // 调用后端代理API进行测试
-      const response = await asrAPI.testAsrService(asrTestFile, asrModelType);
+      // 检查是否配置了ASR API密钥
+      if (!asrApiKey) {
+        message.warning('未配置ASR API密钥，测试可能会失败');
+      }
+
+      // 调用后端代理API进行测试，传递API密钥
+      const response = await asrAPI.testAsrService(asrTestFile, asrModelType, asrApiKey);
 
       // 处理响应结果
       if (response.data.success) {
