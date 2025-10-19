@@ -15,7 +15,7 @@ from app.schemas.video import VideoResponse, VideoDownloadRequest, VideoDownload
 from app.services.youtube_downloader_minio import downloader_minio
 from app.services.minio_client import minio_service
 from app.services.state_manager import get_state_manager
-from app.core.constants import ProcessingTaskType
+from app.core.constants import ProcessingTaskType, MAX_VIDEO_DURATION_SECONDS
 from app.core.celery import celery_app
 
 router = APIRouter()
@@ -134,6 +134,19 @@ async def _process_video_download(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"无法获取视频信息: {str(e)}"
+        )
+
+    # 检查视频时长限制
+    duration_seconds = video_info.get('duration')
+    if duration_seconds and duration_seconds > MAX_VIDEO_DURATION_SECONDS:
+        # 清理cookie文件
+        if cookies_path and os.path.exists(cookies_path):
+            os.remove(cookies_path)
+
+        duration_minutes = duration_seconds / 60
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"视频时长超过系统限制。当前视频时长: {duration_minutes:.1f}分钟，系统最大允许: {MAX_VIDEO_DURATION_SECONDS // 60}分钟。为防止系统崩溃，只允许下载150分钟以内的视频。"
         )
     
     # 创建视频记录
@@ -255,7 +268,7 @@ async def download_video(
     
     Raises:
         HTTPException:
-            - 400: 无效的视频URL或文件类型
+            - 400: 无效的视频URL、文件类型或视频时长超过限制(150分钟)
             - 404: 项目不存在
             - 422: 请求参数验证失败
     
@@ -340,7 +353,7 @@ async def download_video_json(
     
     Raises:
         HTTPException:
-            - 400: 无效的视频URL、cookies格式或文件类型
+            - 400: 无效的视频URL、cookies格式、文件类型或视频时长超过限制(150分钟)
             - 404: 项目不存在
             - 422: 请求参数验证失败
     

@@ -13,7 +13,7 @@ from sqlalchemy import desc
 from app.services.youtube_downloader_minio import downloader_minio
 from app.services.minio_client import minio_service
 from app.services.state_manager import get_state_manager
-from app.core.constants import ProcessingTaskType, ProcessingTaskStatus, ProcessingStage
+from app.core.constants import ProcessingTaskType, ProcessingTaskStatus, ProcessingStage, MAX_VIDEO_DURATION_SECONDS
 from app.core.database import get_sync_db
 from app.models import Video, ProcessingTask
 
@@ -60,7 +60,46 @@ def download_video(self, video_url: str, project_id: int, user_id: int, quality:
         
         _update_task_status(celery_task_id, ProcessingTaskStatus.RUNNING, 20, "正在获取视频信息")
         self.update_state(state='PROGRESS', meta={'progress': 20, 'stage': ProcessingStage.DOWNLOAD, 'message': '正在获取视频信息'})
-        
+
+        # 获取视频信息并验证时长限制
+        try:
+            import asyncio
+            video_info = asyncio.run(
+                downloader_minio.get_video_info(video_url, cookies_path)
+            )
+
+            # 检查视频时长限制
+            duration_seconds = video_info.get('duration')
+            if duration_seconds and duration_seconds > MAX_VIDEO_DURATION_SECONDS:
+                duration_minutes = duration_seconds / 60
+                error_msg = f"视频时长超过系统限制。当前视频时长: {duration_minutes:.1f}分钟，系统最大允许: {MAX_VIDEO_DURATION_SECONDS // 60}分钟。"
+                print(error_msg)
+
+                # 更新视频记录为失败状态
+                try:
+                    with get_sync_db() as db:
+                        if video_id:
+                            video = db.query(Video).filter(Video.id == video_id).first()
+                            if video:
+                                video.status = "failed"
+                                video.download_progress = 0.0
+                                video.processing_message = error_msg
+                                db.commit()
+                                print(f"已更新视频记录为失败状态: video_id={video.id}")
+                except Exception as db_error:
+                    print(f"更新视频失败状态失败: {db_error}")
+
+                _update_task_status(celery_task_id, ProcessingTaskStatus.FAILURE, 0, error_msg)
+                raise Exception(error_msg)
+
+            print(f"视频时长验证通过: {duration_seconds}秒 ({duration_seconds/60:.1f}分钟)")
+
+        except Exception as e:
+            if "视频时长超过系统限制" in str(e):
+                # 重新抛出时长限制异常
+                raise e
+            print(f"获取视频信息失败，继续执行下载: {e}")
+
         # 确保有视频ID
         if video_id is None:
             # 如果没有传入video_id，尝试通过处理任务记录查找

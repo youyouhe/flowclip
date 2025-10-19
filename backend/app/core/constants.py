@@ -93,3 +93,7 @@ STATUS_COLORS = {
     ProcessingTaskStatus.RETRY: "#faad14",
     ProcessingTaskStatus.REVOKED: "#8c8c8c",
 }
+
+# 系统限制常量
+MAX_VIDEO_DURATION_MINUTES = 150  # 最大允许视频时长（分钟）
+MAX_VIDEO_DURATION_SECONDS = MAX_VIDEO_DURATION_MINUTES * 60  # 转换为秒数
