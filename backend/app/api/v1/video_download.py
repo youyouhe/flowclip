@@ -126,8 +126,11 @@ async def _process_video_download(
 
     # 获取视频信息
     try:
+        logger.info(f"开始获取视频信息: URL={url}, cookies_path={cookies_path}")
         video_info = await downloader_minio.get_video_info(url, cookies_path)
+        logger.info(f"视频信息获取成功: title={video_info.get('title')}, duration={video_info.get('duration')}秒")
     except Exception as e:
+        logger.error(f"获取视频信息失败: {str(e)}", exc_info=True)
         # 清理cookie文件
         if cookies_path and os.path.exists(cookies_path):
             os.remove(cookies_path)
@@ -138,16 +141,23 @@ async def _process_video_download(
 
     # 检查视频时长限制
     duration_seconds = video_info.get('duration')
+    logger.info(f"检查视频时长限制: duration={duration_seconds}秒, max_limit={MAX_VIDEO_DURATION_SECONDS}秒")
+
     if duration_seconds and duration_seconds > MAX_VIDEO_DURATION_SECONDS:
+        logger.warning(f"视频时长超过限制: {duration_seconds}秒 > {MAX_VIDEO_DURATION_SECONDS}秒")
         # 清理cookie文件
         if cookies_path and os.path.exists(cookies_path):
             os.remove(cookies_path)
 
         duration_minutes = duration_seconds / 60
+        error_msg = f"视频时长超过系统限制。当前视频时长: {duration_minutes:.1f}分钟，系统最大允许: {MAX_VIDEO_DURATION_SECONDS // 60}分钟。为防止系统崩溃，只允许下载150分钟以内的视频。"
+        logger.error(f"时长限制错误: {error_msg}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"视频时长超过系统限制。当前视频时长: {duration_minutes:.1f}分钟，系统最大允许: {MAX_VIDEO_DURATION_SECONDS // 60}分钟。为防止系统崩溃，只允许下载150分钟以内的视频。"
+            detail=error_msg
         )
+
+    logger.info("视频时长检查通过")
     
     # 创建视频记录
     new_video = Video(
