@@ -974,7 +974,7 @@ show_completion_info() {
     echo "  ✓ MySQL 8.0 (端口: 3306)"
     echo "  ✓ Redis (端口: 6379)"
     echo "  ✓ MinIO (API: 9000, Console: 9001)"
-    echo "  ✓ Node.js 18.x + PM2"
+    echo "  ✓ Node.js 22.x + PM2"
     echo "  ✓ Python 3.11"
     echo "  ✓ FFmpeg + 视频处理库"
     echo
@@ -1040,11 +1040,11 @@ main() {
     # 安装项目依赖
     install_system_deps
 
-    # 创建系统服务配置
-    create_system_services
-
     # 创建专用用户
     create_flowclip_user
+
+    # 创建系统服务配置
+    create_system_services
 
     # 设置用户环境
     project_dir=$(setup_user_environment)
