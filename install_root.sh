@@ -603,9 +603,17 @@ install_redis() {
         sed -i 's/#maxmemory 1gb/maxmemory 1gb/' /etc/redis/redis.conf
         sed -i 's/#maxmemory-policy allkeys-lru/maxmemory-policy allkeys-lru/' /etc/redis/redis.conf
 
-        # 启动并启用 Redis
-        systemctl restart redis.service
-        systemctl enable redis
+        # 启动并启用 Redis (处理服务名差异)
+        if systemctl restart redis-server.service; then
+            log_info "Redis 服务启动成功 (redis-server)"
+            systemctl enable redis-server.service
+        elif systemctl restart redis.service; then
+            log_info "Redis 服务启动成功 (redis)"
+            systemctl enable redis.service
+        else
+            log_error "Redis 服务启动失败"
+            return 1
+        fi
 
         log_success "Redis 安装配置完成"
 
