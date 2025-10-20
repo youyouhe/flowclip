@@ -1060,10 +1060,10 @@ verify_all_services() {
 
     if [[ -f "$credentials_file" ]]; then
         log_info "从凭据文件读取密码: $credentials_file"
-        mysql_root_password=$(grep "MySQL Root密码:" "$credentials_file" | awk '{print $5}')
-        mysql_app_password=$(grep "应用数据库密码:" "$credentials_file" | awk '{print $5}')
-        minio_access_key=$(grep "访问密钥:" "$credentials_file" | awk '{print $4}')
-        minio_secret_key=$(grep "秘密密钥:" "$credentials_file" | awk '{print $4}')
+        mysql_root_password=$(grep "MySQL Root密码:" "$credentials_file" | awk '{print $4}')
+        mysql_app_password=$(grep "应用数据库密码:" "$credentials_file" | awk '{print $3}')
+        minio_access_key=$(grep "访问密钥:" "$credentials_file" | awk '{print $3}')
+        minio_secret_key=$(grep "秘密密钥:" "$credentials_file" | awk '{print $3}')
 
         log_info "密码读取完成 - Root:${#mysql_root_password}, App:${#mysql_app_password}"
     else
