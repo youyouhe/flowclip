@@ -33,6 +33,7 @@ APP_SECRET_KEY=$(generate_password 32)
 
 # 保存密码到文件
 PASSWORD_FILE="/root/flowclip_credentials.txt"
+export PASSWORD_FILE  # 导出变量确保子进程可访问
 save_credentials() {
     cat > "$PASSWORD_FILE" << EOF
 ========================================
@@ -1054,13 +1055,20 @@ verify_all_services() {
     # 从凭据文件读取密码（确保使用正确的密码）
     local mysql_root_password mysql_app_password minio_access_key minio_secret_key
 
-    if [[ -f "$PASSWORD_FILE" ]]; then
-        mysql_root_password=$(grep "MySQL Root密码:" "$PASSWORD_FILE" | awk '{print $4}')
-        mysql_app_password=$(grep "应用数据库密码:" "$PASSWORD_FILE" | awk '{print $4}')
-        minio_access_key=$(grep "访问密钥:" "$PASSWORD_FILE" | awk '{print $3}')
-        minio_secret_key=$(grep "秘密密钥:" "$PASSWORD_FILE" | awk '{print $3}')
+    # 使用绝对路径避免变量作用域问题
+    local credentials_file="/root/flowclip_credentials.txt"
+
+    if [[ -f "$credentials_file" ]]; then
+        log_info "从凭据文件读取密码: $credentials_file"
+        mysql_root_password=$(grep "MySQL Root密码:" "$credentials_file" | awk '{print $4}')
+        mysql_app_password=$(grep "应用数据库密码:" "$credentials_file" | awk '{print $4}')
+        minio_access_key=$(grep "访问密钥:" "$credentials_file" | awk '{print $3}')
+        minio_secret_key=$(grep "秘密密钥:" "$credentials_file" | awk '{print $3}')
+
+        log_info "密码读取完成 - Root:${#mysql_root_password}, App:${#mysql_app_password}"
     else
-        log_warning "凭据文件不存在，使用全局变量"
+        log_warning "凭据文件不存在: $credentials_file"
+        log_info "尝试使用全局变量..."
         mysql_root_password="$MYSQL_ROOT_PASSWORD"
         mysql_app_password="$MYSQL_APP_PASSWORD"
         minio_access_key="$MINIO_ACCESS_KEY"
