@@ -73,11 +73,22 @@ check_system_environment() {
 
     # 检查磁盘空间
     available_space=$(df / | awk 'NR==2 {print $4}')
-    required_space=104857600  # 100GB in KB
+    required_space=31457280  # 30GB in KB (约30GB)
+    recommended_space=52428800  # 50GB in KB (推荐50GB)
 
     if [[ $available_space -lt $required_space ]]; then
-        log_error "磁盘空间不足，需要至少100GB可用空间，当前可用: $(df -h / | awk 'NR==2{print $4}')"
+        log_error "磁盘空间不足，需要至少30GB可用空间，当前可用: $(df -h / | awk 'NR==2{print $4}')"
         exit 1
+    elif [[ $available_space -lt $recommended_space ]]; then
+        log_warning "磁盘空间较少，推荐至少50GB，当前可用: $(df -h / | awk 'NR==2{print $4}')"
+        log_warning "空间可能影响大文件处理和长期运行"
+        read -p "是否继续安装? (y/N): " -n 1 -r
+        echo
+        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+            log_info "安装已取消"
+            exit 0
+        fi
+        log_success "磁盘空间检查通过 (可用: $(df -h / | awk 'NR==2{print $4}')"
     else
         log_success "磁盘空间检查通过 (可用: $(df -h / | awk 'NR==2{print $4}')"
     fi
