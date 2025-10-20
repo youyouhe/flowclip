@@ -1063,14 +1063,24 @@ verify_all_services() {
             log_warning "⚠ MinIO控制台可能需要更多时间启动"
         fi
 
-        # 测试MinIO认证（简单检查）
-        local auth_test=$(curl -s -w "%{http_code}" -o /dev/null "$minio_endpoint" -H "Authorization: AWS4-HMAC-SHA256 Credential=$MINIO_ACCESS_KEY")
-        if [[ "$auth_test" == "403" ]]; then
-            log_success "✓ MinIO认证配置正确"
-        elif [[ "$auth_test" == "200" ]]; then
-            log_success "✓ MinIO API可访问"
+        # 测试MinIO认证（检查API可访问性）
+        local api_test=$(curl -s -w "%{http_code}" -o /dev/null "$minio_endpoint/minio/health/live")
+        if [[ "$api_test" == "200" ]]; then
+            log_success "✓ MinIO API健康检查通过"
+
+            # 尝试列出存储桶（简单的认证测试）
+            local bucket_test=$(curl -s -w "%{http_code}" -o /dev/null "$minio_endpoint/youtube-videos" \
+                -H "Host: localhost:9000" \
+                -u "$MINIO_ACCESS_KEY:$MINIO_SECRET_KEY" \
+                2>/dev/null)
+
+            if [[ "$bucket_test" == "200" || "$bucket_test" == "404" ]]; then
+                log_success "✓ MinIO认证配置正确 (200:桶存在 或 404:桶不存在但认证成功)"
+            else
+                log_warning "⚠ MinIO存储桶访问测试: HTTP $bucket_test"
+            fi
         else
-            log_warning "⚠ MinIO认证验证状态: $auth_test"
+            log_warning "⚠ MinIO API健康检查失败: HTTP $api_test"
         fi
     else
         log_error "✗ MinIO API服务不可访问"
