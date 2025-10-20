@@ -1051,30 +1051,26 @@ verify_all_services() {
         log_warning "⚠ MySQL Root密码为空，跳过验证"
     fi
 
-        # 验证应用数据库
-        if [[ -n "$mysql_app_password" ]]; then
-            # 使用mysql_config_editor避免命令行显示密码
-            echo "[client]" > /tmp/mysql_temp.cnf
-            echo "user=youtube_user" >> /tmp/mysql_temp.cnf
-            echo "password=$mysql_app_password" >> /tmp/mysql_temp.cnf
-            chmod 600 /tmp/mysql_temp.cnf
+    # 验证应用数据库
+    if [[ -n "$mysql_app_password" ]]; then
+        # 使用mysql_config_editor避免命令行显示密码
+        echo "[client]" > /tmp/mysql_temp.cnf
+        echo "user=youtube_user" >> /tmp/mysql_temp.cnf
+        echo "password=$mysql_app_password" >> /tmp/mysql_temp.cnf
+        chmod 600 /tmp/mysql_temp.cnf
 
-            if mysql --defaults-extra-file=/tmp/mysql_temp.cnf -e "USE youtube_slicer; SELECT 'Database connection successful' as status;" &>/dev/null; then
-                log_success "✓ MySQL应用数据库连接成功"
-            else
-                log_error "✗ MySQL应用数据库连接失败"
-                log_info "调试信息: 使用密码长度 ${#mysql_app_password}"
-                failed_services+=("MySQL应用数据库")
-            fi
-            rm -f /tmp/mysql_temp.cnf
+        if mysql --defaults-extra-file=/tmp/mysql_temp.cnf -e "USE youtube_slicer; SELECT 'Database connection successful' as status;" &>/dev/null; then
+            log_success "✓ MySQL应用数据库连接成功"
         else
-            log_warning "⚠ MySQL应用数据库密码为空，跳过验证"
-            log_info "可以通过以下命令手动验证："
-            log_info "mysql -uyoutube_user -p\$(grep '应用数据库密码:' $PASSWORD_FILE | awk '{print \$4}') youtube_slicer"
+            log_error "✗ MySQL应用数据库连接失败"
+            log_info "调试信息: 使用密码长度 ${#mysql_app_password}"
+            failed_services+=("MySQL应用数据库")
         fi
+        rm -f /tmp/mysql_temp.cnf
     else
-        log_error "✗ MySQL Root用户连接失败"
-        failed_services+=("MySQL Root")
+        log_warning "⚠ MySQL应用数据库密码为空，跳过验证"
+        log_info "可以通过以下命令手动验证："
+        log_info "mysql -uyoutube_user -p\$(grep '应用数据库密码:' $PASSWORD_FILE | awk '{print \$4}') youtube_slicer"
     fi
 
     # 验证Redis服务
