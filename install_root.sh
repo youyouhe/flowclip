@@ -731,11 +731,11 @@ EOF
 
 # 安装 Node.js
 install_nodejs() {
-    log_info "安装 Node.js 18.x..."
+    log_info "安装 Node.js 22.x..."
 
     if [[ "$OS" == *"Ubuntu"* ]] || [[ "$OS" == *"Debian"* ]]; then
         # 安装 NodeSource 仓库
-        curl -fsSL https://deb.nodesource.com/setup_18.x | bash -
+        curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
 
         # 安装 Node.js
         apt install -y nodejs
@@ -744,7 +744,7 @@ install_nodejs() {
 
     elif [[ "$OS" == *"CentOS"* ]] || [[ "$OS" == *"Red Hat"* ]]; then
         # 安装 NodeSource 仓库
-        curl -fsSL https://rpm.nodesource.com/setup_18.x | bash -
+        curl -fsSL https://rpm.nodesource.com/setup_22.x | bash -
 
         # 安装 Node.js
         if command -v dnf &> /dev/null; then
@@ -943,12 +943,22 @@ EOF
 create_system_services() {
     log_info "创建系统服务配置..."
 
+    # 确保用户存在
+    if ! id "$SERVICE_USER" &>/dev/null; then
+        log_error "用户 $SERVICE_USER 不存在，无法设置目录权限"
+        log_info "请确保用户创建步骤已完成"
+        return 1
+    fi
+
     # 创建媒体文件目录
     mkdir -p /opt/flowclip/media
     chown -R "$SERVICE_USER:$SERVICE_USER" /opt/flowclip
 
     # 创建 Flowclip 服务目录
     mkdir -p /etc/flowclip
+    chown -R "$SERVICE_USER:$SERVICE_USER" /etc/flowclip
+
+    log_success "系统服务配置创建完成"
 }
 
 # 显示安装完成信息
