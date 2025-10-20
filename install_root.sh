@@ -35,7 +35,105 @@ log_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
 
-# 检查当前用户权限
+# 检查系统环境
+check_system_environment() {
+    log_info "=== 系统环境检查 ==="
+
+    # 显示系统信息
+    log_info "系统信息:"
+    echo "  操作系统: $(cat /etc/os-release | grep PRETTY_NAME | cut -d'"' -f2 2>/dev/null || echo '未知')"
+    echo "  内核版本: $(uname -r)"
+    echo "  CPU核心: $(nproc)"
+    echo "  内存总量: $(free -h | awk 'NR==2{print $2}')"
+    echo "  可用内存: $(free -h | awk 'NR==2{print $7}')"
+    echo "  磁盘空间: $(df -h / | awk 'NR==2{print $4}') 可用"
+    echo "  当前用户: $(whoami)"
+
+    # 检查root权限
+    if [[ $EUID -ne 0 ]]; then
+        log_error "此脚本需要root权限运行"
+        log_info "请使用: sudo bash install_root.sh"
+        exit 1
+    fi
+    log_success "root权限检查通过"
+
+    # 检查网络连接
+    log_info "检查网络连接..."
+    if ping -c 1 google.com &> /dev/null; then
+        log_success "网络连接正常"
+    else
+        log_warning "网络连接可能有问题，建议检查网络设置"
+        read -p "是否继续安装? (y/N): " -n 1 -r
+        echo
+        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+            log_info "安装已取消"
+            exit 0
+        fi
+    fi
+
+    # 检查磁盘空间
+    available_space=$(df / | awk 'NR==2 {print $4}')
+    required_space=104857600  # 100GB in KB
+
+    if [[ $available_space -lt $required_space ]]; then
+        log_error "磁盘空间不足，需要至少100GB可用空间，当前可用: $(df -h / | awk 'NR==2{print $4}')"
+        exit 1
+    else
+        log_success "磁盘空间检查通过 (可用: $(df -h / | awk 'NR==2{print $4}')"
+    fi
+
+    # 检查内存
+    available_mem=$(free -m | awk 'NR==2{print $7}')
+    if [[ $available_mem -lt 4096 ]]; then
+        log_warning "可用内存不足4GB (当前: ${available_mem}MB)，可能影响安装和运行性能"
+        read -p "是否继续安装? (y/N): " -n 1 -r
+        echo
+        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+            log_info "安装已取消"
+            exit 0
+        fi
+    else
+        log_success "内存检查通过 (可用: ${available_mem}MB)"
+    fi
+
+    # 检查必要端口是否被占用
+    local ports_to_check=("3306" "6379" "9000" "9001")
+    local occupied_ports=()
+
+    for port in "${ports_to_check[@]}"; do
+        if netstat -tuln 2>/dev/null | grep -q ":$port "; then
+            occupied_ports+=("$port")
+        fi
+    done
+
+    if [[ ${#occupied_ports[@]} -gt 0 ]]; then
+        log_warning "以下端口已被占用: ${occupied_ports[*]}"
+        log_info "这些端口将被用于: MySQL(3306), Redis(6379), MinIO(9000,9001)"
+        read -p "是否继续安装? (y/N): " -n 1 -r
+        echo
+        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+            log_info "安装已取消"
+            exit 0
+        fi
+    else
+        log_success "端口检查通过 - 所有必要端口可用"
+    fi
+
+    # 检查是否为虚拟环境或容器
+    if [[ -f /.dockerenv ]]; then
+        log_warning "检测到Docker容器环境，不建议在容器内安装系统级服务"
+        read -p "是否继续安装? (y/N): " -n 1 -r
+        echo
+        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+            log_info "安装已取消"
+            exit 0
+        fi
+    fi
+
+    log_success "系统环境检查完成"
+}
+
+# 检查当前用户权限 (保持向后兼容)
 check_root() {
     if [[ $EUID -ne 0 ]]; then
         log_error "此脚本需要root权限运行"
@@ -682,9 +780,18 @@ main() {
     echo "    Flowclip 系统初始化脚本 (root)"
     echo "========================================"
     echo
+    echo "此脚本将安装以下组件："
+    echo "  • MySQL 8.0 数据库"
+    echo "  • Redis 缓存服务"
+    echo "  • MinIO 对象存储"
+    echo "  • Node.js 18.x 运行环境"
+    echo "  • Python 3.11 开发环境"
+    echo "  • FFmpeg 等媒体处理库"
+    echo "  • 系统依赖和工具"
+    echo
 
-    # 检查root权限
-    check_root
+    # 执行系统环境检查
+    check_system_environment
 
     # 检测操作系统
     detect_os
