@@ -1019,10 +1019,12 @@ verify_all_services() {
         log_success "✓ MySQL Root用户连接成功"
 
         # 验证应用数据库
-        if mysql -uyoutube_user -p"$MYSQL_APP_PASSWORD" -e "USE youtube_slicer; SELECT COUNT(*) FROM information_schema.tables;" &>/dev/null; then
+        if mysql -uyoutube_user -p"$MYSQL_APP_PASSWORD" -e "USE youtube_slicer; SELECT 'Database connection successful' as status;" &>/dev/null; then
             log_success "✓ MySQL应用数据库连接成功"
         else
             log_error "✗ MySQL应用数据库连接失败"
+            # 显示详细错误信息用于调试
+            mysql -uyoutube_user -p"$MYSQL_APP_PASSWORD" -e "USE youtube_slicer; SELECT 'Test connection' as status;" 2>&1 | head -3
             failed_services+=("MySQL应用数据库")
         fi
     else
