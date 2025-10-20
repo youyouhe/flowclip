@@ -95,14 +95,19 @@ check_system_environment() {
 
     # 检查内存
     available_mem=$(free -m | awk 'NR==2{print $7}')
-    if [[ $available_mem -lt 4096 ]]; then
-        log_warning "可用内存不足4GB (当前: ${available_mem}MB)，可能影响安装和运行性能"
+    if [[ $available_mem -lt 1024 ]]; then
+        log_error "可用内存不足1GB (当前: ${available_mem}MB)，无法正常安装和运行"
+        exit 1
+    elif [[ $available_mem -lt 2048 ]]; then
+        log_warning "可用内存较少 (当前: ${available_mem}MB)，建议至少2GB以获得更好性能"
+        log_info "当前配置可以运行，但处理大文件时可能较慢"
         read -p "是否继续安装? (y/N): " -n 1 -r
         echo
         if [[ ! $REPLY =~ ^[Yy]$ ]]; then
             log_info "安装已取消"
             exit 0
         fi
+        log_success "内存检查通过 (可用: ${available_mem}MB)"
     else
         log_success "内存检查通过 (可用: ${available_mem}MB)"
     fi
