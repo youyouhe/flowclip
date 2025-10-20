@@ -112,24 +112,97 @@ check_system_environment() {
         log_success "内存检查通过 (可用: ${available_mem}MB)"
     fi
 
-    # 检查必要端口是否被占用
+    # 检查必要端口是否被占用并自动处理
     local ports_to_check=("3306" "6379" "9000" "9001")
     local occupied_ports=()
+    local services_to_stop=()
 
     for port in "${ports_to_check[@]}"; do
         if netstat -tuln 2>/dev/null | grep -q ":$port "; then
             occupied_ports+=("$port")
+
+            # 检测对应的服务
+            case $port in
+                3306)
+                    if systemctl is-active --quiet mysql 2>/dev/null || systemctl is-active --quiet mysqld 2>/dev/null; then
+                        services_to_stop+=("MySQL (端口: $port)")
+                    fi
+                    ;;
+                6379)
+                    if systemctl is-active --quiet redis 2>/dev/null || systemctl is-active --quiet redis-server 2>/dev/null; then
+                        services_to_stop+=("Redis (端口: $port)")
+                    fi
+                    ;;
+                9000|9001)
+                    if systemctl is-active --quiet minio 2>/dev/null; then
+                        services_to_stop+=("MinIO (端口: $port)")
+                    fi
+                    ;;
+            esac
         fi
     done
 
     if [[ ${#occupied_ports[@]} -gt 0 ]]; then
-        log_warning "以下端口已被占用: ${occupied_ports[*]}"
-        log_info "这些端口将被用于: MySQL(3306), Redis(6379), MinIO(9000,9001)"
-        read -p "是否继续安装? (y/N): " -n 1 -r
-        echo
-        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-            log_info "安装已取消"
-            exit 0
+        log_info "检测到以下端口已被占用: ${occupied_ports[*]}"
+
+        if [[ ${#services_to_stop[@]} -gt 0 ]]; then
+            log_info "将停止以下相关服务以确保正确安装:"
+            for service in "${services_to_stop[@]}"; do
+                log_info "  • $service"
+            done
+
+            log_info "正在停止现有服务..."
+
+            # 停止MySQL服务
+            if systemctl is-active --quiet mysql 2>/dev/null; then
+                log_info "停止 MySQL 服务..."
+                systemctl stop mysql
+            elif systemctl is-active --quiet mysqld 2>/dev/null; then
+                log_info "停止 MySQL 服务 (mysqld)..."
+                systemctl stop mysqld
+            fi
+
+            # 停止Redis服务
+            if systemctl is-active --quiet redis 2>/dev/null; then
+                log_info "停止 Redis 服务..."
+                systemctl stop redis
+            elif systemctl is-active --quiet redis-server 2>/dev/null; then
+                log_info "停止 Redis 服务 (redis-server)..."
+                systemctl stop redis-server
+            fi
+
+            # 停止MinIO服务
+            if systemctl is-active --quiet minio 2>/dev/null; then
+                log_info "停止 MinIO 服务..."
+                systemctl stop minio
+            fi
+
+            # 等待服务完全停止
+            sleep 3
+
+            # 重新检查端口
+            local still_occupied=()
+            for port in "${occupied_ports[@]}"; do
+                if netstat -tuln 2>/dev/null | grep -q ":$port "; then
+                    still_occupied+=("$port")
+                fi
+            done
+
+            if [[ ${#still_occupied[@]} -eq 0 ]]; then
+                log_success "所有相关服务已停止，端口现在可用"
+            else
+                log_warning "以下端口仍被占用: ${still_occupied[*]}"
+                log_info "可能有其他进程在使用这些端口，但继续安装"
+            fi
+        else
+            log_warning "端口被占用但未检测到相关系统服务"
+            log_info "可能有其他应用程序在使用这些端口"
+            read -p "是否继续安装? (y/N): " -n 1 -r
+            echo
+            if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+                log_info "安装已取消"
+                exit 0
+            fi
         fi
     else
         log_success "端口检查通过 - 所有必要端口可用"
