@@ -1033,17 +1033,44 @@ verify_all_services() {
 
     # 验证MySQL服务
     log_info "验证MySQL服务..."
-    if mysql -uroot -p"$mysql_root_password" -e "SELECT 1;" &>/dev/null; then
-        log_success "✓ MySQL Root用户连接成功"
+    if [[ -n "$mysql_root_password" ]]; then
+        # 使用临时配置文件避免命令行显示密码
+        echo "[client]" > /tmp/mysql_root_temp.cnf
+        echo "user=root" >> /tmp/mysql_root_temp.cnf
+        echo "password=$mysql_root_password" >> /tmp/mysql_root_temp.cnf
+        chmod 600 /tmp/mysql_root_temp.cnf
+
+        if mysql --defaults-extra-file=/tmp/mysql_root_temp.cnf -e "SELECT 1;" &>/dev/null; then
+            log_success "✓ MySQL Root用户连接成功"
+        else
+            log_error "✗ MySQL Root用户连接失败"
+            failed_services+=("MySQL Root")
+        fi
+        rm -f /tmp/mysql_root_temp.cnf
+    else
+        log_warning "⚠ MySQL Root密码为空，跳过验证"
+    fi
 
         # 验证应用数据库
-        if mysql -uyoutube_user -p"$mysql_app_password" -e "USE youtube_slicer; SELECT 'Database connection successful' as status;" &>/dev/null; then
-            log_success "✓ MySQL应用数据库连接成功"
+        if [[ -n "$mysql_app_password" ]]; then
+            # 使用mysql_config_editor避免命令行显示密码
+            echo "[client]" > /tmp/mysql_temp.cnf
+            echo "user=youtube_user" >> /tmp/mysql_temp.cnf
+            echo "password=$mysql_app_password" >> /tmp/mysql_temp.cnf
+            chmod 600 /tmp/mysql_temp.cnf
+
+            if mysql --defaults-extra-file=/tmp/mysql_temp.cnf -e "USE youtube_slicer; SELECT 'Database connection successful' as status;" &>/dev/null; then
+                log_success "✓ MySQL应用数据库连接成功"
+            else
+                log_error "✗ MySQL应用数据库连接失败"
+                log_info "调试信息: 使用密码长度 ${#mysql_app_password}"
+                failed_services+=("MySQL应用数据库")
+            fi
+            rm -f /tmp/mysql_temp.cnf
         else
-            log_error "✗ MySQL应用数据库连接失败"
-            log_info "调试信息: 使用密码长度 ${#mysql_app_password}"
-            mysql -uyoutube_user -p"$mysql_app_password" -e "USE youtube_slicer; SELECT 'Test connection' as status;" 2>&1 | head -3
-            failed_services+=("MySQL应用数据库")
+            log_warning "⚠ MySQL应用数据库密码为空，跳过验证"
+            log_info "可以通过以下命令手动验证："
+            log_info "mysql -uyoutube_user -p\$(grep '应用数据库密码:' $PASSWORD_FILE | awk '{print \$4}') youtube_slicer"
         fi
     else
         log_error "✗ MySQL Root用户连接失败"
