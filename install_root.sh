@@ -578,25 +578,63 @@ install_mysql() {
 
         # 创建应用数据库和用户
         log_info "创建应用数据库和用户..."
-        if mysql -uroot -p"$MYSQL_ROOT_PASSWORD" -e "USE youtube_slicer; SELECT 1;" &>/dev/null; then
-            log_success "应用数据库已存在"
+
+        # 先创建数据库
+        mysql -uroot -p"$MYSQL_ROOT_PASSWORD" -e "CREATE DATABASE IF NOT EXISTS youtube_slicer CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;" || {
+            log_error "数据库创建失败"
+            return 1
+        }
+
+        # 删除可能存在的用户（确保使用新密码）
+        mysql -uroot -p"$MYSQL_ROOT_PASSWORD" -e "DROP USER IF EXISTS 'youtube_user'@'localhost';" || {
+            log_warning "删除现有用户失败，可能用户不存在"
+        }
+
+        # 创建新用户并设置权限
+        mysql -uroot -p"$MYSQL_ROOT_PASSWORD" -e "
+            CREATE USER 'youtube_user'@'localhost' IDENTIFIED BY '$MYSQL_APP_PASSWORD';
+            GRANT ALL PRIVILEGES ON youtube_slicer.* TO 'youtube_user'@'localhost';
+            FLUSH PRIVILEGES;
+        " || {
+            log_error "应用用户创建失败"
+            return 1
+        }
+
+        # 立即验证用户创建是否成功
+        log_info "验证应用用户创建..."
+        if mysql -uyoutube_user -p"$MYSQL_APP_PASSWORD" -e "USE youtube_slicer; SELECT 'User verification successful' as status;" &>/dev/null; then
+            log_success "✓ 应用用户创建并验证成功"
         else
+            log_error "❌ 应用用户创建失败，尝试手动修复..."
+
+            # 尝试手动修复
+            log_info "手动修复应用用户..."
             mysql -uroot -p"$MYSQL_ROOT_PASSWORD" -e "
-                CREATE DATABASE IF NOT EXISTS youtube_slicer CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-                CREATE USER IF NOT EXISTS 'youtube_user'@'localhost' IDENTIFIED BY '$MYSQL_APP_PASSWORD';
+                DROP USER IF EXISTS 'youtube_user'@'localhost';
+                CREATE USER 'youtube_user'@'localhost' IDENTIFIED BY '$MYSQL_APP_PASSWORD';
                 GRANT ALL PRIVILEGES ON youtube_slicer.* TO 'youtube_user'@'localhost';
                 FLUSH PRIVILEGES;
             " || {
-                log_warning "数据库创建可能失败，但继续安装..."
+                log_error "手动修复失败，需要人工干预"
+                log_info "请手动运行以下命令："
+                log_info "mysql -uroot -p'$MYSQL_ROOT_PASSWORD' -e \""
+                log_info "    DROP USER IF EXISTS 'youtube_user'@'localhost;"
+                log_info "    CREATE USER 'youtube_user'@'localhost' IDENTIFIED BY '$MYSQL_APP_PASSWORD';"
+                log_info "    GRANT ALL PRIVILEGES ON youtube_slicer.* TO 'youtube_user'@'localhost;"
+                log_info "    FLUSH PRIVILEGES;\""
+                return 1
             }
+
+            # 再次验证
+            if mysql -uyoutube_user -p"$MYSQL_APP_PASSWORD" -e "USE youtube_slicer; SELECT 'Manual fix successful' as status;" &>/dev/null; then
+                log_success "✓ 手动修复成功，应用用户现在可用"
+            else
+                log_error "❌ 手动修复仍然失败"
+                return 1
+            fi
         fi
 
-        # 验证应用数据库连接
-        if mysql -uyoutube_user -p"$MYSQL_APP_PASSWORD" -e "USE youtube_slicer; SELECT 1;" &>/dev/null; then
-            log_success "数据库和用户创建并验证成功"
-        else
-            log_warning "数据库连接验证失败，请稍后手动检查"
-        fi
+        log_success "应用数据库和用户创建完成"
 
         log_success "MySQL 8.0 安装配置完成"
 
