@@ -1008,12 +1008,201 @@ create_system_services() {
     log_success "系统服务配置创建完成"
 }
 
+# 验证所有服务
+verify_all_services() {
+    log_info "=== 开始服务验证 ==="
+    local failed_services=()
+
+    # 验证MySQL服务
+    log_info "验证MySQL服务..."
+    if mysql -uroot -p"$MYSQL_ROOT_PASSWORD" -e "SELECT 1;" &>/dev/null; then
+        log_success "✓ MySQL Root用户连接成功"
+
+        # 验证应用数据库
+        if mysql -uyoutube_user -p"$MYSQL_APP_PASSWORD" -e "USE youtube_slicer; SELECT COUNT(*) FROM information_schema.tables;" &>/dev/null; then
+            log_success "✓ MySQL应用数据库连接成功"
+        else
+            log_error "✗ MySQL应用数据库连接失败"
+            failed_services+=("MySQL应用数据库")
+        fi
+    else
+        log_error "✗ MySQL Root用户连接失败"
+        failed_services+=("MySQL Root")
+    fi
+
+    # 验证Redis服务
+    log_info "验证Redis服务..."
+    if redis-cli ping &>/dev/null; then
+        # 测试Redis基本操作
+        if redis-cli set test_key "test_value" &>/dev/null && redis-cli get test_key &>/dev/null; then
+            redis-cli del test_key &>/dev/null
+            log_success "✓ Redis服务运行正常"
+        else
+            log_error "✗ Redis服务读写测试失败"
+            failed_services+=("Redis读写")
+        fi
+    else
+        log_error "✗ Redis服务连接失败"
+        failed_services+=("Redis连接")
+    fi
+
+    # 验证MinIO服务
+    log_info "验证MinIO服务..."
+    local minio_endpoint="http://localhost:9000"
+
+    # 检查MinIO API健康状态
+    if curl -s -f "$minio_endpoint/minio/health/live" &>/dev/null; then
+        log_success "✓ MinIO API服务运行正常"
+
+        # 验证MinIO控制台
+        if curl -s -f "http://localhost:9001" &>/dev/null; then
+            log_success "✓ MinIO控制台可访问"
+        else
+            log_warning "⚠ MinIO控制台可能需要更多时间启动"
+        fi
+
+        # 测试MinIO认证（简单检查）
+        local auth_test=$(curl -s -w "%{http_code}" -o /dev/null "$minio_endpoint" -H "Authorization: AWS4-HMAC-SHA256 Credential=$MINIO_ACCESS_KEY")
+        if [[ "$auth_test" == "403" ]]; then
+            log_success "✓ MinIO认证配置正确"
+        elif [[ "$auth_test" == "200" ]]; then
+            log_success "✓ MinIO API可访问"
+        else
+            log_warning "⚠ MinIO认证验证状态: $auth_test"
+        fi
+    else
+        log_error "✗ MinIO API服务不可访问"
+        failed_services+=("MinIO API")
+    fi
+
+    # 验证Node.js和PM2
+    log_info "验证Node.js环境..."
+    if command -v node &>/dev/null && node --version &>/dev/null; then
+        local node_version=$(node --version)
+        if [[ "$node_version" == v22* ]]; then
+            log_success "✓ Node.js $node_version 版本正确"
+        else
+            log_warning "⚠ Node.js版本: $node_version (推荐v22.x)"
+        fi
+    else
+        log_error "✗ Node.js未正确安装"
+        failed_services+=("Node.js")
+    fi
+
+    if command -v pm2 &>/dev/null; then
+        log_success "✓ PM2进程管理器安装成功"
+    else
+        log_error "✗ PM2未正确安装"
+        failed_services+=("PM2")
+    fi
+
+    # 验证Python环境
+    log_info "验证Python环境..."
+    if command -v python3.11 &>/dev/null; then
+        local python_version=$(python3.11 --version 2>&1)
+        log_success "✓ Python $python_version 安装成功"
+    else
+        log_warning "⚠ Python 3.11 未找到，使用系统Python"
+        if command -v python3 &>/dev/null; then
+            log_info "✓ 系统Python $(python3 --version 2>&1) 可用"
+        else
+            log_error "✗ Python环境未正确配置"
+            failed_services+=("Python")
+        fi
+    fi
+
+    # 验证FFmpeg
+    log_info "验证FFmpeg..."
+    if command -v ffmpeg &>/dev/null; then
+        local ffmpeg_version=$(ffmpeg -version 2>&1 | head -n1)
+        log_success "✓ FFmpeg安装成功: $ffmpeg_version"
+    else
+        log_error "✗ FFmpeg未正确安装"
+        failed_services+=("FFmpeg")
+    fi
+
+    # 验证用户和目录权限
+    log_info "验证用户和目录权限..."
+    if id "$SERVICE_USER" &>/dev/null; then
+        log_success "✓ 专用用户 $SERVICE_USER 创建成功"
+
+        if [[ -d "/opt/flowclip" ]] && [[ "$(stat -c %U /opt/flowclip)" == "$SERVICE_USER" ]]; then
+            log_success "✓ 系统目录权限配置正确"
+        else
+            log_warning "⚠ 系统目录权限可能需要检查"
+        fi
+
+        if [[ -d "$PROJECT_DIR" ]]; then
+            log_success "✓ 项目目录创建成功: $PROJECT_DIR"
+        else
+            log_error "✗ 项目目录创建失败"
+            failed_services+=("项目目录")
+        fi
+    else
+        log_error "✗ 专用用户 $SERVICE_USER 创建失败"
+        failed_services+=("专用用户")
+    fi
+
+    # 验证端口占用
+    log_info "验证端口状态..."
+    local required_ports=("3306" "6379" "9000" "9001")
+    local port_services=("MySQL" "Redis" "MinIO-API" "MinIO-Console")
+
+    for i in "${!required_ports[@]}"; do
+        local port="${required_ports[$i]}"
+        local service="${port_services[$i]}"
+
+        if netstat -tuln 2>/dev/null | grep -q ":$port "; then
+            log_success "✓ $service 端口 $port 正在监听"
+        else
+            log_warning "⚠ $service 端口 $port 未监听 (可能还在启动)"
+        fi
+    done
+
+    # 生成验证报告
+    echo
+    echo "========================================"
+    echo "         服务验证报告"
+    echo "========================================"
+
+    if [[ ${#failed_services[@]} -eq 0 ]]; then
+        echo "🎉 所有服务验证通过！系统已准备就绪。"
+        log_success "系统验证: 100% 通过"
+    else
+        echo "⚠️  发现以下问题需要关注:"
+        for service in "${failed_services[@]}"; do
+            echo "   • $service"
+        done
+        echo
+        echo "💡 建议操作:"
+        echo "   1. 检查对应服务的日志文件"
+        echo "   2. 确认服务状态: systemctl status <service>"
+        echo "   3. 查看凭据文件: $PASSWORD_FILE"
+        echo "   4. 重启有问题的服务"
+        echo
+        log_warning "系统验证: 发现 ${#failed_services[@]} 个问题"
+    fi
+
+    echo
+    echo "📋 快速诊断命令:"
+    echo "   MySQL状态: systemctl status mysql"
+    echo "   Redis状态: systemctl status redis-server"
+    echo "   MinIO状态: systemctl status minio"
+    echo "   查看日志: journalctl -u <service> -f"
+    echo "   端口检查: netstat -tuln | grep -E '3306|6379|9000|9001'"
+    echo "========================================"
+    echo
+}
+
 # 显示安装完成信息
 show_completion_info() {
     local project_dir="$1"
 
     # 保存凭据到文件
     save_credentials
+
+    # 执行完整的服务验证
+    verify_all_services
 
     echo
     echo "========================================"
