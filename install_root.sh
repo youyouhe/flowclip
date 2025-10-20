@@ -1013,18 +1013,36 @@ verify_all_services() {
     log_info "=== 开始服务验证 ==="
     local failed_services=()
 
+    # 从凭据文件读取密码（确保使用正确的密码）
+    local mysql_root_password mysql_app_password minio_access_key minio_secret_key
+
+    if [[ -f "$PASSWORD_FILE" ]]; then
+        mysql_root_password=$(grep "MySQL Root密码:" "$PASSWORD_FILE" | awk '{print $4}')
+        mysql_app_password=$(grep "应用数据库密码:" "$PASSWORD_FILE" | awk '{print $4}')
+        minio_access_key=$(grep "访问密钥:" "$PASSWORD_FILE" | awk '{print $3}')
+        minio_secret_key=$(grep "秘密密钥:" "$PASSWORD_FILE" | awk '{print $3}')
+    else
+        log_warning "凭据文件不存在，使用全局变量"
+        mysql_root_password="$MYSQL_ROOT_PASSWORD"
+        mysql_app_password="$MYSQL_APP_PASSWORD"
+        minio_access_key="$MINIO_ACCESS_KEY"
+        minio_secret_key="$MINIO_SECRET_KEY"
+    fi
+
+    log_info "使用凭据进行验证..."
+
     # 验证MySQL服务
     log_info "验证MySQL服务..."
-    if mysql -uroot -p"$MYSQL_ROOT_PASSWORD" -e "SELECT 1;" &>/dev/null; then
+    if mysql -uroot -p"$mysql_root_password" -e "SELECT 1;" &>/dev/null; then
         log_success "✓ MySQL Root用户连接成功"
 
         # 验证应用数据库
-        if mysql -uyoutube_user -p"$MYSQL_APP_PASSWORD" -e "USE youtube_slicer; SELECT 'Database connection successful' as status;" &>/dev/null; then
+        if mysql -uyoutube_user -p"$mysql_app_password" -e "USE youtube_slicer; SELECT 'Database connection successful' as status;" &>/dev/null; then
             log_success "✓ MySQL应用数据库连接成功"
         else
             log_error "✗ MySQL应用数据库连接失败"
-            # 显示详细错误信息用于调试
-            mysql -uyoutube_user -p"$MYSQL_APP_PASSWORD" -e "USE youtube_slicer; SELECT 'Test connection' as status;" 2>&1 | head -3
+            log_info "调试信息: 使用密码长度 ${#mysql_app_password}"
+            mysql -uyoutube_user -p"$mysql_app_password" -e "USE youtube_slicer; SELECT 'Test connection' as status;" 2>&1 | head -3
             failed_services+=("MySQL应用数据库")
         fi
     else
@@ -1071,7 +1089,7 @@ verify_all_services() {
             # 尝试列出存储桶（简单的认证测试）
             local bucket_test=$(curl -s -w "%{http_code}" -o /dev/null "$minio_endpoint/youtube-videos" \
                 -H "Host: localhost:9000" \
-                -u "$MINIO_ACCESS_KEY:$MINIO_SECRET_KEY" \
+                -u "$minio_access_key:$minio_secret_key" \
                 2>/dev/null)
 
             if [[ "$bucket_test" == "200" || "$bucket_test" == "404" ]]; then
