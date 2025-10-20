@@ -1,0 +1,586 @@
+#!/bin/bash
+
+# Flowclip 用户环境配置脚本
+# 负责安装Python依赖、配置应用环境、启动服务等用户级操作
+
+set -euo pipefail
+
+# 颜色输出定义
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m'
+
+# 项目配置
+PROJECT_NAME="flowclip"
+PROJECT_DIR="/home/flowclip/EchoClip"
+BACKEND_DIR="$PROJECT_DIR/backend"
+FRONTEND_DIR="$PROJECT_DIR/frontend"
+
+# 日志函数
+log_info() {
+    echo -e "${BLUE}[INFO]${NC} $1"
+}
+
+log_success() {
+    echo -e "${GREEN}[SUCCESS]${NC} $1"
+}
+
+log_warning() {
+    echo -e "${YELLOW}[WARNING]${NC} $1"
+}
+
+log_error() {
+    echo -e "${RED}[ERROR]${NC} $1"
+}
+
+# 检查项目目录
+check_project_directory() {
+    log_info "检查项目目录..."
+
+    if [[ ! -d "$PROJECT_DIR" ]]; then
+        log_error "项目目录不存在: $PROJECT_DIR"
+        log_info "请确保项目代码已复制到正确位置"
+        exit 1
+    fi
+
+    if [[ ! -d "$BACKEND_DIR" ]]; then
+        log_error "后端目录不存在: $BACKEND_DIR"
+        exit 1
+    fi
+
+    if [[ ! -d "$FRONTEND_DIR" ]]; then
+        log_error "前端目录不存在: $FRONTEND_DIR"
+        exit 1
+    fi
+
+    log_success "项目目录检查通过"
+}
+
+# 检查系统依赖
+check_system_dependencies() {
+    log_info "检查系统依赖..."
+
+    local missing_deps=()
+
+    # 检查 Python
+    if ! command -v python3 &> /dev/null; then
+        missing_deps+=("python3")
+    fi
+
+    # 检查 pip
+    if ! command -v pip3 &> /dev/null; then
+        missing_deps+=("pip3")
+    fi
+
+    # 检查 Node.js
+    if ! command -v node &> /dev/null; then
+        missing_deps+=("node")
+    fi
+
+    # 检查 npm
+    if ! command -v npm &> /dev/null; then
+        missing_deps+=("npm")
+    fi
+
+    # 检查 Redis
+    if ! redis-cli ping &> /dev/null; then
+        log_warning "Redis 服务未运行，请检查 Redis 配置"
+    fi
+
+    # 检查 MySQL
+    if ! mysql -uyoutube_user -pyoutube_password -e "SELECT 1;" &> /dev/null; then
+        log_warning "MySQL 连接失败，请检查数据库配置"
+    fi
+
+    if [[ ${#missing_deps[@]} -gt 0 ]]; then
+        log_error "缺少系统依赖: ${missing_deps[*]}"
+        log_info "请运行 root 安装脚本安装缺失的依赖"
+        exit 1
+    fi
+
+    log_success "系统依赖检查通过"
+}
+
+# 配置 Python 虚拟环境
+setup_python_env() {
+    log_info "配置 Python 虚拟环境..."
+
+    cd "$PROJECT_DIR"
+
+    # 创建虚拟环境
+    if [[ ! -d "venv" ]]; then
+        log_info "创建 Python 虚拟环境..."
+        python3 -m venv venv
+    fi
+
+    # 激活虚拟环境
+    source venv/bin/activate
+
+    # 升级 pip
+    pip install --upgrade pip
+
+    log_success "Python 虚拟环境配置完成"
+}
+
+# 安装后端依赖
+install_backend_dependencies() {
+    log_info "安装后端 Python 依赖..."
+
+    cd "$BACKEND_DIR"
+
+    # 激活虚拟环境
+    source "$PROJECT_DIR/venv/bin/activate"
+
+    # 安装基础依赖
+    if [[ -f "requirements.txt" ]]; then
+        log_info "安装 requirements.txt..."
+        pip install -r requirements.txt
+    fi
+
+    # 安装音频处理依赖
+    if [[ -f "requirements-audio.txt" ]]; then
+        log_info "安装 requirements-audio.txt..."
+        pip install -r requirements-audio.txt
+    fi
+
+    log_success "后端依赖安装完成"
+}
+
+# 配置数据库
+setup_database() {
+    log_info "配置数据库..."
+
+    cd "$BACKEND_DIR"
+
+    # 激活虚拟环境
+    source "$PROJECT_DIR/venv/bin/activate"
+
+    # 运行数据库迁移
+    if [[ -f "alembic.ini" ]]; then
+        log_info "运行数据库迁移..."
+        alembic upgrade head
+    fi
+
+    # 创建测试用户（如果脚本存在）
+    if [[ -f "create_test_user.py" ]]; then
+        log_info "创建测试用户..."
+        python create_test_user.py
+    fi
+
+    log_success "数据库配置完成"
+}
+
+# 安装前端依赖
+install_frontend_dependencies() {
+    log_info "安装前端 Node.js 依赖..."
+
+    cd "$FRONTEND_DIR"
+
+    # 安装依赖
+    npm install --legacy-peer-deps
+
+    log_success "前端依赖安装完成"
+}
+
+# 创建 PM2 配置文件
+create_pm2_config() {
+    log_info "创建 PM2 配置文件..."
+
+    cd "$PROJECT_DIR"
+
+    # 创建 PM2 配置文件
+    cat > ecosystem.config.js << 'EOF'
+module.exports = {
+  apps: [
+    {
+      name: 'flowclip-backend',
+      script: './backend/start_services.py',
+      cwd: '/home/flowclip/EchoClip',
+      interpreter: '/home/flowclip/EchoClip/venv/bin/python',
+      interpreter_args: '-u',
+      instances: 1,
+      autorestart: true,
+      watch: false,
+      max_memory_restart: '1G',
+      env: {
+        NODE_ENV: 'development',
+        DATABASE_URL: 'mysql+aiomysql://youtube_user:youtube_password@localhost:3306/youtube_slicer?charset=utf8mb4',
+        REDIS_URL: 'redis://localhost:6379',
+        MINIO_ENDPOINT: 'localhost:9000',
+        MINIO_ACCESS_KEY: 'i4W5jAG1j9w2MheEQ7GmYEotBrkAaIPSmLRQa6Iruc0=',
+        MINIO_SECRET_KEY: 'TcFA+qUwvCnikxANs7k/HX7oZz2zEjLo3RakL1kZt5k=',
+        MINIO_BUCKET_NAME: 'youtube-videos',
+        SECRET_KEY: 'your-secret-key-change-in-production',
+        DEBUG: 'true'
+      },
+      log_file: '/home/flowclip/EchoClip/logs/backend.log',
+      out_file: '/home/flowclip/EchoClip/logs/backend-out.log',
+      error_file: '/home/flowclip/EchoClip/logs/backend-error.log',
+      log_date_format: 'YYYY-MM-DD HH:mm:ss Z'
+    },
+    {
+      name: 'flowclip-celery-worker',
+      script: './backend/start_celery.py',
+      cwd: '/home/flowclip/EchoClip',
+      interpreter: '/home/flowclip/EchoClip/venv/bin/python',
+      interpreter_args: '-u',
+      args: 'worker --loglevel=info --concurrency=4',
+      instances: 1,
+      autorestart: true,
+      watch: false,
+      max_memory_restart: '2G',
+      env: {
+        DATABASE_URL: 'mysql+aiomysql://youtube_user:youtube_password@localhost:3306/youtube_slicer?charset=utf8mb4',
+        REDIS_URL: 'redis://localhost:6379',
+        MINIO_ENDPOINT: 'localhost:9000',
+        MINIO_ACCESS_KEY: 'i4W5jAG1j9w2MheEQ7GmYEotBrkAaIPSmLRQa6Iruc0=',
+        MINIO_SECRET_KEY: 'TcFA+qUwvCnikxANs7k/HX7oZz2zEjLo3RakL1kZt5k=',
+        MINIO_BUCKET_NAME: 'youtube-videos'
+      },
+      log_file: '/home/flowclip/EchoClip/logs/celery-worker.log',
+      out_file: '/home/flowclip/EchoClip/logs/celery-worker-out.log',
+      error_file: '/home/flowclip/EchoClip/logs/celery-worker-error.log',
+      log_date_format: 'YYYY-MM-DD HH:mm:ss Z'
+    },
+    {
+      name: 'flowclip-celery-beat',
+      script: './backend/start_celery.py',
+      cwd: '/home/flowclip/EchoClip',
+      interpreter: '/home/flowclip/EchoClip/venv/bin/python',
+      interpreter_args: '-u',
+      args: 'beat --loglevel=info',
+      instances: 1,
+      autorestart: true,
+      watch: false,
+      max_memory_restart: '512M',
+      env: {
+        DATABASE_URL: 'mysql+aiomysql://youtube_user:youtube_password@localhost:3306/youtube_slicer?charset=utf8mb4',
+        REDIS_URL: 'redis://localhost:6379'
+      },
+      log_file: '/home/flowclip/EchoClip/logs/celery-beat.log',
+      out_file: '/home/flowclip/EchoClip/logs/celery-beat-out.log',
+      error_file: '/home/flowclip/EchoClip/logs/celery-beat-error.log',
+      log_date_format: 'YYYY-MM-DD HH:mm:ss Z'
+    },
+    {
+      name: 'flowclip-frontend',
+      script: 'npm',
+      cwd: '/home/flowclip/EchoClip/frontend',
+      args: 'run dev',
+      instances: 1,
+      autorestart: true,
+      watch: false,
+      max_memory_restart: '1G',
+      env: {
+        NODE_ENV: 'development',
+        VITE_API_URL: '/api'
+      },
+      log_file: '/home/flowclip/EchoClip/logs/frontend.log',
+      out_file: '/home/flowclip/EchoClip/logs/frontend-out.log',
+      error_file: '/home/flowclip/EchoClip/logs/frontend-error.log',
+      log_date_format: 'YYYY-MM-DD HH:mm:ss Z'
+    }
+  ]
+};
+EOF
+
+    # 创建日志目录
+    mkdir -p logs
+
+    log_success "PM2 配置文件创建完成"
+}
+
+# 创建服务启动脚本
+create_service_scripts() {
+    log_info "创建服务管理脚本..."
+
+    # 创建启动脚本
+    cat > "$PROJECT_DIR/start_services.sh" << 'EOF'
+#!/bin/bash
+
+# Flowclip 服务启动脚本
+
+cd "$(dirname "$0")"
+
+echo "启动 Flowclip 服务..."
+
+# 激活虚拟环境
+source venv/bin/activate
+
+# 启动所有服务
+pm2 start ecosystem.config.js
+
+echo "服务启动完成！"
+echo ""
+echo "查看服务状态: pm2 status"
+echo "查看日志: pm2 logs"
+echo "停止服务: pm2 stop all"
+echo "重启服务: pm2 restart all"
+echo ""
+echo "服务访问地址："
+echo "  前端: http://localhost:3000"
+echo "  后端API: http://localhost:8001"
+echo "  API文档: http://localhost:8001/docs"
+EOF
+
+    # 创建停止脚本
+    cat > "$PROJECT_DIR/stop_services.sh" << 'EOF'
+#!/bin/bash
+
+# Flowclip 服务停止脚本
+
+cd "$(dirname "$0")"
+
+echo "停止 Flowclip 服务..."
+
+pm2 stop all
+pm2 delete all
+
+echo "服务已停止"
+EOF
+
+    # 创建重启脚本
+    cat > "$PROJECT_DIR/restart_services.sh" << 'EOF'
+#!/bin/bash
+
+# Flowclip 服务重启脚本
+
+cd "$(dirname "$0")"
+
+echo "重启 Flowclip 服务..."
+
+pm2 restart all
+
+echo "服务重启完成"
+EOF
+
+    # 设置执行权限
+    chmod +x "$PROJECT_DIR/start_services.sh"
+    chmod +x "$PROJECT_DIR/stop_services.sh"
+    chmod +x "$PROJECT_DIR/restart_services.sh"
+
+    log_success "服务管理脚本创建完成"
+}
+
+# 创建启动服务脚本
+create_backend_starter() {
+    log_info "创建后端服务启动脚本..."
+
+    cd "$BACKEND_DIR"
+
+    # 创建统一的服务启动脚本
+    cat > start_services.py << 'EOF'
+#!/usr/bin/env python3
+"""
+Flowclip 后端服务启动脚本
+启动所有必需的后端服务
+"""
+
+import asyncio
+import subprocess
+import signal
+import sys
+import os
+from pathlib import Path
+
+# 添加项目根目录到 Python 路径
+project_root = Path(__file__).parent.parent
+sys.path.insert(0, str(project_root / "backend"))
+
+class ServiceManager:
+    def __init__(self):
+        self.processes = []
+        self.running = True
+
+    async def start_backend(self):
+        """启动主后端服务"""
+        cmd = [
+            sys.executable, "-m", "uvicorn",
+            "app.main:app",
+            "--reload",
+            "--host", "0.0.0.0",
+            "--port", "8001"
+        ]
+
+        process = await asyncio.create_subprocess_exec(
+            *cmd,
+            cwd=project_root / "backend",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+
+        self.processes.append(("backend", process))
+        return process
+
+    async def start_callback_server(self):
+        """启动TUS回调服务器"""
+        cmd = [sys.executable, "callback_server.py"]
+
+        process = await asyncio.create_subprocess_exec(
+            *cmd,
+            cwd=project_root / "backend",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+
+        self.processes.append(("callback", process))
+        return process
+
+    async def start_mcp_server(self):
+        """启动MCP服务器"""
+        cmd = [sys.executable, "run_mcp_server_complete.py"]
+
+        process = await asyncio.create_subprocess_exec(
+            *cmd,
+            cwd=project_root / "backend",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+
+        self.processes.append(("mcp", process))
+        return process
+
+    async def monitor_processes(self):
+        """监控进程状态"""
+        while self.running:
+            for name, process in self.processes:
+                if process.returncode is not None:
+                    print(f"服务 {name} 已退出，返回码: {process.returncode}")
+                    # 可以在这里添加重启逻辑
+                    self.running = False
+                    break
+            await asyncio.sleep(1)
+
+    async def shutdown(self):
+        """优雅关闭所有服务"""
+        print("正在关闭服务...")
+        self.running = False
+
+        for name, process in self.processes:
+            if process.returncode is None:
+                print(f"关闭服务 {name}...")
+                process.terminate()
+                try:
+                    await asyncio.wait_for(process.wait(), timeout=5)
+                except asyncio.TimeoutError:
+                    print(f"强制关闭服务 {name}...")
+                    process.kill()
+                    await process.wait()
+
+        print("所有服务已关闭")
+
+    async def run(self):
+        """运行所有服务"""
+        try:
+            # 设置信号处理
+            def signal_handler(signum, frame):
+                print(f"收到信号 {signum}，准备关闭...")
+                asyncio.create_task(self.shutdown())
+
+            signal.signal(signal.SIGINT, signal_handler)
+            signal.signal(signal.SIGTERM, signal_handler)
+
+            # 启动服务
+            print("启动后端服务...")
+
+            await self.start_backend()
+            print("✓ 后端API服务已启动 (端口: 8001)")
+
+            await self.start_callback_server()
+            print("✓ TUS回调服务器已启动 (端口: 9090)")
+
+            await self.start_mcp_server()
+            print("✓ MCP服务器已启动 (端口: 8002)")
+
+            print("\n所有服务启动完成！")
+            print("访问地址:")
+            print("  后端API: http://localhost:8001")
+            print("  API文档: http://localhost:8001/docs")
+            print("  TUS回调: http://localhost:9090")
+            print("  MCP服务: http://localhost:8002")
+            print("\n按 Ctrl+C 停止服务")
+
+            # 监控进程
+            await self.monitor_processes()
+
+        except KeyboardInterrupt:
+            print("\n收到中断信号")
+        finally:
+            await self.shutdown()
+
+if __name__ == "__main__":
+    # 设置环境变量
+    os.environ.setdefault('PYTHONUNBUFFERED', '1')
+
+    manager = ServiceManager()
+    asyncio.run(manager.run())
+EOF
+
+    chmod +x "$BACKEND_DIR/start_services.py"
+
+    log_success "后端服务启动脚本创建完成"
+}
+
+# 主函数
+main() {
+    echo "========================================"
+    echo "    Flowclip 用户环境配置脚本"
+    echo "========================================"
+    echo
+
+    # 检查项目目录
+    check_project_directory
+
+    # 检查系统依赖
+    check_system_dependencies
+
+    # 配置 Python 环境
+    setup_python_env
+
+    # 安装后端依赖
+    install_backend_dependencies
+
+    # 配置数据库
+    setup_database
+
+    # 安装前端依赖
+    install_frontend_dependencies
+
+    # 创建 PM2 配置
+    create_pm2_config
+
+    # 创建服务脚本
+    create_service_scripts
+
+    # 创建后端启动脚本
+    create_backend_starter
+
+    echo
+    echo "========================================"
+    echo "       用户环境配置完成！"
+    echo "========================================"
+    echo
+    echo "接下来可以使用以下命令管理服务："
+    echo "  启动服务: ./start_services.sh"
+    echo "  停止服务: ./stop_services.sh"
+    echo "  重启服务: ./restart_services.sh"
+    echo
+    echo "或者手动启动："
+    echo "  后端服务: cd backend && python start_services.py"
+    echo "  前端服务: cd frontend && npm run dev"
+    echo "  Celery Worker: cd backend && python start_celery.py worker"
+    echo "  Celery Beat: cd backend && python start_celery.py beat"
+    echo
+    echo "服务访问地址："
+    echo "  前端: http://localhost:3000"
+    echo "  后端API: http://localhost:8001"
+    echo "  API文档: http://localhost:8001/docs"
+    echo
+}
+
+# 脚本入口
+if [[ "${BASH_SOURCE[0]:-}" == "${0}" ]] || [[ -z "${BASH_SOURCE[0]:-}" ]]; then
+    main "$@"
+fi
