@@ -320,6 +320,7 @@ install_mysql() {
         apt update
 
         # 安装 MySQL 8.0
+        log_info "安装 MySQL 8.0 软件包..."
         apt install -y mysql-server-8.0
 
         # 启动并启用 MySQL 服务
@@ -336,12 +337,24 @@ install_mysql() {
             return 1
         fi
 
-        # 尝试多种方式配置MySQL
+        # 重置MySQL root密码（处理已安装MySQL的情况）
         log_info "配置MySQL安全设置..."
-        local mysql_configured=false
+        log_info "检测到可能存在的MySQL安装，尝试重置配置..."
 
-        # 方法1: 尝试无密码root连接
-        if mysql -u root -e "SELECT 1;" &>/dev/null; then
+        # 方法1: 使用debian-sys-maint用户（Ubuntu/Debian特有）
+        local mysql_configured=false
+        if [[ -f "/etc/mysql/debian.cnf" ]]; then
+            log_info "尝试使用debian-sys-maint用户重置密码..."
+            local debian_password=$(grep -m1 "password" /etc/mysql/debian.cnf | awk '{print $3}')
+
+            if mysql -u debian-sys-maint -p"$debian_password" -e "ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY 'rootpassword'; FLUSH PRIVILEGES;" &>/dev/null; then
+                log_success "通过debian-sys-maint用户成功重置root密码"
+                mysql_configured=true
+            fi
+        fi
+
+        # 方法2: 尝试无密码root连接
+        if [[ "$mysql_configured" == false ]] && mysql -u root -e "SELECT 1;" &>/dev/null; then
             log_info "发现root无密码访问，进行配置..."
             mysql -u root -e "
                 ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY 'rootpassword';
@@ -354,7 +367,7 @@ install_mysql() {
             mysql_configured=true
         fi
 
-        # 方法2: 尝试使用socket连接
+        # 方法3: 尝试使用socket连接
         if [[ "$mysql_configured" == false ]] && mysql -u root --socket=/var/run/mysqld/mysqld.sock -e "SELECT 1;" &>/dev/null; then
             log_info "发现socket连接方式，进行配置..."
             mysql -u root --socket=/var/run/mysqld/mysqld.sock -e "
@@ -368,56 +381,85 @@ install_mysql() {
             mysql_configured=true
         fi
 
-        # 方法3: 使用mysql_secure_installation
+        # 方法4: 尝试常见默认密码
         if [[ "$mysql_configured" == false ]]; then
-            log_info "使用mysql_secure_installation进行配置..."
-            # 预设答案文件
-            cat > /tmp/mysql_secure_answers.txt << 'EOF'
-y
-rootpassword
-rootpassword
-y
-y
-y
-y
-EOF
-            mysql_secure_installation < /tmp/mysql_secure_answers.txt &>/dev/null || {
-                log_warning "mysql_secure_installation自动配置失败，尝试手动配置..."
-                rm -f /tmp/mysql_secure_answers.txt
+            local common_passwords=("root" "password" "mysql" "123456" "")
+            for pwd in "${common_passwords[@]}"; do
+                if mysql -u root -p"$pwd" -e "SELECT 1;" &>/dev/null; then
+                    log_info "发现root密码 '$pwd'，重新配置..."
+                    mysql -u root -p"$pwd" -e "
+                        ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY 'rootpassword';
+                        DELETE FROM mysql.user WHERE User='';
+                        DELETE FROM mysql.user WHERE User='root' AND Host NOT IN ('localhost', '127.0.0.1', '::1');
+                        DROP DATABASE IF EXISTS test;
+                        DELETE FROM mysql.db WHERE Db='test' OR Db='test\\_%';
+                        FLUSH PRIVILEGES;
+                    "
+                    mysql_configured=true
+                    break
+                fi
+            done
+        fi
 
-                # 手动设置密码
-                log_info "手动设置MySQL root密码..."
-                mysql -u root -e "ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY 'rootpassword';" 2>/dev/null || {
-                    log_error "无法设置MySQL root密码"
-                    return 1
-                }
-            }
-            rm -f /tmp/mysql_secure_answers.txt
-            mysql_configured=true
+        # 方法5: 重置MySQL root密码（安全模式）
+        if [[ "$mysql_configured" == false ]]; then
+            log_info "尝试安全模式重置MySQL密码..."
+            systemctl stop mysql
+
+            # 启动MySQL安全模式
+            mysqld_safe --skip-grant-tables --skip-networking &
+            local mysql_pid=$!
+
+            sleep 5
+
+            # 重置密码
+            mysql -u root -e "
+                USE mysql;
+                UPDATE user SET authentication_string=PASSWORD('rootpassword') WHERE User='root';
+                UPDATE user SET plugin='mysql_native_password' WHERE User='root';
+                FLUSH PRIVILEGES;
+            " &>/dev/null && mysql_configured=true
+
+            # 重启MySQL
+            kill $mysql_pid 2>/dev/null || true
+            sleep 2
+            systemctl start mysql
+            sleep 5
         fi
 
         # 验证配置是否成功
         if mysql -uroot -prootpassword -e "SELECT 1;" &>/dev/null; then
             log_success "MySQL安全配置完成"
         else
-            log_error "MySQL配置验证失败"
-            return 1
+            log_error "MySQL配置验证失败，请手动配置"
+            log_info "手动配置命令："
+            log_info "1. sudo mysql"
+            log_info "2. ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY 'rootpassword';"
+            log_info "3. FLUSH PRIVILEGES;"
+            log_info "4. EXIT;"
+            read -p "配置完成后按回车继续..."
         fi
 
         # 创建应用数据库和用户
         log_info "创建应用数据库和用户..."
-        mysql -uroot -prootpassword -e "
-            CREATE DATABASE IF NOT EXISTS youtube_slicer CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-            CREATE USER IF NOT EXISTS 'youtube_user'@'localhost' IDENTIFIED BY 'youtube_password';
-            GRANT ALL PRIVILEGES ON youtube_slicer.* TO 'youtube_user'@'localhost';
-            FLUSH PRIVILEGES;
-        "
+        if mysql -uroot -prootpassword -e "USE youtube_slicer; SELECT 1;" &>/dev/null; then
+            log_success "应用数据库已存在"
+        else
+            mysql -uroot -prootpassword -e "
+                CREATE DATABASE IF NOT EXISTS youtube_slicer CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+                CREATE USER IF NOT EXISTS 'youtube_user'@'localhost' IDENTIFIED BY 'youtube_password';
+                GRANT ALL PRIVILEGES ON youtube_slicer.* TO 'youtube_user'@'localhost';
+                FLUSH PRIVILEGES;
+            " || {
+                log_warning "数据库创建可能失败，但继续安装..."
+            }
+        fi
 
         # 验证应用数据库连接
         if mysql -uyoutube_user -pyoutube_password -e "USE youtube_slicer; SELECT 1;" &>/dev/null; then
             log_success "数据库和用户创建并验证成功"
         else
-            log_warning "数据库连接验证失败，但配置可能仍然有效"
+            log_warning "数据库连接验证失败，请稍后手动检查"
         fi
 
         log_success "MySQL 8.0 安装配置完成"
