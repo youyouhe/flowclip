@@ -326,22 +326,99 @@ install_mysql() {
         systemctl start mysql
         systemctl enable mysql
 
-        # 安全初始化 MySQL
-        log_info "执行 MySQL 安全初始化..."
-        mysql -e "ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY 'rootpassword';"
-        mysql -e "DELETE FROM mysql.user WHERE User='';"
-        mysql -e "DELETE FROM mysql.user WHERE User='root' AND Host NOT IN ('localhost', '127.0.0.1', '::1');"
-        mysql -e "DROP DATABASE IF EXISTS test;"
-        mysql -e "DELETE FROM mysql.db WHERE Db='test' OR Db='test\\_%';"
-        mysql -e "FLUSH PRIVILEGES;"
+        # 等待MySQL完全启动
+        log_info "等待MySQL服务完全启动..."
+        sleep 10
+
+        # 检查MySQL服务状态
+        if ! systemctl is-active --quiet mysql; then
+            log_error "MySQL服务启动失败"
+            return 1
+        fi
+
+        # 尝试多种方式配置MySQL
+        log_info "配置MySQL安全设置..."
+        local mysql_configured=false
+
+        # 方法1: 尝试无密码root连接
+        if mysql -u root -e "SELECT 1;" &>/dev/null; then
+            log_info "发现root无密码访问，进行配置..."
+            mysql -u root -e "
+                ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY 'rootpassword';
+                DELETE FROM mysql.user WHERE User='';
+                DELETE FROM mysql.user WHERE User='root' AND Host NOT IN ('localhost', '127.0.0.1', '::1');
+                DROP DATABASE IF EXISTS test;
+                DELETE FROM mysql.db WHERE Db='test' OR Db='test\\_%';
+                FLUSH PRIVILEGES;
+            "
+            mysql_configured=true
+        fi
+
+        # 方法2: 尝试使用socket连接
+        if [[ "$mysql_configured" == false ]] && mysql -u root --socket=/var/run/mysqld/mysqld.sock -e "SELECT 1;" &>/dev/null; then
+            log_info "发现socket连接方式，进行配置..."
+            mysql -u root --socket=/var/run/mysqld/mysqld.sock -e "
+                ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY 'rootpassword';
+                DELETE FROM mysql.user WHERE User='';
+                DELETE FROM mysql.user WHERE User='root' AND Host NOT IN ('localhost', '127.0.0.1', '::1');
+                DROP DATABASE IF EXISTS test;
+                DELETE FROM mysql.db WHERE Db='test' OR Db='test\\_%';
+                FLUSH PRIVILEGES;
+            "
+            mysql_configured=true
+        fi
+
+        # 方法3: 使用mysql_secure_installation
+        if [[ "$mysql_configured" == false ]]; then
+            log_info "使用mysql_secure_installation进行配置..."
+            # 预设答案文件
+            cat > /tmp/mysql_secure_answers.txt << 'EOF'
+y
+rootpassword
+rootpassword
+y
+y
+y
+y
+EOF
+            mysql_secure_installation < /tmp/mysql_secure_answers.txt &>/dev/null || {
+                log_warning "mysql_secure_installation自动配置失败，尝试手动配置..."
+                rm -f /tmp/mysql_secure_answers.txt
+
+                # 手动设置密码
+                log_info "手动设置MySQL root密码..."
+                mysql -u root -e "ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY 'rootpassword';" 2>/dev/null || {
+                    log_error "无法设置MySQL root密码"
+                    return 1
+                }
+            }
+            rm -f /tmp/mysql_secure_answers.txt
+            mysql_configured=true
+        fi
+
+        # 验证配置是否成功
+        if mysql -uroot -prootpassword -e "SELECT 1;" &>/dev/null; then
+            log_success "MySQL安全配置完成"
+        else
+            log_error "MySQL配置验证失败"
+            return 1
+        fi
 
         # 创建应用数据库和用户
+        log_info "创建应用数据库和用户..."
         mysql -uroot -prootpassword -e "
             CREATE DATABASE IF NOT EXISTS youtube_slicer CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
             CREATE USER IF NOT EXISTS 'youtube_user'@'localhost' IDENTIFIED BY 'youtube_password';
             GRANT ALL PRIVILEGES ON youtube_slicer.* TO 'youtube_user'@'localhost';
             FLUSH PRIVILEGES;
         "
+
+        # 验证应用数据库连接
+        if mysql -uyoutube_user -pyoutube_password -e "USE youtube_slicer; SELECT 1;" &>/dev/null; then
+            log_success "数据库和用户创建并验证成功"
+        else
+            log_warning "数据库连接验证失败，但配置可能仍然有效"
+        fi
 
         log_success "MySQL 8.0 安装配置完成"
 
