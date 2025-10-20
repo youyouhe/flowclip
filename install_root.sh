@@ -18,6 +18,53 @@ PROJECT_NAME="flowclip"
 SERVICE_USER="flowclip"
 PROJECT_DIR="/home/$SERVICE_USER/EchoClip"
 
+# 生成随机密码函数
+generate_password() {
+    local length=${1:-16}
+    openssl rand -base64 $length | tr -d "=+/" | cut -c1-$length
+}
+
+# 生成动态密码
+MYSQL_ROOT_PASSWORD=$(generate_password 20)
+MYSQL_APP_PASSWORD=$(generate_password 20)
+MINIO_ACCESS_KEY=$(generate_password 32)
+MINIO_SECRET_KEY=$(generate_password 40)
+APP_SECRET_KEY=$(generate_password 32)
+
+# 保存密码到文件
+PASSWORD_FILE="/root/flowclip_credentials.txt"
+save_credentials() {
+    cat > "$PASSWORD_FILE" << EOF
+========================================
+    Flowclip 系统凭据信息
+========================================
+生成时间: $(date)
+服务器IP: $(hostname -I | awk '{print $1}')
+
+数据库凭据:
+- MySQL Root密码: $MYSQL_ROOT_PASSWORD
+- 应用数据库密码: $MYSQL_APP_PASSWORD
+- 数据库名: youtube_slicer
+- 应用用户: youtube_user
+
+MinIO凭据:
+- 访问密钥: $MINIO_ACCESS_KEY
+- 秘密密钥: $MINIO_SECRET_KEY
+- 存储桶: youtube-videos
+
+应用凭据:
+- Secret Key: $APP_SECRET_KEY
+
+========================================
+重要提醒:
+1. 请妥善保管此文件，建议删除或移至安全位置
+2. 在生产环境中，请修改这些默认密码
+3. 定期更换密码以确保系统安全
+========================================
+EOF
+    chmod 600 "$PASSWORD_FILE"
+}
+
 # 日志函数
 log_info() {
     echo -e "${BLUE}[INFO]${NC} $1"
@@ -436,7 +483,7 @@ install_mysql() {
             log_info "尝试使用debian-sys-maint用户重置密码..."
             local debian_password=$(grep -m1 "password" /etc/mysql/debian.cnf | awk '{print $3}')
 
-            if mysql -u debian-sys-maint -p"$debian_password" -e "ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY 'rootpassword'; FLUSH PRIVILEGES;" &>/dev/null; then
+            if mysql -u debian-sys-maint -p"$debian_password" -e "ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY '$MYSQL_ROOT_PASSWORD'; FLUSH PRIVILEGES;" &>/dev/null; then
                 log_success "通过debian-sys-maint用户成功重置root密码"
                 mysql_configured=true
             fi
@@ -446,7 +493,7 @@ install_mysql() {
         if [[ "$mysql_configured" == false ]] && mysql -u root -e "SELECT 1;" &>/dev/null; then
             log_info "发现root无密码访问，进行配置..."
             mysql -u root -e "
-                ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY 'rootpassword';
+                ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY '$MYSQL_ROOT_PASSWORD';
                 DELETE FROM mysql.user WHERE User='';
                 DELETE FROM mysql.user WHERE User='root' AND Host NOT IN ('localhost', '127.0.0.1', '::1');
                 DROP DATABASE IF EXISTS test;
@@ -460,7 +507,7 @@ install_mysql() {
         if [[ "$mysql_configured" == false ]] && mysql -u root --socket=/var/run/mysqld/mysqld.sock -e "SELECT 1;" &>/dev/null; then
             log_info "发现socket连接方式，进行配置..."
             mysql -u root --socket=/var/run/mysqld/mysqld.sock -e "
-                ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY 'rootpassword';
+                ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY '$MYSQL_ROOT_PASSWORD';
                 DELETE FROM mysql.user WHERE User='';
                 DELETE FROM mysql.user WHERE User='root' AND Host NOT IN ('localhost', '127.0.0.1', '::1');
                 DROP DATABASE IF EXISTS test;
@@ -477,7 +524,7 @@ install_mysql() {
                 if mysql -u root -p"$pwd" -e "SELECT 1;" &>/dev/null; then
                     log_info "发现root密码 '$pwd'，重新配置..."
                     mysql -u root -p"$pwd" -e "
-                        ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY 'rootpassword';
+                        ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY '$MYSQL_ROOT_PASSWORD';
                         DELETE FROM mysql.user WHERE User='';
                         DELETE FROM mysql.user WHERE User='root' AND Host NOT IN ('localhost', '127.0.0.1', '::1');
                         DROP DATABASE IF EXISTS test;
@@ -504,7 +551,7 @@ install_mysql() {
             # 重置密码
             mysql -u root -e "
                 USE mysql;
-                UPDATE user SET authentication_string=PASSWORD('rootpassword') WHERE User='root';
+                UPDATE user SET authentication_string=PASSWORD('$MYSQL_ROOT_PASSWORD') WHERE User='root';
                 UPDATE user SET plugin='mysql_native_password' WHERE User='root';
                 FLUSH PRIVILEGES;
             " &>/dev/null && mysql_configured=true
@@ -517,13 +564,13 @@ install_mysql() {
         fi
 
         # 验证配置是否成功
-        if mysql -uroot -prootpassword -e "SELECT 1;" &>/dev/null; then
+        if mysql -uroot -p"$MYSQL_ROOT_PASSWORD" -e "SELECT 1;" &>/dev/null; then
             log_success "MySQL安全配置完成"
         else
             log_error "MySQL配置验证失败，请手动配置"
             log_info "手动配置命令："
             log_info "1. sudo mysql"
-            log_info "2. ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY 'rootpassword';"
+            log_info "2. ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY '$MYSQL_ROOT_PASSWORD';"
             log_info "3. FLUSH PRIVILEGES;"
             log_info "4. EXIT;"
             read -p "配置完成后按回车继续..."
@@ -531,12 +578,12 @@ install_mysql() {
 
         # 创建应用数据库和用户
         log_info "创建应用数据库和用户..."
-        if mysql -uroot -prootpassword -e "USE youtube_slicer; SELECT 1;" &>/dev/null; then
+        if mysql -uroot -p"$MYSQL_ROOT_PASSWORD" -e "USE youtube_slicer; SELECT 1;" &>/dev/null; then
             log_success "应用数据库已存在"
         else
-            mysql -uroot -prootpassword -e "
+            mysql -uroot -p"$MYSQL_ROOT_PASSWORD" -e "
                 CREATE DATABASE IF NOT EXISTS youtube_slicer CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-                CREATE USER IF NOT EXISTS 'youtube_user'@'localhost' IDENTIFIED BY 'youtube_password';
+                CREATE USER IF NOT EXISTS 'youtube_user'@'localhost' IDENTIFIED BY '$MYSQL_APP_PASSWORD';
                 GRANT ALL PRIVILEGES ON youtube_slicer.* TO 'youtube_user'@'localhost';
                 FLUSH PRIVILEGES;
             " || {
@@ -545,7 +592,7 @@ install_mysql() {
         fi
 
         # 验证应用数据库连接
-        if mysql -uyoutube_user -pyoutube_password -e "USE youtube_slicer; SELECT 1;" &>/dev/null; then
+        if mysql -uyoutube_user -p"$MYSQL_APP_PASSWORD" -e "USE youtube_slicer; SELECT 1;" &>/dev/null; then
             log_success "数据库和用户创建并验证成功"
         else
             log_warning "数据库连接验证失败，请稍后手动检查"
@@ -694,14 +741,14 @@ WantedBy=multi-user.target
 EOF
 
     # 创建 MinIO 环境配置文件
-    cat > /etc/default/minio << 'EOF'
+    cat > /etc/default/minio << EOF
 # MinIO local configuration file
 # Volume to be used for MinIO server.
 MINIO_VOLUMES="/opt/minio/data"
 
 # User and group
-MINIO_ROOT_USER=i4W5jAG1j9w2MheEQ7GmYEotBrkAaIPSmLRQa6Iruc0=
-MINIO_ROOT_PASSWORD=TcFA+qUwvCnikxANs7k/HX7oZz2zEjLo3RakL1kZt5k=
+MINIO_ROOT_USER=$MINIO_ACCESS_KEY
+MINIO_ROOT_PASSWORD=$MINIO_SECRET_KEY
 
 # Use if you want to run MinIO on a custom port.
 MINIO_OPTS="--console-address \":9001\""
@@ -898,19 +945,19 @@ EOF
     # 创建 .env 文件模板
     cat > "$PROJECT_DIR/.env" << EOF
 # Database Configuration
-DATABASE_URL=mysql+aiomysql://youtube_user:youtube_password@localhost:3306/youtube_slicer?charset=utf8mb4
+DATABASE_URL=mysql+aiomysql://youtube_user:$MYSQL_APP_PASSWORD@localhost:3306/youtube_slicer?charset=utf8mb4
 
 # Redis Configuration
 REDIS_URL=redis://localhost:6379
 
 # MinIO Configuration
 MINIO_ENDPOINT=localhost:9000
-MINIO_ACCESS_KEY=i4W5jAG1j9w2MheEQ7GmYEotBrkAaIPSmLRQa6Iruc0=
-MINIO_SECRET_KEY=TcFA+qUwvCnikxANs7k/HX7oZz2zEjLo3RakL1kZt5k=
+MINIO_ACCESS_KEY=$MINIO_ACCESS_KEY
+MINIO_SECRET_KEY=$MINIO_SECRET_KEY
 MINIO_BUCKET_NAME=youtube-videos
 
 # Security
-SECRET_KEY=your-secret-key-change-in-production
+SECRET_KEY=$APP_SECRET_KEY
 
 # Frontend Configuration
 FRONTEND_URL=http://localhost:3000
@@ -965,6 +1012,9 @@ create_system_services() {
 show_completion_info() {
     local project_dir="$1"
 
+    # 保存凭据到文件
+    save_credentials
+
     echo
     echo "========================================"
     echo "       Flowclip 系统初始化完成！"
@@ -981,22 +1031,26 @@ show_completion_info() {
     echo "项目位置: $project_dir"
     echo "专用用户: $SERVICE_USER"
     echo
-    echo "数据库信息："
-    echo "  数据库: youtube_slicer"
-    echo "  用户: youtube_user / youtube_password"
+    echo "🔐 安全凭据已生成并保存到: $PASSWORD_FILE"
+    echo "   包含所有数据库、MinIO和应用密钥"
+    echo "   文件权限: 600 (仅root可读写)"
     echo
     echo "MinIO 访问信息："
     echo "  API: http://$(hostname -I | awk '{print $1}'):9000"
     echo "  Console: http://$(hostname -I | awk '{print $1}'):9001"
-    echo "  用户: i4W5jAG1j9w2MheEQ7GmYEotBrkAaIPSmLRQa6Iruc0="
-    echo "  密码: TcFA+qUwvCnikxANs7k/HX7oZz2zEjLo3RakL1kZt5k="
+    echo "  用户: $MINIO_ACCESS_KEY"
+    echo "  密码: $MINIO_SECRET_KEY"
     echo
     echo "接下来请使用以下命令切换到专用用户："
     echo "  su - $SERVICE_USER"
     echo "  cd EchoClip"
     echo "  # 配置应用环境并启动服务"
     echo
-    echo "注意：请确保将当前项目代码复制到 $project_dir"
+    echo "⚠️  安全提醒："
+    echo "  1. 请妥善保管凭据文件 $PASSWORD_FILE"
+    echo "  2. 建议将凭据文件备份到安全位置"
+    echo "  3. 生产环境请修改默认密码"
+    echo "  4. 删除不需要的凭据文件"
     echo
 }
 
