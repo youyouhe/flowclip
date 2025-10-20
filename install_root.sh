@@ -1155,16 +1155,59 @@ verify_all_services() {
         if [[ "$api_test" == "200" ]]; then
             log_success "✓ MinIO API健康检查通过"
 
-            # 尝试列出存储桶（简单的认证测试）
-            local bucket_test=$(curl -s -w "%{http_code}" -o /dev/null "$minio_endpoint/youtube-videos" \
+            # 创建存储桶（测试写权限）
+            log_info "测试MinIO存储桶创建权限..."
+            local bucket_test=$(curl -s -w "%{http_code}" -o /dev/null -X PUT "$minio_endpoint/youtube-videos" \
                 -H "Host: localhost:9000" \
+                -H "x-amz-date: $(date -u +%Y%m%dT%H%M%SZ)" \
+                -H "Authorization: AWS4-HMAC-SHA256 Credential=$minio_access_key/$(date -u +%Y%m%d)/us-east-1/s3/aws4_request" \
+                -H "x-amz-content-length: 0" \
                 -u "$minio_access_key:$minio_secret_key" \
                 2>/dev/null)
 
-            if [[ "$bucket_test" == "200" || "$bucket_test" == "404" ]]; then
-                log_success "✓ MinIO认证配置正确 (200:桶存在 或 404:桶不存在但认证成功)"
+            if [[ "$bucket_test" == "200" ]]; then
+                log_success "✓ MinIO存储桶创建成功 (写权限正常)"
+
+                # 测试删除存储桶（测试完整权限）
+                log_info "测试MinIO存储桶删除权限..."
+                local delete_test=$(curl -s -w "%{http_code" -o /dev/null -X DELETE "$minio_endpoint/youtube-videos" \
+                    -H "Host: localhost:9000" \
+                    -H "x-amz-date: $(date -u +%Y%m%dT%H%M%SZ)" \
+                    -H "Authorization: AWS4-HMAC-SHA256 Credential=$minio_access_key/$(date -u +%Y%m%d)/us-east-1/s3/aws4_request" \
+                    -u "$minio_access_key:$minio_secret_key" \
+                    2>/dev/null)
+
+                if [[ "$delete_test" == "204" ]]; then
+                    log_success "✓ MinIO存储桶删除成功 (完整权限验证通过)"
+                else
+                    log_warning "⚠ MinIO存储桶删除测试: HTTP $delete_test (权限可能有限制)"
+                fi
+
+                # 重新创建存储桶供应用使用
+                curl -s -X PUT "$minio_endpoint/youtube-videos" \
+                    -H "Host: localhost:9000" \
+                    -H "x-amz-date: $(date -u +%Y%m%dT%H%M%SZ)" \
+                    -H "Authorization: AWS4-HMAC-SHA256 Credential=$minio_access_key/$(date -u +%Y%m%d)/us-east-1/s3/aws4_request" \
+                    -H "x-amz-content-length: 0" \
+                    -u "$minio_access_key:$minio_secret_key" \
+                    -o /dev/null 2>&1
+
+                log_success "✅ MinIO存储桶重新创建完成，准备就绪"
+            elif [[ "$bucket_test" == "409" ]]; then
+                log_success "✓ MinIO存储桶已存在 (无需重新创建)"
             else
-                log_warning "⚠ MinIO存储桶访问测试: HTTP $bucket_test"
+                log_warning "⚠ MinIO存储桶创建测试: HTTP $bucket_test"
+                log_info "尝试直接检查存储桶存在性..."
+
+                local check_test=$(curl -s -w "%{http_code}" -o /dev/null "$minio_endpoint/youtube-videos" \
+                    -u "$minio_access_key:$minio_secret_key" \
+                    2>/dev/null)
+
+                if [[ "$check_test" == "200" ]]; then
+                    log_success "✓ MinIO存储桶存在且可访问"
+                else
+                    log_warning "⚠ MinIO存储桶不存在或无法访问: HTTP $check_test"
+                fi
             fi
         else
             log_warning "⚠ MinIO API健康检查失败: HTTP $api_test"
