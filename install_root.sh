@@ -1023,10 +1023,19 @@ EOF
 
     # 复制凭据文件到用户目录（确保用户可以读取）
     if [[ -f "$PASSWORD_FILE" ]]; then
+        # 复制到项目目录
         cp "$PASSWORD_FILE" "$PROJECT_DIR/credentials.txt"
         chown "$username:$username" "$PROJECT_DIR/credentials.txt"
         chmod 600 "$PROJECT_DIR/credentials.txt"
+
+        # 也复制到用户主目录（方便访问）
+        cp "$PASSWORD_FILE" "/home/$username/credentials.txt"
+        chown "$username:$username" "/home/$username/credentials.txt"
+        chmod 600 "/home/$username/credentials.txt"
+
         log_success "凭据文件已复制到用户目录"
+        log_info "  • 项目目录: $PROJECT_DIR/credentials.txt"
+        log_info "  • 用户主目录: /home/$username/credentials.txt"
     fi
 
     log_success "用户环境设置完成"
