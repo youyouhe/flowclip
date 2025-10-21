@@ -261,6 +261,48 @@ install_backend_dependencies() {
     log_success "后端依赖安装完成"
 }
 
+# 创建环境配置文件
+create_env_file() {
+    log_info "创建应用环境配置文件..."
+
+    local server_ip=$(hostname -I | awk '{print $1}')
+
+    # 创建 .env 文件
+    cat > "$PROJECT_DIR/.env" << EOF
+# Server Configuration
+PUBLIC_IP=$server_ip
+
+# Frontend URL (where users access the application)
+FRONTEND_URL=http://$server_ip:3000
+
+# Backend API URL (used by frontend to call backend)
+API_URL=http://$server_ip:8001
+
+# Database Configuration
+DATABASE_URL=mysql+aiomysql://youtube_user:$MYSQL_APP_PASSWORD@localhost:3306/youtube_slicer?charset=utf8mb4
+
+# Redis Configuration
+REDIS_URL=redis://localhost:6379
+
+# MinIO Configuration
+MINIO_ENDPOINT=localhost:9000
+MINIO_ACCESS_KEY=$MINIO_ACCESS_KEY
+MINIO_SECRET_KEY=$MINIO_SECRET_KEY
+MINIO_BUCKET_NAME=youtube-videos
+
+# Security
+SECRET_KEY=$APP_SECRET_KEY
+
+# OpenAI API Key (for AI features)
+OPENAI_API_KEY=your-openai-api-key
+
+# Debug mode (set to false in production)
+DEBUG=true
+EOF
+
+    log_success "环境配置文件创建完成"
+}
+
 # 配置数据库
 setup_database() {
     log_info "配置数据库..."
@@ -660,6 +702,9 @@ main() {
 
     # 安装后端依赖
     install_backend_dependencies
+
+    # 创建环境配置文件
+    create_env_file
 
     # 配置数据库
     setup_database
