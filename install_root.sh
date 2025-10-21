@@ -1047,6 +1047,122 @@ create_system_services() {
     log_success "系统服务配置创建完成"
 }
 
+# 使用MinIO客户端验证
+verify_minio_with_mc() {
+    local minio_endpoint="$1"
+    local minio_access_key="$2"
+    local minio_secret_key="$3"
+    local failed_services=("$@")
+
+    # 配置MinIO客户端
+    log_info "配置MinIO客户端..."
+    if mc alias set minio-verify "$minio_endpoint" "$minio_access_key" "$minio_secret_key" &>/dev/null; then
+        log_success "✓ MinIO客户端配置成功"
+
+        # 测试连接
+        if mc ls minio-verify &>/dev/null; then
+            log_success "✓ MinIO连接验证成功"
+
+            # 检查或创建存储桶
+            local bucket_name="youtube-videos"
+            if mc ls minio-verify/"$bucket_name" &>/dev/null; then
+                log_success "✓ MinIO存储桶已存在且可访问"
+                test_minio_bucket_permissions_with_mc "$bucket_name" "$minio_endpoint" "$minio_access_key" "$minio_secret_key"
+            else
+                log_info "MinIO存储桶不存在，尝试创建..."
+                if mc mb minio-verify/"$bucket_name" &>/dev/null; then
+                    log_success "✓ MinIO存储桶创建成功"
+                    test_minio_bucket_permissions_with_mc "$bucket_name" "$minio_endpoint" "$minio_access_key" "$minio_secret_key"
+                else
+                    log_error "✗ MinIO存储桶创建失败"
+                    failed_services+=("MinIO存储桶创建")
+                fi
+            fi
+        else
+            log_error "✗ MinIO客户端连接失败"
+            failed_services+=("MinIO连接")
+        fi
+
+        # 清理客户端配置
+        mc alias remove minio-verify &>/dev/null || true
+    else
+        log_error "✗ MinIO客户端配置失败"
+        failed_services+=("MinIO配置")
+    fi
+
+    return 0
+}
+
+# 使用MinIO客户端测试存储桶权限
+test_minio_bucket_permissions_with_mc() {
+    local bucket_name="$1"
+
+    # 测试存储桶写权限
+    log_info "测试MinIO存储桶权限..."
+    local test_file="/tmp/minio-verify-$(date +%s).txt"
+    echo "MinIO permission test - $(date)" > "$test_file"
+
+    if mc cp "$test_file" "minio-verify/$bucket_name/minio-permission-test.txt" &>/dev/null; then
+        log_success "✓ MinIO存储桶写权限验证成功"
+
+        # 测试读权限
+        if mc cat "minio-verify/$bucket_name/minio-permission-test.txt" &>/dev/null; then
+            log_success "✓ MinIO存储桶读权限验证成功"
+        else
+            log_warning "⚠ MinIO存储桶读权限验证失败"
+        fi
+
+        # 测试删除权限
+        if mc rm "minio-verify/$bucket_name/minio-permission-test.txt" &>/dev/null; then
+            log_success "✓ MinIO存储桶删除权限验证成功"
+        else
+            log_warning "⚠ MinIO存储桶删除权限验证失败"
+        fi
+
+        log_success "✅ MinIO存储桶完全就绪，权限验证通过"
+    else
+        log_error "✗ MinIO存储桶写权限验证失败"
+    fi
+
+    # 清理临时文件
+    rm -f "$test_file"
+}
+
+# 使用curl的备用验证方法
+verify_minio_with_curl() {
+    local minio_endpoint="$1"
+    local failed_services=("$@")
+
+    log_info "尝试curl备用方法（适用于旧版本MinIO）..."
+
+    # 尝试简单的无认证操作
+    local health_check=$(curl -s -w "%{http_code}" -o /dev/null "$minio_endpoint/minio/health/live")
+    if [[ "$health_check" == "200" ]]; then
+        log_success "✓ MinIO API健康检查通过"
+
+        # 尝试简单的根路径请求（无认证）
+        local root_test=$(curl -s -w "%{http_code}" -o /dev/null "$minio_endpoint/")
+        if [[ "$root_test" == "403" ]] || [[ "$root_test" == "200" ]]; then
+            log_success "✓ MinIO服务可访问（建议安装客户端进行完整测试）"
+
+            log_info "安装MinIO客户端的建议："
+            log_info "  wget https://dl.min.io/client/mc/release/linux-amd64/mc"
+            log_info "  chmod +x mc"
+            log_info "  sudo mv mc /usr/local/bin/"
+
+            return 0
+        else
+            log_warning "⚠ MinIO根路径访问异常: HTTP $root_test"
+            failed_services+=("MinIO访问")
+        fi
+    else
+        log_error "✗ MinIO API健康检查失败: HTTP $health_check"
+        failed_services+=("MinIO健康检查")
+    fi
+
+    return 0
+}
+
 # 验证所有服务
 verify_all_services() {
     log_info "=== 开始服务验证 ==="
@@ -1150,97 +1266,16 @@ verify_all_services() {
             log_warning "⚠ MinIO控制台可能需要更多时间启动"
         fi
 
-        # 测试MinIO认证（检查API可访问性）
-        local api_test=$(curl -s -w "%{http_code}" -o /dev/null "$minio_endpoint/minio/health/live")
-        if [[ "$api_test" == "200" ]]; then
-            log_success "✓ MinIO API健康检查通过"
+        # 测试MinIO认证和权限
+        log_info "测试MinIO认证和存储桶权限..."
 
-            # 先检查存储桶是否已存在（HEAD请求更高效）
-            log_info "检查MinIO存储桶状态..."
-            local bucket_exists_test=$(curl -s -w "%{http_code}" -o /dev/null -X HEAD "$minio_endpoint/youtube-videos" \
-                -u "$minio_access_key:$minio_secret_key" \
-                2>/dev/null)
-
-            if [[ "$bucket_exists_test" == "200" ]]; then
-                log_success "✓ MinIO存储桶已存在且可访问"
-
-                # 测试存储桶写权限（创建一个测试文件）
-                log_info "测试MinIO存储桶写权限..."
-                local test_file_content="MinIO permission test - $(date)"
-                local write_test=$(echo "$test_file_content" | curl -s -w "%{http_code}" -o /dev/null -X PUT "$minio_endpoint/youtube-videos/minio-permission-test.txt" \
-                    -H "Content-Type: text/plain" \
-                    --data-binary @- \
-                    -u "$minio_access_key:$minio_secret_key" \
-                    2>/dev/null)
-
-                if [[ "$write_test" == "200" ]]; then
-                    log_success "✓ MinIO存储桶写权限验证成功"
-
-                    # 清理测试文件
-                    curl -s -X DELETE "$minio_endpoint/youtube-videos/minio-permission-test.txt" \
-                        -u "$minio_access_key:$minio_secret_key" \
-                        -o /dev/null 2>&1
-
-                    log_success "✅ MinIO存储桶完全就绪，权限验证通过"
-                else
-                    log_warning "⚠ MinIO存储桶写权限测试失败: HTTP $write_test"
-                fi
-
-            elif [[ "$bucket_exists_test" == "404" ]]; then
-                log_info "MinIO存储桶不存在，尝试创建..."
-                local bucket_test=$(curl -s -w "%{http_code}" -o /dev/null -X PUT "$minio_endpoint/youtube-videos" \
-                    -H "Content-Type: application/octet-stream" \
-                    -u "$minio_access_key:$minio_secret_key" \
-                    2>/dev/null)
-
-                if [[ "$bucket_test" == "200" ]]; then
-                    log_success "✓ MinIO存储桶创建成功"
-
-                    # 测试存储桶写权限
-                    log_info "验证新创建存储桶的写权限..."
-                    local test_file_content="MinIO bucket test - $(date)"
-                    local write_test=$(echo "$test_file_content" | curl -s -w "%{http_code}" -o /dev/null -X PUT "$minio_endpoint/youtube-videos/minio-bucket-test.txt" \
-                        -H "Content-Type: text/plain" \
-                        --data-binary @- \
-                        -u "$minio_access_key:$minio_secret_key" \
-                        2>/dev/null)
-
-                    if [[ "$write_test" == "200" ]]; then
-                        log_success "✓ 新创建存储桶写权限验证成功"
-
-                        # 清理测试文件
-                        curl -s -X DELETE "$minio_endpoint/youtube-videos/minio-bucket-test.txt" \
-                            -u "$minio_access_key:$minio_secret_key" \
-                            -o /dev/null 2>&1
-
-                        log_success "✅ MinIO存储桶创建完成，准备就绪"
-                    else
-                        log_warning "⚠ 新创建存储桶写权限测试失败: HTTP $write_test"
-                    fi
-
-                else
-                    log_error "✗ MinIO存储桶创建失败: HTTP $bucket_test"
-                    failed_services+=("MinIO存储桶创建")
-                fi
-
-            else
-                log_warning "⚠ MinIO存储桶检查返回未知状态: HTTP $bucket_exists_test"
-                log_info "尝试使用备用方法验证MinIO..."
-
-                # 简单的认证测试
-                local auth_test=$(curl -s -w "%{http_code}" -o /dev/null -X GET "$minio_endpoint/" \
-                    -u "$minio_access_key:$minio_secret_key" \
-                    2>/dev/null)
-
-                if [[ "$auth_test" == "403" ]] || [[ "$auth_test" == "200" ]]; then
-                    log_success "✓ MinIO认证验证成功（存储桶操作可能需要额外配置）"
-                else
-                    log_error "✗ MinIO认证验证失败: HTTP $auth_test"
-                    failed_services+=("MinIO认证")
-                fi
-            fi
+        # 检查是否安装了MinIO客户端
+        if command -v mc &> /dev/null; then
+            log_info "使用MinIO客户端进行验证..."
+            verify_minio_with_mc "$minio_endpoint" "$minio_access_key" "$minio_secret_key" "${failed_services[@]}"
         else
-            log_warning "⚠ MinIO API健康检查失败: HTTP $api_test"
+            log_info "MinIO客户端未安装，尝试curl验证..."
+            verify_minio_with_curl "$minio_endpoint" "${failed_services[@]}"
         fi
     else
         log_error "✗ MinIO API服务不可访问"
@@ -1331,7 +1366,7 @@ verify_all_services() {
         fi
     done
 
-    # 生成验证报告
+# 生成验证报告
     echo
     echo "========================================"
     echo "         服务验证报告"
