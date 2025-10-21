@@ -72,15 +72,58 @@ load_credentials() {
     # 先尝试从用户目录读取
     if [[ -f "$CREDENTIALS_FILE" ]]; then
         log_info "从用户凭据文件读取: $CREDENTIALS_FILE"
-    # 如果用户目录没有，尝试从root目录复制
-    elif [[ -f "/root/flowclip_credentials.txt" ]]; then
-        log_info "从root目录复制凭据文件..."
-        cp "/root/flowclip_credentials.txt" "$CREDENTIALS_FILE"
-        chmod 600 "$CREDENTIALS_FILE"
+    # 如果用户目录没有，尝试多种方式获取
     else
-        log_error "凭据文件不存在: $CREDENTIALS_FILE 或 /root/flowclip_credentials.txt"
-        log_error "请先运行 root 安装脚本生成凭据"
-        exit 1
+        log_info "用户目录没有凭据文件，尝试获取凭据..."
+
+        # 方法1: 检查环境变量（由install_all.sh传递）
+        if [[ -n "${MYSQL_APP_PASSWORD:-}" ]] && [[ -n "${MINIO_ACCESS_KEY:-}" ]] && [[ -n "${MINIO_SECRET_KEY:-}" ]]; then
+            log_info "从环境变量读取凭据..."
+
+            # 创建用户凭据文件
+            cat > "$CREDENTIALS_FILE" << EOF
+========================================
+    Flowclip 系统凭据信息
+========================================
+生成时间: $(date)
+服务器IP: $(hostname -I | awk '{print $1}')
+
+数据库凭据:
+- MySQL Root密码: [已隐藏]
+- 应用数据库密码: $MYSQL_APP_PASSWORD
+- 数据库名: youtube_slicer
+- 应用用户: youtube_user
+
+MinIO凭据:
+- 访问密钥: $MINIO_ACCESS_KEY
+- 秘密密钥: $MINIO_SECRET_KEY
+- 存储桶: youtube-videos
+
+应用凭据:
+- Secret Key: ${APP_SECRET_KEY:-[已生成]}
+
+========================================
+EOF
+            chmod 600 "$CREDENTIALS_FILE"
+
+        # 方法2: 尝试从root目录复制（需要权限）
+        elif [[ -f "/root/flowclip_credentials.txt" ]]; then
+            log_info "尝试从root目录复制凭据文件..."
+            # 如果有sudo权限，尝试复制
+            if sudo cp "/root/flowclip_credentials.txt" "$CREDENTIALS_FILE" 2>/dev/null; then
+                chmod 600 "$CREDENTIALS_FILE"
+                log_success "凭据文件复制成功"
+            else
+                log_error "无法访问root凭据文件"
+                log_error "请手动复制凭据文件或使用完整安装脚本"
+                exit 1
+            fi
+        else
+            log_error "凭据文件不存在: $CREDENTIALS_FILE 或 /root/flowclip_credentials.txt"
+            log_error "请先运行 root 安装脚本生成凭据"
+            log_error "或使用完整安装脚本: sudo bash install_all.sh"
+            exit 1
+        fi
     fi
 
     # 读取凭据

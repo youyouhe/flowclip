@@ -133,6 +133,7 @@ install_app() {
 
     local SERVICE_USER="flowclip"
     local PROJECT_DIR="/home/$SERVICE_USER/EchoClip"
+    local CREDENTIALS_FILE="/root/flowclip_credentials.txt"
 
     # 检查脚本是否已经在用户目录
     if [[ ! -f "/home/$SERVICE_USER/install_user.sh" ]]; then
@@ -154,9 +155,38 @@ install_app() {
         log_info "install_user.sh脚本已存在，跳过复制"
     fi
 
-    # 切换到用户并运行安装
-    log_info "切换到专用用户并安装应用..."
-    su - "$SERVICE_USER" -c "cd /home/$SERVICE_USER && bash install_user.sh"
+    # 复制凭据文件到用户目录
+    if [[ -f "$CREDENTIALS_FILE" ]]; then
+        log_info "复制凭据文件到用户目录..."
+        cp "$CREDENTIALS_FILE" "/home/$SERVICE_USER/credentials.txt"
+        chown "$SERVICE_USER:$SERVICE_USER" "/home/$SERVICE_USER/credentials.txt"
+        chmod 600 "/home/$SERVICE_USER/credentials.txt"
+        log_success "凭据文件复制完成"
+    else
+        log_error "凭据文件不存在: $CREDENTIALS_FILE"
+        exit 1
+    fi
+
+    # 读取凭据并传递给用户脚本
+    if [[ -f "$CREDENTIALS_FILE" ]]; then
+        local MYSQL_APP_PASSWORD=$(grep "应用数据库密码:" "$CREDENTIALS_FILE" | awk '{print $3}')
+        local MINIO_ACCESS_KEY=$(grep "访问密钥:" "$CREDENTIALS_FILE" | awk '{print $3}')
+        local MINIO_SECRET_KEY=$(grep "秘密密钥:" "$CREDENTIALS_FILE" | awk '{print $3}')
+        local APP_SECRET_KEY=$(grep "Secret Key:" "$CREDENTIALS_FILE" | awk '{print $3}')
+
+        # 切换到用户并运行安装，传递凭据作为环境变量
+        log_info "切换到专用用户并安装应用..."
+        su - "$SERVICE_USER" -c "
+            export MYSQL_APP_PASSWORD='$MYSQL_APP_PASSWORD'
+            export MINIO_ACCESS_KEY='$MINIO_ACCESS_KEY'
+            export MINIO_SECRET_KEY='$MINIO_SECRET_KEY'
+            export APP_SECRET_KEY='$APP_SECRET_KEY'
+            cd /home/$SERVICE_USER && bash install_user.sh
+        "
+    else
+        log_error "无法读取凭据文件"
+        exit 1
+    fi
 
     if [[ $? -eq 0 ]]; then
         log_success "应用安装完成"
