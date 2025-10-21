@@ -134,19 +134,25 @@ install_app() {
     local SERVICE_USER="flowclip"
     local PROJECT_DIR="/home/$SERVICE_USER/EchoClip"
 
-    # 获取当前脚本所在目录
-    local SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-    local INSTALL_USER_SCRIPT="$SCRIPT_DIR/install_user.sh"
+    # 检查脚本是否已经在用户目录
+    if [[ ! -f "/home/$SERVICE_USER/install_user.sh" ]]; then
+        # 获取当前脚本所在目录
+        local SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+        local INSTALL_USER_SCRIPT="$SCRIPT_DIR/install_user.sh"
 
-    if [[ ! -f "$INSTALL_USER_SCRIPT" ]]; then
-        log_info "下载install_user.sh脚本..."
-        curl -fsSL https://raw.githubusercontent.com/youyouhe/flowclip/main/install_user.sh -o "$INSTALL_USER_SCRIPT"
-        chmod +x "$INSTALL_USER_SCRIPT"
+        if [[ ! -f "$INSTALL_USER_SCRIPT" ]]; then
+            log_info "下载install_user.sh脚本..."
+            curl -fsSL https://raw.githubusercontent.com/youyouhe/flowclip/main/install_user.sh -o "/home/$SERVICE_USER/install_user.sh"
+        else
+            log_info "复制install_user.sh脚本到用户目录..."
+            cp "$INSTALL_USER_SCRIPT" "/home/$SERVICE_USER/install_user.sh"
+        fi
+
+        chmod +x "/home/$SERVICE_USER/install_user.sh"
+        chown "$SERVICE_USER:$SERVICE_USER" "/home/$SERVICE_USER/install_user.sh"
+    else
+        log_info "install_user.sh脚本已存在，跳过复制"
     fi
-
-    # 复制脚本到用户目录
-    cp "$INSTALL_USER_SCRIPT" "/home/$SERVICE_USER/"
-    chown "$SERVICE_USER:$SERVICE_USER" "/home/$SERVICE_USER/install_user.sh"
 
     # 切换到用户并运行安装
     log_info "切换到专用用户并安装应用..."
