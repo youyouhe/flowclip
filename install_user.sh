@@ -411,7 +411,9 @@ module.exports = {
         MINIO_ENDPOINT: 'localhost:9000',
         MINIO_ACCESS_KEY: '$MINIO_ACCESS_KEY',
         MINIO_SECRET_KEY: '$MINIO_SECRET_KEY',
-        MINIO_BUCKET_NAME: 'youtube-videos'
+        MINIO_BUCKET_NAME: 'youtube-videos',
+        SECRET_KEY: '$APP_SECRET_KEY',
+        PYTHONPATH: '/home/flowclip/EchoClip/backend:/home/flowclip/EchoClip/venv/lib/python3.10/site-packages'
       },
       log_file: '/home/flowclip/EchoClip/logs/celery-worker.log',
       out_file: '/home/flowclip/EchoClip/logs/celery-worker-out.log',
@@ -431,7 +433,13 @@ module.exports = {
       max_memory_restart: '512M',
       env: {
         DATABASE_URL: 'mysql+aiomysql://youtube_user:$MYSQL_APP_PASSWORD@localhost:3306/youtube_slicer?charset=utf8mb4',
-        REDIS_URL: 'redis://localhost:6379'
+        REDIS_URL: 'redis://localhost:6379',
+        MINIO_ENDPOINT: 'localhost:9000',
+        MINIO_ACCESS_KEY: '$MINIO_ACCESS_KEY',
+        MINIO_SECRET_KEY: '$MINIO_SECRET_KEY',
+        MINIO_BUCKET_NAME: 'youtube-videos',
+        SECRET_KEY: '$APP_SECRET_KEY',
+        PYTHONPATH: '/home/flowclip/EchoClip/backend:/home/flowclip/EchoClip/venv/lib/python3.10/site-packages'
       },
       log_file: '/home/flowclip/EchoClip/logs/celery-beat.log',
       out_file: '/home/flowclip/EchoClip/logs/celery-beat-out.log',
