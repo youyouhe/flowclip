@@ -10,14 +10,14 @@ class Settings(BaseSettings):
     api_url: Optional[str] = None
     
     # Database
-    database_url: str = "mysql+aiomysql://youtube_user:youtube_password@mysql:3306/youtube_slicer?charset=utf8mb4"
-    
+    database_url: str = os.getenv("DATABASE_URL", "mysql+aiomysql://youtube_user:youtube_password@localhost:3306/youtube_slicer?charset=utf8mb4")
+
     # MySQL Configuration
-    mysql_host: str = "mysql"
-    mysql_port: int = 3306
-    mysql_user: str = "youtube_user"
-    mysql_password: str = "youtube_password"
-    mysql_database: str = "youtube_slicer"
+    mysql_host: str = os.getenv("MYSQL_HOST", "localhost")
+    mysql_port: int = int(os.getenv("MYSQL_PORT", "3306"))
+    mysql_user: str = os.getenv("MYSQL_USER", "youtube_user")
+    mysql_password: str = os.getenv("MYSQL_APP_PASSWORD", "youtube_password")
+    mysql_database: str = os.getenv("MYSQL_DATABASE", "youtube_slicer")
     
     # MinIO
     minio_endpoint: str = "minio:9000"
