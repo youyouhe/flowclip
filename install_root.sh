@@ -1023,19 +1023,39 @@ EOF
 
     # 复制凭据文件到用户目录（确保用户可以读取）
     if [[ -f "$PASSWORD_FILE" ]]; then
+        # 确保覆盖任何现有文件
+        log_info "复制凭据文件到用户目录..."
+        log_info "源文件: $PASSWORD_FILE (时间: $(stat -c %y "$PASSWORD_FILE"))"
+
         # 复制到项目目录
-        cp "$PASSWORD_FILE" "$PROJECT_DIR/credentials.txt"
+        cp -f "$PASSWORD_FILE" "$PROJECT_DIR/credentials.txt"
         chown "$username:$username" "$PROJECT_DIR/credentials.txt"
         chmod 600 "$PROJECT_DIR/credentials.txt"
+        log_info "复制到项目目录: $PROJECT_DIR/credentials.txt"
 
         # 也复制到用户主目录（方便访问）
-        cp "$PASSWORD_FILE" "/home/$username/credentials.txt"
+        cp -f "$PASSWORD_FILE" "/home/$username/credentials.txt"
         chown "$username:$username" "/home/$username/credentials.txt"
         chmod 600 "/home/$username/credentials.txt"
+        log_info "复制到用户主目录: /home/$username/credentials.txt"
+
+        # 验证复制结果
+        local file1_secret=$(grep "^SECRET_KEY=" "$PASSWORD_FILE" | cut -d'=' -f2)
+        local file2_secret=$(grep "^SECRET_KEY=" "/home/$username/credentials.txt" | cut -d'=' -f2)
+
+        if [[ "$file1_secret" == "$file2_secret" ]]; then
+            log_success "凭据文件复制验证成功"
+        else
+            log_error "凭据文件复制验证失败！"
+            log_error "源文件SECRET_KEY: $file1_secret"
+            log_error "目标文件SECRET_KEY: $file2_secret"
+        fi
 
         log_success "凭据文件已复制到用户目录"
         log_info "  • 项目目录: $PROJECT_DIR/credentials.txt"
         log_info "  • 用户主目录: /home/$username/credentials.txt"
+    else
+        log_error "凭据文件不存在: $PASSWORD_FILE"
     fi
 
     log_success "用户环境设置完成"
