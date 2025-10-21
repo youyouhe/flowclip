@@ -312,13 +312,28 @@ setup_database() {
     # 激活虚拟环境
     source "$PROJECT_DIR/venv/bin/activate"
 
-    # 更新Alembic配置文件以使用MySQL
-    if [[ -f "alembic.ini" ]]; then
-        log_info "更新Alembic配置文件..."
-        sed -i "s|sqlalchemy.url = sqlite+aiosqlite:///./youtube_slicer.db|sqlalchemy.url = mysql+aiomysql://youtube_user:$MYSQL_APP_PASSWORD@localhost:3306/youtube_slicer?charset=utf8mb4|g" alembic.ini
-
-        log_info "运行数据库迁移..."
-        alembic upgrade head
+    # 测试数据库连接
+    log_info "测试数据库连接..."
+    if python -c "
+import pymysql
+try:
+    conn = pymysql.connect(
+        host='localhost',
+        user='youtube_user',
+        password='$MYSQL_APP_PASSWORD',
+        database='youtube_slicer',
+        charset='utf8mb4'
+    )
+    print('✓ 数据库连接测试成功')
+    conn.close()
+except Exception as e:
+    print(f'✗ 数据库连接测试失败: {e}')
+    exit(1)
+"; then
+        log_success "数据库连接验证成功"
+    else
+        log_error "数据库连接验证失败"
+        return 1
     fi
 
     # 创建测试用户（如果脚本存在）
@@ -328,6 +343,7 @@ setup_database() {
     fi
 
     log_success "数据库配置完成"
+    log_info "业务表将在应用启动时通过 create_tables() 自动创建"
 }
 
 # 安装前端依赖
