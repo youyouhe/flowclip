@@ -9,6 +9,7 @@ module.exports = {
       autorestart: true,
       watch: false,
       max_memory_restart: '1G',
+      env_file: '/home/flowclip/EchoClip/.env',
       env: {
         NODE_ENV: 'production',
         PYTHONPATH: '/home/flowclip/EchoClip/backend:/home/flowclip/EchoClip'
@@ -27,6 +28,7 @@ module.exports = {
       autorestart: true,
       watch: false,
       max_memory_restart: '1G',
+      env_file: '/home/flowclip/EchoClip/.env',
       env: {
         NODE_ENV: 'production',
         PYTHONPATH: '/home/flowclip/EchoClip/backend:/home/flowclip/EchoClip',
@@ -47,6 +49,7 @@ module.exports = {
       autorestart: true,
       watch: false,
       max_memory_restart: '512M',
+      env_file: '/home/flowclip/EchoClip/.env',
       env: {
         NODE_ENV: 'production',
         PYTHONPATH: '/home/flowclip/EchoClip/backend:/home/flowclip/EchoClip',
@@ -67,6 +70,7 @@ module.exports = {
       autorestart: true,
       watch: false,
       max_memory_restart: '512M',
+      env_file: '/home/flowclip/EchoClip/.env',
       env: {
         NODE_ENV: 'development',
         REACT_APP_API_URL: 'http://localhost:8001'
