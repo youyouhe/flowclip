@@ -312,8 +312,11 @@ setup_database() {
     # 激活虚拟环境
     source "$PROJECT_DIR/venv/bin/activate"
 
-    # 运行数据库迁移
+    # 更新Alembic配置文件以使用MySQL
     if [[ -f "alembic.ini" ]]; then
+        log_info "更新Alembic配置文件..."
+        sed -i "s|sqlalchemy.url = sqlite+aiosqlite:///./youtube_slicer.db|sqlalchemy.url = mysql+aiomysql://youtube_user:$MYSQL_APP_PASSWORD@localhost:3306/youtube_slicer?charset=utf8mb4|g" alembic.ini
+
         log_info "运行数据库迁移..."
         alembic upgrade head
     fi
