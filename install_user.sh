@@ -17,6 +17,7 @@ PROJECT_NAME="flowclip"
 PROJECT_DIR="/home/flowclip/EchoClip"
 BACKEND_DIR="$PROJECT_DIR/backend"
 FRONTEND_DIR="$PROJECT_DIR/frontend"
+CREDENTIALS_FILE="/root/flowclip_credentials.txt"
 
 # 日志函数
 log_info() {
@@ -33,6 +34,31 @@ log_warning() {
 
 log_error() {
     echo -e "${RED}[ERROR]${NC} $1"
+}
+
+# 读取凭据文件
+load_credentials() {
+    log_info "读取系统凭据..."
+
+    if [[ ! -f "$CREDENTIALS_FILE" ]]; then
+        log_error "凭据文件不存在: $CREDENTIALS_FILE"
+        log_error "请先运行 root 安装脚本生成凭据"
+        exit 1
+    fi
+
+    # 读取凭据
+    MYSQL_APP_PASSWORD=$(grep "应用数据库密码:" "$CREDENTIALS_FILE" | awk '{print $3}')
+    MINIO_ACCESS_KEY=$(grep "访问密钥:" "$CREDENTIALS_FILE" | awk '{print $3}')
+    MINIO_SECRET_KEY=$(grep "秘密密钥:" "$CREDENTIALS_FILE" | awk '{print $3}')
+    APP_SECRET_KEY=$(grep "Secret Key:" "$CREDENTIALS_FILE" | awk '{print $3}')
+
+    # 验证凭据是否读取成功
+    if [[ -z "$MYSQL_APP_PASSWORD" ]] || [[ -z "$MINIO_ACCESS_KEY" ]] || [[ -z "$MINIO_SECRET_KEY" ]]; then
+        log_error "凭据文件解析失败"
+        exit 1
+    fi
+
+    log_success "系统凭据读取完成"
 }
 
 # 检查项目目录
@@ -90,8 +116,14 @@ check_system_dependencies() {
     fi
 
     # 检查 MySQL
-    if ! mysql -uyoutube_user -pyoutube_password -e "SELECT 1;" &> /dev/null; then
-        log_warning "MySQL 连接失败，请检查数据库配置"
+    if [[ -n "$MYSQL_APP_PASSWORD" ]]; then
+        if ! mysql -uyoutube_user -p"$MYSQL_APP_PASSWORD" -e "SELECT 1;" &> /dev/null; then
+            log_warning "MySQL 连接失败，请检查数据库配置"
+        else
+            log_success "MySQL 连接验证成功"
+        fi
+    else
+        log_warning "MySQL 凭据未加载"
     fi
 
     if [[ ${#missing_deps[@]} -gt 0 ]]; then
@@ -191,7 +223,7 @@ create_pm2_config() {
     cd "$PROJECT_DIR"
 
     # 创建 PM2 配置文件
-    cat > ecosystem.config.js << 'EOF'
+    cat > ecosystem.config.js << EOF
 module.exports = {
   apps: [
     {
@@ -206,13 +238,13 @@ module.exports = {
       max_memory_restart: '1G',
       env: {
         NODE_ENV: 'development',
-        DATABASE_URL: 'mysql+aiomysql://youtube_user:youtube_password@localhost:3306/youtube_slicer?charset=utf8mb4',
+        DATABASE_URL: 'mysql+aiomysql://youtube_user:$MYSQL_APP_PASSWORD@localhost:3306/youtube_slicer?charset=utf8mb4',
         REDIS_URL: 'redis://localhost:6379',
         MINIO_ENDPOINT: 'localhost:9000',
-        MINIO_ACCESS_KEY: 'i4W5jAG1j9w2MheEQ7GmYEotBrkAaIPSmLRQa6Iruc0=',
-        MINIO_SECRET_KEY: 'TcFA+qUwvCnikxANs7k/HX7oZz2zEjLo3RakL1kZt5k=',
+        MINIO_ACCESS_KEY: '$MINIO_ACCESS_KEY',
+        MINIO_SECRET_KEY: '$MINIO_SECRET_KEY',
         MINIO_BUCKET_NAME: 'youtube-videos',
-        SECRET_KEY: 'your-secret-key-change-in-production',
+        SECRET_KEY: '$APP_SECRET_KEY',
         DEBUG: 'true'
       },
       log_file: '/home/flowclip/EchoClip/logs/backend.log',
@@ -232,11 +264,11 @@ module.exports = {
       watch: false,
       max_memory_restart: '2G',
       env: {
-        DATABASE_URL: 'mysql+aiomysql://youtube_user:youtube_password@localhost:3306/youtube_slicer?charset=utf8mb4',
+        DATABASE_URL: 'mysql+aiomysql://youtube_user:$MYSQL_APP_PASSWORD@localhost:3306/youtube_slicer?charset=utf8mb4',
         REDIS_URL: 'redis://localhost:6379',
         MINIO_ENDPOINT: 'localhost:9000',
-        MINIO_ACCESS_KEY: 'i4W5jAG1j9w2MheEQ7GmYEotBrkAaIPSmLRQa6Iruc0=',
-        MINIO_SECRET_KEY: 'TcFA+qUwvCnikxANs7k/HX7oZz2zEjLo3RakL1kZt5k=',
+        MINIO_ACCESS_KEY: '$MINIO_ACCESS_KEY',
+        MINIO_SECRET_KEY: '$MINIO_SECRET_KEY',
         MINIO_BUCKET_NAME: 'youtube-videos'
       },
       log_file: '/home/flowclip/EchoClip/logs/celery-worker.log',
@@ -256,7 +288,7 @@ module.exports = {
       watch: false,
       max_memory_restart: '512M',
       env: {
-        DATABASE_URL: 'mysql+aiomysql://youtube_user:youtube_password@localhost:3306/youtube_slicer?charset=utf8mb4',
+        DATABASE_URL: 'mysql+aiomysql://youtube_user:$MYSQL_APP_PASSWORD@localhost:3306/youtube_slicer?charset=utf8mb4',
         REDIS_URL: 'redis://localhost:6379'
       },
       log_file: '/home/flowclip/EchoClip/logs/celery-beat.log',
@@ -532,6 +564,9 @@ main() {
 
     # 检查项目目录
     check_project_directory
+
+    # 读取系统凭据
+    load_credentials
 
     # 检查系统依赖
     check_system_dependencies
