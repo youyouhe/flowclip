@@ -1302,12 +1302,14 @@ verify_all_services() {
 
     if [[ -f "$credentials_file" ]]; then
         log_info "从凭据文件读取密码: $credentials_file"
-        mysql_root_password=$(grep "MySQL Root密码:" "$credentials_file" | awk '{print $4}')
-        mysql_app_password=$(grep "应用数据库密码:" "$credentials_file" | awk '{print $3}')
-        minio_access_key=$(grep "访问密钥:" "$credentials_file" | awk '{print $3}')
-        minio_secret_key=$(grep "秘密密钥:" "$credentials_file" | awk '{print $3}')
+        # 使用标准化的KEY=VALUE格式解析
+        mysql_root_password=$(grep "^MYSQL_ROOT_PASSWORD=" "$credentials_file" | cut -d'=' -f2)
+        mysql_app_password=$(grep "^MYSQL_APP_PASSWORD=" "$credentials_file" | cut -d'=' -f2)
+        minio_access_key=$(grep "^MINIO_ACCESS_KEY=" "$credentials_file" | cut -d'=' -f2)
+        minio_secret_key=$(grep "^MINIO_SECRET_KEY=" "$credentials_file" | cut -d'=' -f2)
 
         log_info "密码读取完成 - Root:${#mysql_root_password}, App:${#mysql_app_password}"
+        log_info "验证解析结果: MinIO_KEY长度:${#minio_access_key}"
     else
         log_warning "凭据文件不存在: $credentials_file"
         log_info "尝试使用全局变量..."
