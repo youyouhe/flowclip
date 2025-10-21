@@ -17,7 +17,7 @@ PROJECT_NAME="flowclip"
 PROJECT_DIR="/home/flowclip/EchoClip"
 BACKEND_DIR="$PROJECT_DIR/backend"
 FRONTEND_DIR="$PROJECT_DIR/frontend"
-CREDENTIALS_FILE="$PROJECT_DIR/credentials.txt"
+CREDENTIALS_FILE="/home/flowclip/credentials.txt"
 REPO_URL="https://github.com/youyouhe/flowclip.git"
 
 # 日志函数
