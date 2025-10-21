@@ -1023,39 +1023,128 @@ EOF
 
     # 复制凭据文件到用户目录（确保用户可以读取）
     if [[ -f "$PASSWORD_FILE" ]]; then
-        # 确保覆盖任何现有文件
-        log_info "复制凭据文件到用户目录..."
-        log_info "源文件: $PASSWORD_FILE (时间: $(stat -c %y "$PASSWORD_FILE"))"
+        log_info "=== 开始复制凭据文件 ==="
+
+        # 显示源文件信息
+        log_info "源文件信息:"
+        log_info "  路径: $PASSWORD_FILE"
+        log_info "  大小: $(stat -c %s "$PASSWORD_FILE" | numfmt --to=iec) 字节"
+        log_info "  时间: $(stat -c %y "$PASSWORD_FILE")"
+        log_info "  权限: $(stat -c %A "$PASSWORD_FILE")"
+        log_info "  用户: $(stat -c %U "$PASSWORD_FILE"):$(stat -c %G "$PASSWORD_FILE")"
+
+        # 检查源文件内容
+        log_info "源文件内容预览:"
+        log_info "  生成时间: $(grep "生成时间:" "$PASSWORD_FILE")"
+        log_info "  SECRET_KEY前6位: $(grep "^SECRET_KEY=" "$PASSWORD_FILE" | cut -d'=' -f2 | cut -c1-6)..."
 
         # 复制到项目目录
-        cp -f "$PASSWORD_FILE" "$PROJECT_DIR/credentials.txt"
-        chown "$username:$username" "$PROJECT_DIR/credentials.txt"
-        chmod 600 "$PROJECT_DIR/credentials.txt"
-        log_info "复制到项目目录: $PROJECT_DIR/credentials.txt"
+        log_info "复制操作 1/2: 复制到项目目录..."
+        log_info "  源文件: $PASSWORD_FILE"
+        log_info "  目标文件: $PROJECT_DIR/credentials.txt"
 
-        # 也复制到用户主目录（方便访问）
-        cp -f "$PASSWORD_FILE" "/home/$username/credentials.txt"
-        chown "$username:$username" "/home/$username/credentials.txt"
-        chmod 600 "/home/$username/credentials.txt"
-        log_info "复制到用户主目录: /home/$username/credentials.txt"
-
-        # 验证复制结果
-        local file1_secret=$(grep "^SECRET_KEY=" "$PASSWORD_FILE" | cut -d'=' -f2)
-        local file2_secret=$(grep "^SECRET_KEY=" "/home/$username/credentials.txt" | cut -d'=' -f2)
-
-        if [[ "$file1_secret" == "$file2_secret" ]]; then
-            log_success "凭据文件复制验证成功"
+        # 检查目标文件是否存在
+        if [[ -f "$PROJECT_DIR/credentials.txt" ]]; then
+            log_info "  目标文件已存在，将被覆盖"
+            log_info "  原文件大小: $(stat -c %s "$PROJECT_DIR/credentials.txt" | numfmt --to=iec) 字节"
         else
-            log_error "凭据文件复制验证失败！"
-            log_error "源文件SECRET_KEY: $file1_secret"
-            log_error "目标文件SECRET_KEY: $file2_secret"
+            log_info "  目标文件不存在，将创建新文件"
         fi
 
-        log_success "凭据文件已复制到用户目录"
+        # 执行复制
+        if cp -f "$PASSWORD_FILE" "$PROJECT_DIR/credentials.txt"; then
+            log_success "  ✅ 复制命令执行成功"
+
+            # 设置权限
+            if chown "$username:$username" "$PROJECT_DIR/credentials.txt"; then
+                log_success "  ✅ 权限设置成功: $username:$username"
+            else
+                log_error "  ❌ 权限设置失败"
+            fi
+
+            if chmod 600 "$PROJECT_DIR/credentials.txt"; then
+                log_success "  ✅ 文件权限设置成功: 600"
+            else
+                log_error "  ❌ 文件权限设置失败"
+            fi
+
+            # 验证复制结果
+            log_info "  验证复制结果:"
+            log_info "  新文件大小: $(stat -c %s "$PROJECT_DIR/credentials.txt" | numfmt --to=iec) 字节"
+            log_info "  新文件时间: $(stat -c %y "$PROJECT_DIR/credentials.txt")"
+            log_info "  新文件权限: $(stat -c %A "$PROJECT_DIR/credentials.txt")"
+
+        else
+            log_error "  ❌ 复制命令执行失败"
+        fi
+
+        # 也复制到用户主目录（方便访问）
+        log_info "复制操作 2/2: 复制到用户主目录..."
+        log_info "  源文件: $PASSWORD_FILE"
+        log_info "  目标文件: /home/$username/credentials.txt"
+
+        # 检查目标文件是否存在
+        if [[ -f "/home/$username/credentials.txt" ]]; then
+            log_info "  目标文件已存在，将被覆盖"
+            log_info "  原文件大小: $(stat -c %s "/home/$username/credentials.txt" | numfmt --to=iec) 字节"
+        else
+            log_info "  目标文件不存在，将创建新文件"
+        fi
+
+        # 执行复制
+        if cp -f "$PASSWORD_FILE" "/home/$username/credentials.txt"; then
+            log_success "  ✅ 复制命令执行成功"
+
+            # 设置权限
+            if chown "$username:$username" "/home/$username/credentials.txt"; then
+                log_success "  ✅ 权限设置成功: $username:$username"
+            else
+                log_error "  ❌ 权限设置失败"
+            fi
+
+            if chmod 600 "/home/$username/credentials.txt"; then
+                log_success "  ✅ 文件权限设置成功: 600"
+            else
+                log_error "  ❌ 文件权限设置失败"
+            fi
+
+            # 验证复制结果
+            log_info "  验证复制结果:"
+            log_info "  新文件大小: $(stat -c %s "/home/$username/credentials.txt" | numfmt --to=iec) 字节"
+            log_info "  新文件时间: $(stat -c %y "/home/$username/credentials.txt")"
+            log_info "  新文件权限: $(stat -c %A "/home/$username/credentials.txt")"
+
+        else
+            log_error "  ❌ 复制命令执行失败"
+        fi
+
+        # 最终验证
+        log_info "=== 最终验证 ==="
+        local source_secret=$(grep "^SECRET_KEY=" "$PASSWORD_FILE" | cut -d'=' -f2)
+        local project_secret=$(grep "^SECRET_KEY=" "$PROJECT_DIR/credentials.txt" | cut -d'=' -f2)
+        local home_secret=$(grep "^SECRET_KEY=" "/home/$username/credentials.txt" | cut -d'=' -f2)
+
+        log_info "SECRET_KEY对比:"
+        log_info "  源文件: ${source_secret:0:8}..."
+        log_info "  项目目录: ${project_secret:0:8}..."
+        log_info "  用户主目录: ${home_secret:0:8}..."
+
+        if [[ "$source_secret" == "$project_secret" ]] && [[ "$source_secret" == "$home_secret" ]]; then
+            log_success "🎉 所有凭据文件复制验证成功！"
+        else
+            log_error "❌ 凭据文件复制验证失败！"
+            log_error "  源文件与项目目录文件不匹配: ${source_secret:0:8}... vs ${project_secret:0:8}..."
+            log_error "  源文件与用户主目录文件不匹配: ${source_secret:0:8}... vs ${home_secret:0:8}..."
+        fi
+
+        log_success "=== 凭据文件复制操作完成 ==="
+        log_info "📁 文件位置:"
+        log_info "  • 源文件: $PASSWORD_FILE"
         log_info "  • 项目目录: $PROJECT_DIR/credentials.txt"
         log_info "  • 用户主目录: /home/$username/credentials.txt"
     else
-        log_error "凭据文件不存在: $PASSWORD_FILE"
+        log_error "❌ 凭据文件不存在: $PASSWORD_FILE"
+        log_info "请检查 save_credentials() 函数是否正确执行"
     fi
 
     log_success "用户环境设置完成"
