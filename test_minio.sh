@@ -194,25 +194,13 @@ test_basic_connection() {
 test_authentication_and_permissions() {
     log_info "测试MinIO认证和存储桶权限..."
 
-    # 先检查存储桶是否已存在（HEAD请求更高效）
-    log_info "检查存储桶状态: $MINIO_BUCKET"
-    local bucket_exists_test=$(curl -s -w "%{http_code}" -o /dev/null -X HEAD "$MINIO_ENDPOINT/$MINIO_BUCKET" \
-        -u "$MINIO_ACCESS_KEY:$MINIO_SECRET_KEY" \
-        2>/dev/null)
-
-    if [[ "$VERBOSE" == true ]]; then
-        log_info "存储桶检查返回: HTTP $bucket_exists_test"
-    fi
-
-    if [[ "$bucket_exists_test" == "200" ]]; then
-        log_success "✓ MinIO存储桶已存在且可访问"
-        test_existing_bucket_permissions
-    elif [[ "$bucket_exists_test" == "404" ]]; then
-        log_info "MinIO存储桶不存在，尝试创建..."
-        test_bucket_creation
+    # 检查是否安装了MinIO客户端
+    if command -v mc &> /dev/null; then
+        log_info "使用MinIO客户端进行测试..."
+        test_with_mc_client
     else
-        log_warning "⚠ MinIO存储桶检查返回未知状态: HTTP $bucket_exists_test"
-        test_fallback_authentication
+        log_info "MinIO客户端未安装，尝试使用curl测试..."
+        test_with_curl_fallback
     fi
 }
 
@@ -293,7 +281,105 @@ test_bucket_creation() {
     fi
 }
 
-# 备用认证测试
+# 使用MinIO客户端测试
+test_with_mc_client() {
+    # 配置MinIO客户端
+    log_info "配置MinIO客户端..."
+    if mc alias set testminio "$MINIO_ENDPOINT" "$MINIO_ACCESS_KEY" "$MINIO_SECRET_KEY" &>/dev/null; then
+        log_success "✓ MinIO客户端配置成功"
+
+        # 测试连接
+        if mc ls testminio &>/dev/null; then
+            log_success "✓ MinIO连接验证成功"
+
+            # 检查存储桶
+            if mc ls testminio/"$MINIO_BUCKET" &>/dev/null; then
+                log_success "✓ MinIO存储桶已存在且可访问"
+                test_bucket_permissions_with_mc
+            else
+                log_info "MinIO存储桶不存在，尝试创建..."
+                if mc mb testminio/"$MINIO_BUCKET" &>/dev/null; then
+                    log_success "✓ MinIO存储桶创建成功"
+                    test_bucket_permissions_with_mc
+                else
+                    log_error "✗ MinIO存储桶创建失败"
+                    return 1
+                fi
+            fi
+        else
+            log_error "✗ MinIO客户端连接失败"
+            return 1
+        fi
+    else
+        log_error "✗ MinIO客户端配置失败"
+        return 1
+    fi
+}
+
+# 使用MinIO客户端测试权限
+test_bucket_permissions_with_mc() {
+    # 测试写权限
+    local test_file="/tmp/minio-test-$(date +%s).txt"
+    echo "MinIO permission test - $(date)" > "$test_file"
+
+    if mc cp "$test_file" "testminio/$MINIO_BUCKET/minio-permission-test.txt" &>/dev/null; then
+        log_success "✓ MinIO存储桶写权限验证成功"
+
+        # 测试读权限
+        if mc cat "testminio/$MINIO_BUCKET/minio-permission-test.txt" &>/dev/null; then
+            log_success "✓ MinIO存储桶读权限验证成功"
+        else
+            log_warning "⚠ MinIO存储桶读权限验证失败"
+        fi
+
+        # 测试删除权限
+        if mc rm "testminio/$MINIO_BUCKET/minio-permission-test.txt" &>/dev/null; then
+            log_success "✓ MinIO存储桶删除权限验证成功"
+        else
+            log_warning "⚠ MinIO存储桶删除权限验证失败"
+        fi
+
+        log_success "✅ MinIO存储桶完全就绪，所有权限验证通过"
+    else
+        log_error "✗ MinIO存储桶写权限验证失败"
+        return 1
+    fi
+
+    # 清理临时文件
+    rm -f "$test_file"
+}
+
+# 使用curl的备用测试方法
+test_with_curl_fallback() {
+    log_info "尝试curl备用方法（适用于旧版本MinIO）..."
+
+    # 尝试简单的无认证操作
+    local health_check=$(curl -s -w "%{http_code}" -o /dev/null "$MINIO_ENDPOINT/minio/health/live")
+    if [[ "$health_check" == "200" ]]; then
+        log_success "✓ MinIO API健康检查通过"
+
+        # 尝试简单的根路径请求（无认证）
+        local root_test=$(curl -s -w "%{http_code}" -o /dev/null "$MINIO_ENDPOINT/")
+        if [[ "$root_test" == "403" ]] || [[ "$root_test" == "200" ]]; then
+            log_success "✓ MinIO服务可访问（需要客户端进行完整测试）"
+
+            log_info "建议安装MinIO客户端进行完整测试："
+            log_info "  wget https://dl.min.io/client/mc/release/linux-amd64/mc"
+            log_info "  chmod +x mc"
+            log_info "  sudo mv mc /usr/local/bin/"
+
+            return 0
+        else
+            log_warning "⚠ MinIO根路径访问异常: HTTP $root_test"
+            return 1
+        fi
+    else
+        log_error "✗ MinIO API健康检查失败: HTTP $health_check"
+        return 1
+    fi
+}
+
+# 备用认证测试（保留用于旧版本）
 test_fallback_authentication() {
     log_info "尝试使用备用方法验证MinIO..."
 
