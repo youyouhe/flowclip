@@ -1021,6 +1021,14 @@ EOF
 
     chown "$username:$username" "$PROJECT_DIR/.env"
 
+    # 复制凭据文件到用户目录（确保用户可以读取）
+    if [[ -f "$PASSWORD_FILE" ]]; then
+        cp "$PASSWORD_FILE" "$PROJECT_DIR/credentials.txt"
+        chown "$username:$username" "$PROJECT_DIR/credentials.txt"
+        chmod 600 "$PROJECT_DIR/credentials.txt"
+        log_success "凭据文件已复制到用户目录"
+    fi
+
     log_success "用户环境设置完成"
     echo "$PROJECT_DIR"
 }

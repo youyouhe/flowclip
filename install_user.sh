@@ -17,7 +17,8 @@ PROJECT_NAME="flowclip"
 PROJECT_DIR="/home/flowclip/EchoClip"
 BACKEND_DIR="$PROJECT_DIR/backend"
 FRONTEND_DIR="$PROJECT_DIR/frontend"
-CREDENTIALS_FILE="/root/flowclip_credentials.txt"
+CREDENTIALS_FILE="$PROJECT_DIR/credentials.txt"
+REPO_URL="https://github.com/youyouhe/flowclip.git"
 
 # 日志函数
 log_info() {
@@ -36,12 +37,48 @@ log_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
 
+# 克隆项目代码
+clone_project() {
+    log_info "克隆项目代码..."
+
+    # 如果项目目录已存在且有内容，先备份
+    if [[ -d "$PROJECT_DIR" ]] && [[ "$(ls -A "$PROJECT_DIR" 2>/dev/null)" ]]; then
+        log_warning "项目目录已存在，创建备份..."
+        local backup_dir="${PROJECT_DIR}_backup_$(date +%Y%m%d_%H%M%S)"
+        mv "$PROJECT_DIR" "$backup_dir"
+        log_info "原目录已备份到: $backup_dir"
+    fi
+
+    # 创建项目目录
+    mkdir -p "$PROJECT_DIR"
+
+    # 克隆项目
+    cd "$(dirname "$PROJECT_DIR")"
+    if git clone "$REPO_URL" EchoClip; then
+        log_success "项目代码克隆成功"
+    else
+        log_error "项目代码克隆失败"
+        exit 1
+    fi
+
+    # 设置权限
+    chown -R "$(whoami):$(whoami)" "$PROJECT_DIR"
+}
+
 # 读取凭据文件
 load_credentials() {
     log_info "读取系统凭据..."
 
-    if [[ ! -f "$CREDENTIALS_FILE" ]]; then
-        log_error "凭据文件不存在: $CREDENTIALS_FILE"
+    # 先尝试从用户目录读取
+    if [[ -f "$CREDENTIALS_FILE" ]]; then
+        log_info "从用户凭据文件读取: $CREDENTIALS_FILE"
+    # 如果用户目录没有，尝试从root目录复制
+    elif [[ -f "/root/flowclip_credentials.txt" ]]; then
+        log_info "从root目录复制凭据文件..."
+        cp "/root/flowclip_credentials.txt" "$CREDENTIALS_FILE"
+        chmod 600 "$CREDENTIALS_FILE"
+    else
+        log_error "凭据文件不存在: $CREDENTIALS_FILE 或 /root/flowclip_credentials.txt"
         log_error "请先运行 root 安装脚本生成凭据"
         exit 1
     fi
@@ -55,6 +92,7 @@ load_credentials() {
     # 验证凭据是否读取成功
     if [[ -z "$MYSQL_APP_PASSWORD" ]] || [[ -z "$MINIO_ACCESS_KEY" ]] || [[ -z "$MINIO_SECRET_KEY" ]]; then
         log_error "凭据文件解析失败"
+        log_error "请检查凭据文件格式: $CREDENTIALS_FILE"
         exit 1
     fi
 
@@ -561,6 +599,9 @@ main() {
     echo "    Flowclip 用户环境配置脚本"
     echo "========================================"
     echo
+
+    # 克隆项目代码
+    clone_project
 
     # 检查项目目录
     check_project_directory
