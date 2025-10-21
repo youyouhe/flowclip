@@ -315,10 +315,10 @@ update_env_file() {
     fi
 
     # 重新读取凭据（确保使用最新值）
-    local mysql_password=$(grep "应用数据库密码:" "$CREDENTIALS_FILE" | awk '{print $3}')
-    local minio_access_key=$(grep "访问密钥:" "$CREDENTIALS_FILE" | awk '{print $3}')
-    local minio_secret_key=$(grep "秘密密钥:" "$CREDENTIALS_FILE" | awk '{print $3}')
-    local app_secret_key=$(grep "Secret Key:" "$CREDENTIALS_FILE" | awk '{print $3}')
+    local mysql_password=$(grep "应用数据库密码:" "$CREDENTIALS_FILE" | sed 's/^[[:space:]]*- //' | awk '{print $3}')
+    local minio_access_key=$(grep "访问密钥:" "$CREDENTIALS_FILE" | sed 's/^[[:space:]]*- //' | awk '{print $3}')
+    local minio_secret_key=$(grep "秘密密钥:" "$CREDENTIALS_FILE" | sed 's/^[[:space:]]*- //' | awk '{print $3}')
+    local app_secret_key=$(grep "Secret Key:" "$CREDENTIALS_FILE" | sed 's/^[[:space:]]*- //' | awk '{print $3}')
     local server_ip=$(hostname -I | awk '{print $1}')
 
     # 更新.env文件中的敏感配置
