@@ -1533,8 +1533,8 @@ verify_all_services() {
 show_completion_info() {
     local project_dir="$1"
 
-    # 保存凭据到文件
-    save_credentials
+    # 凭据文件已在脚本开始时生成，无需重复生成
+    log_info "使用已生成的凭据文件: $PASSWORD_FILE"
 
     # 执行完整的服务验证
     verify_all_services
@@ -1623,6 +1623,10 @@ main() {
 
     # 创建系统服务配置
     create_system_services
+
+    # 生成并保存凭据文件（确保在用户环境设置之前）
+    log_info "生成系统凭据..."
+    save_credentials
 
     # 设置用户环境
     project_dir=$(setup_user_environment)
