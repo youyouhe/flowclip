@@ -303,6 +303,36 @@ EOF
     log_success "环境配置文件创建完成"
 }
 
+# 更新环境配置文件
+update_env_file() {
+    log_info "更新应用环境配置文件..."
+
+    # 检查.env文件是否存在
+    if [[ ! -f "$PROJECT_DIR/.env" ]]; then
+        log_warning ".env文件不存在，将创建新文件"
+        create_env_file
+        return
+    fi
+
+    # 重新读取凭据（确保使用最新值）
+    local mysql_password=$(grep "应用数据库密码:" "$CREDENTIALS_FILE" | awk '{print $3}')
+    local minio_access_key=$(grep "访问密钥:" "$CREDENTIALS_FILE" | awk '{print $3}')
+    local minio_secret_key=$(grep "秘密密钥:" "$CREDENTIALS_FILE" | awk '{print $3}')
+    local app_secret_key=$(grep "Secret Key:" "$CREDENTIALS_FILE" | awk '{print $3}')
+    local server_ip=$(hostname -I | awk '{print $1}')
+
+    # 更新.env文件中的敏感配置
+    sed -i "s|DATABASE_URL=.*|DATABASE_URL=mysql+aiomysql://youtube_user:$mysql_password@localhost:3306/youtube_slicer?charset=utf8mb4|" "$PROJECT_DIR/.env"
+    sed -i "s|MINIO_ACCESS_KEY=.*|MINIO_ACCESS_KEY=$minio_access_key|" "$PROJECT_DIR/.env"
+    sed -i "s|MINIO_SECRET_KEY=.*|MINIO_SECRET_KEY=$minio_secret_key|" "$PROJECT_DIR/.env"
+    sed -i "s|SECRET_KEY=.*|SECRET_KEY=$app_secret_key|" "$PROJECT_DIR/.env"
+    sed -i "s|PUBLIC_IP=.*|PUBLIC_IP=$server_ip|" "$PROJECT_DIR/.env"
+    sed -i "s|FRONTEND_URL=.*|FRONTEND_URL=http://$server_ip:3000|" "$PROJECT_DIR/.env"
+    sed -i "s|API_URL=.*|API_URL=http://$server_ip:8001|" "$PROJECT_DIR/.env"
+
+    log_success "环境配置文件更新完成"
+}
+
 # 配置数据库
 setup_database() {
     log_info "配置数据库..."
@@ -730,8 +760,8 @@ main() {
     # 安装后端依赖
     install_backend_dependencies
 
-    # 创建环境配置文件
-    create_env_file
+    # 创建/更新环境配置文件
+    update_env_file
 
     # 配置数据库
     setup_database
