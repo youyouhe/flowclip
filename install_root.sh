@@ -43,18 +43,18 @@ save_credentials() {
 服务器IP: $(hostname -I | awk '{print $1}')
 
 数据库凭据:
-- MySQL Root密码: $MYSQL_ROOT_PASSWORD
-- 应用数据库密码: $MYSQL_APP_PASSWORD
-- 数据库名: youtube_slicer
-- 应用用户: youtube_user
+MYSQL_ROOT_PASSWORD=$MYSQL_ROOT_PASSWORD
+MYSQL_APP_PASSWORD=$MYSQL_APP_PASSWORD
+MYSQL_DATABASE=youtube_slicer
+MYSQL_USER=youtube_user
 
 MinIO凭据:
-- 访问密钥: $MINIO_ACCESS_KEY
-- 秘密密钥: $MINIO_SECRET_KEY
-- 存储桶: youtube-videos
+MINIO_ACCESS_KEY=$MINIO_ACCESS_KEY
+MINIO_SECRET_KEY=$MINIO_SECRET_KEY
+MINIO_BUCKET=youtube-videos
 
 应用凭据:
-- Secret Key: $APP_SECRET_KEY
+SECRET_KEY=$APP_SECRET_KEY
 
 ========================================
 重要提醒:

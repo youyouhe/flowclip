@@ -89,18 +89,18 @@ load_credentials() {
 服务器IP: $(hostname -I | awk '{print $1}')
 
 数据库凭据:
-- MySQL Root密码: [已隐藏]
-- 应用数据库密码: $MYSQL_APP_PASSWORD
-- 数据库名: youtube_slicer
-- 应用用户: youtube_user
+MYSQL_ROOT_PASSWORD=[已隐藏]
+MYSQL_APP_PASSWORD=$MYSQL_APP_PASSWORD
+MYSQL_DATABASE=youtube_slicer
+MYSQL_USER=youtube_user
 
 MinIO凭据:
-- 访问密钥: $MINIO_ACCESS_KEY
-- 秘密密钥: $MINIO_SECRET_KEY
-- 存储桶: youtube-videos
+MINIO_ACCESS_KEY=$MINIO_ACCESS_KEY
+MINIO_SECRET_KEY=$MINIO_SECRET_KEY
+MINIO_BUCKET=youtube-videos
 
 应用凭据:
-- Secret Key: ${APP_SECRET_KEY:-[已生成]}
+SECRET_KEY=$APP_SECRET_KEY
 
 ========================================
 EOF
@@ -126,11 +126,11 @@ EOF
         fi
     fi
 
-    # 读取凭据
-    MYSQL_APP_PASSWORD=$(grep "应用数据库密码:" "$CREDENTIALS_FILE" | awk '{print $3}')
-    MINIO_ACCESS_KEY=$(grep "访问密钥:" "$CREDENTIALS_FILE" | awk '{print $3}')
-    MINIO_SECRET_KEY=$(grep "秘密密钥:" "$CREDENTIALS_FILE" | awk '{print $3}')
-    APP_SECRET_KEY=$(grep "Secret Key:" "$CREDENTIALS_FILE" | awk '{print $3}')
+    # 读取凭据 - 使用标准化的KEY=VALUE格式
+    MYSQL_APP_PASSWORD=$(grep "^MYSQL_APP_PASSWORD=" "$CREDENTIALS_FILE" | cut -d'=' -f2)
+    MINIO_ACCESS_KEY=$(grep "^MINIO_ACCESS_KEY=" "$CREDENTIALS_FILE" | cut -d'=' -f2)
+    MINIO_SECRET_KEY=$(grep "^MINIO_SECRET_KEY=" "$CREDENTIALS_FILE" | cut -d'=' -f2)
+    APP_SECRET_KEY=$(grep "^SECRET_KEY=" "$CREDENTIALS_FILE" | cut -d'=' -f2)
 
     # 验证凭据是否读取成功
     if [[ -z "$MYSQL_APP_PASSWORD" ]] || [[ -z "$MINIO_ACCESS_KEY" ]] || [[ -z "$MINIO_SECRET_KEY" ]]; then
@@ -314,11 +314,11 @@ update_env_file() {
         return
     fi
 
-    # 重新读取凭据（确保使用最新值）
-    local mysql_password=$(grep "应用数据库密码:" "$CREDENTIALS_FILE" | sed 's/^[[:space:]]*- //' | awk '{print $3}')
-    local minio_access_key=$(grep "访问密钥:" "$CREDENTIALS_FILE" | sed 's/^[[:space:]]*- //' | awk '{print $3}')
-    local minio_secret_key=$(grep "秘密密钥:" "$CREDENTIALS_FILE" | sed 's/^[[:space:]]*- //' | awk '{print $3}')
-    local app_secret_key=$(grep "Secret Key:" "$CREDENTIALS_FILE" | sed 's/^[[:space:]]*- //' | awk '{print $3}')
+    # 重新读取凭据（确保使用最新值）- 使用标准化的KEY=VALUE格式
+    local mysql_password=$(grep "^MYSQL_APP_PASSWORD=" "$CREDENTIALS_FILE" | cut -d'=' -f2)
+    local minio_access_key=$(grep "^MINIO_ACCESS_KEY=" "$CREDENTIALS_FILE" | cut -d'=' -f2)
+    local minio_secret_key=$(grep "^MINIO_SECRET_KEY=" "$CREDENTIALS_FILE" | cut -d'=' -f2)
+    local app_secret_key=$(grep "^SECRET_KEY=" "$CREDENTIALS_FILE" | cut -d'=' -f2)
     local server_ip=$(hostname -I | awk '{print $1}')
 
     # 更新.env文件中的敏感配置
@@ -331,6 +331,13 @@ update_env_file() {
     sed -i "s|API_URL=.*|API_URL=http://$server_ip:8001|" "$PROJECT_DIR/.env"
 
     log_success "环境配置文件更新完成"
+
+    # 验证解析结果
+    log_info "验证凭据解析结果..."
+    log_info "MySQL密码长度: ${#mysql_password}"
+    log_info "MinIO访问密钥长度: ${#minio_access_key}"
+    log_info "MinIO秘密密钥长度: ${#minio_secret_key}"
+    log_info "应用密钥长度: ${#app_secret_key}"
 }
 
 # 配置数据库
