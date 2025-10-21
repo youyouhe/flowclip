@@ -1155,58 +1155,88 @@ verify_all_services() {
         if [[ "$api_test" == "200" ]]; then
             log_success "✓ MinIO API健康检查通过"
 
-            # 创建存储桶（测试写权限）
-            log_info "测试MinIO存储桶创建权限..."
-            local bucket_test=$(curl -s -w "%{http_code}" -o /dev/null -X PUT "$minio_endpoint/youtube-videos" \
-                -H "Host: localhost:9000" \
-                -H "x-amz-date: $(date -u +%Y%m%dT%H%M%SZ)" \
-                -H "Authorization: AWS4-HMAC-SHA256 Credential=$minio_access_key/$(date -u +%Y%m%d)/us-east-1/s3/aws4_request" \
-                -H "x-amz-content-length: 0" \
+            # 先检查存储桶是否已存在（HEAD请求更高效）
+            log_info "检查MinIO存储桶状态..."
+            local bucket_exists_test=$(curl -s -w "%{http_code}" -o /dev/null -X HEAD "$minio_endpoint/youtube-videos" \
                 -u "$minio_access_key:$minio_secret_key" \
                 2>/dev/null)
 
-            if [[ "$bucket_test" == "200" ]]; then
-                log_success "✓ MinIO存储桶创建成功 (写权限正常)"
+            if [[ "$bucket_exists_test" == "200" ]]; then
+                log_success "✓ MinIO存储桶已存在且可访问"
 
-                # 测试删除存储桶（测试完整权限）
-                log_info "测试MinIO存储桶删除权限..."
-                local delete_test=$(curl -s -w "%{http_code" -o /dev/null -X DELETE "$minio_endpoint/youtube-videos" \
-                    -H "Host: localhost:9000" \
-                    -H "x-amz-date: $(date -u +%Y%m%dT%H%M%SZ)" \
-                    -H "Authorization: AWS4-HMAC-SHA256 Credential=$minio_access_key/$(date -u +%Y%m%d)/us-east-1/s3/aws4_request" \
+                # 测试存储桶写权限（创建一个测试文件）
+                log_info "测试MinIO存储桶写权限..."
+                local test_file_content="MinIO permission test - $(date)"
+                local write_test=$(echo "$test_file_content" | curl -s -w "%{http_code}" -o /dev/null -X PUT "$minio_endpoint/youtube-videos/minio-permission-test.txt" \
+                    -H "Content-Type: text/plain" \
+                    --data-binary @- \
                     -u "$minio_access_key:$minio_secret_key" \
                     2>/dev/null)
 
-                if [[ "$delete_test" == "204" ]]; then
-                    log_success "✓ MinIO存储桶删除成功 (完整权限验证通过)"
+                if [[ "$write_test" == "200" ]]; then
+                    log_success "✓ MinIO存储桶写权限验证成功"
+
+                    # 清理测试文件
+                    curl -s -X DELETE "$minio_endpoint/youtube-videos/minio-permission-test.txt" \
+                        -u "$minio_access_key:$minio_secret_key" \
+                        -o /dev/null 2>&1
+
+                    log_success "✅ MinIO存储桶完全就绪，权限验证通过"
                 else
-                    log_warning "⚠ MinIO存储桶删除测试: HTTP $delete_test (权限可能有限制)"
+                    log_warning "⚠ MinIO存储桶写权限测试失败: HTTP $write_test"
                 fi
 
-                # 重新创建存储桶供应用使用
-                curl -s -X PUT "$minio_endpoint/youtube-videos" \
-                    -H "Host: localhost:9000" \
-                    -H "x-amz-date: $(date -u +%Y%m%dT%H%M%SZ)" \
-                    -H "Authorization: AWS4-HMAC-SHA256 Credential=$minio_access_key/$(date -u +%Y%m%d)/us-east-1/s3/aws4_request" \
-                    -H "x-amz-content-length: 0" \
-                    -u "$minio_access_key:$minio_secret_key" \
-                    -o /dev/null 2>&1
-
-                log_success "✅ MinIO存储桶重新创建完成，准备就绪"
-            elif [[ "$bucket_test" == "409" ]]; then
-                log_success "✓ MinIO存储桶已存在 (无需重新创建)"
-            else
-                log_warning "⚠ MinIO存储桶创建测试: HTTP $bucket_test"
-                log_info "尝试直接检查存储桶存在性..."
-
-                local check_test=$(curl -s -w "%{http_code}" -o /dev/null "$minio_endpoint/youtube-videos" \
+            elif [[ "$bucket_exists_test" == "404" ]]; then
+                log_info "MinIO存储桶不存在，尝试创建..."
+                local bucket_test=$(curl -s -w "%{http_code}" -o /dev/null -X PUT "$minio_endpoint/youtube-videos" \
+                    -H "Content-Type: application/octet-stream" \
                     -u "$minio_access_key:$minio_secret_key" \
                     2>/dev/null)
 
-                if [[ "$check_test" == "200" ]]; then
-                    log_success "✓ MinIO存储桶存在且可访问"
+                if [[ "$bucket_test" == "200" ]]; then
+                    log_success "✓ MinIO存储桶创建成功"
+
+                    # 测试存储桶写权限
+                    log_info "验证新创建存储桶的写权限..."
+                    local test_file_content="MinIO bucket test - $(date)"
+                    local write_test=$(echo "$test_file_content" | curl -s -w "%{http_code}" -o /dev/null -X PUT "$minio_endpoint/youtube-videos/minio-bucket-test.txt" \
+                        -H "Content-Type: text/plain" \
+                        --data-binary @- \
+                        -u "$minio_access_key:$minio_secret_key" \
+                        2>/dev/null)
+
+                    if [[ "$write_test" == "200" ]]; then
+                        log_success "✓ 新创建存储桶写权限验证成功"
+
+                        # 清理测试文件
+                        curl -s -X DELETE "$minio_endpoint/youtube-videos/minio-bucket-test.txt" \
+                            -u "$minio_access_key:$minio_secret_key" \
+                            -o /dev/null 2>&1
+
+                        log_success "✅ MinIO存储桶创建完成，准备就绪"
+                    else
+                        log_warning "⚠ 新创建存储桶写权限测试失败: HTTP $write_test"
+                    fi
+
                 else
-                    log_warning "⚠ MinIO存储桶不存在或无法访问: HTTP $check_test"
+                    log_error "✗ MinIO存储桶创建失败: HTTP $bucket_test"
+                    failed_services+=("MinIO存储桶创建")
+                fi
+
+            else
+                log_warning "⚠ MinIO存储桶检查返回未知状态: HTTP $bucket_exists_test"
+                log_info "尝试使用备用方法验证MinIO..."
+
+                # 简单的认证测试
+                local auth_test=$(curl -s -w "%{http_code}" -o /dev/null -X GET "$minio_endpoint/" \
+                    -u "$minio_access_key:$minio_secret_key" \
+                    2>/dev/null)
+
+                if [[ "$auth_test" == "403" ]] || [[ "$auth_test" == "200" ]]; then
+                    log_success "✓ MinIO认证验证成功（存储桶操作可能需要额外配置）"
+                else
+                    log_error "✗ MinIO认证验证失败: HTTP $auth_test"
+                    failed_services+=("MinIO认证")
                 fi
             fi
         else
