@@ -510,6 +510,11 @@ module.exports = {
       watch: false,
       max_memory_restart: '2G',
       env_file: '$PROJECT_DIR/.env',
+      env: {
+        "PATH": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/bin:/bin:/usr/games:/usr/local/games:/snap/bin",
+        "VIRTUAL_ENV": "/home/flowclip/EchoClip/venv",
+        "PYTHONPATH": "/home/flowclip/EchoClip/backend:/home/flowclip/EchoClip/venv/lib/python3.10/site-packages"
+      },
       log_file: '$PROJECT_DIR/logs/celery-worker.log',
       out_file: '$PROJECT_DIR/logs/celery-worker-out.log',
       error_file: '$PROJECT_DIR/logs/celery-worker-error.log',
@@ -529,6 +534,11 @@ module.exports = {
       watch: false,
       max_memory_restart: '512M',
       env_file: '$PROJECT_DIR/.env',
+      env: {
+        "PATH": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/bin:/usr/games:/usr/local/games:/snap/bin",
+        "VIRTUAL_ENV": "/home/flowclip/EchoClip/venv",
+        "PYTHONPATH": "/home/flowclip/EchoClip/backend:/home/flowclip/EchoClip/venv/lib/python3.10/site-packages"
+      },
       log_file: '$PROJECT_DIR/logs/celery-beat.log',
       out_file: '$PROJECT_DIR/logs/celery-beat-out.log',
       error_file: '$PROJECT_DIR/logs/celery-beat-error.log',
