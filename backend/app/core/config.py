@@ -3,8 +3,8 @@ from typing import Optional
 import os
 from dotenv import load_dotenv
 
-# 显式加载.env文件
-project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# 显式加载.env文件 (从backend/app/core/config.py 向上3级到项目根目录)
+project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 env_path = os.path.join(project_root, '.env')
 load_dotenv(env_path)
 
