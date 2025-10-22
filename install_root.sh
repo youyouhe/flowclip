@@ -729,6 +729,15 @@ install_redis() {
         sed -i 's/#maxmemory 1gb/maxmemory 1gb/' /etc/redis/redis.conf
         sed -i 's/#maxmemory-policy allkeys-lru/maxmemory-policy allkeys-lru/' /etc/redis/redis.conf
 
+        # 配置 Redis 监听所有接口，支持主机名连接
+        if grep -q "bind 127.0.0.1 ::1" /etc/redis/redis.conf; then
+            sed -i 's/bind 127.0.0.1 ::1/bind 0.0.0.0/' /etc/redis/redis.conf
+            log_info "Redis 配置为监听所有接口 (0.0.0.0)"
+        elif grep -q "bind 127.0.0.1" /etc/redis/redis.conf; then
+            sed -i 's/bind 127.0.0.1/bind 0.0.0.0/' /etc/redis/redis.conf
+            log_info "Redis 配置为监听所有接口 (0.0.0.0)"
+        fi
+
         # 启动并启用 Redis (处理服务名差异)
         if systemctl restart redis-server.service; then
             log_info "Redis 服务启动成功 (redis-server)"
@@ -754,6 +763,15 @@ install_redis() {
         sed -i 's/supervised no/supervised systemd/' /etc/redis.conf
         sed -i 's/#maxmemory 1gb/maxmemory 1gb/' /etc/redis.conf
         sed -i 's/#maxmemory-policy allkeys-lru/maxmemory-policy allkeys-lru/' /etc/redis.conf
+
+        # 配置 Redis 监听所有接口，支持主机名连接
+        if grep -q "bind 127.0.0.1 ::1" /etc/redis.conf; then
+            sed -i 's/bind 127.0.0.1 ::1/bind 0.0.0.0/' /etc/redis.conf
+            log_info "Redis 配置为监听所有接口 (0.0.0.0)"
+        elif grep -q "bind 127.0.0.1" /etc/redis.conf; then
+            sed -i 's/bind 127.0.0.1/bind 0.0.0.0/' /etc/redis.conf
+            log_info "Redis 配置为监听所有接口 (0.0.0.0)"
+        fi
 
         # 启动并启用 Redis
         systemctl restart redis
@@ -1003,14 +1021,24 @@ setup_user_environment() {
     local server_ip=$(hostname -I | awk '{print $1}')
 
     # 检查是否已存在映射，避免重复添加
+    # 注意：优先使用 127.0.0.1 而非外部IP，更安全稳定
     if ! grep -q "redis localhost" /etc/hosts; then
-        echo "# Flowclip Docker 服务映射" >> /etc/hosts
-        echo "$server_ip redis" >> /etc/hosts
-        echo "$server_ip mysql" >> /etc/hosts
-        echo "$server_ip minio" >> /etc/hosts
-        log_success "Docker 主机名映射已添加到 /etc/hosts"
+        echo "# Flowclip 服务映射到本地回环地址" >> /etc/hosts
+        echo "127.0.0.1 redis" >> /etc/hosts
+        echo "127.0.0.1 mysql" >> /etc/hosts
+        echo "127.0.0.1 minio" >> /etc/hosts
+        log_success "本地服务映射已添加到 /etc/hosts (127.0.0.1)"
     else
-        log_info "Docker 主机名映射已存在，跳过添加"
+        log_info "本地服务映射已存在，检查是否需要更新为127.0.0.1..."
+
+        # 如果已存在但映射到外部IP，则更新为127.0.0.1
+        if grep -q "$server_ip redis" /etc/hosts; then
+            log_info "更新现有映射从 $server_ip 到 127.0.0.1..."
+            sed -i "s/$server_ip redis/127.0.0.1 redis/g" /etc/hosts
+            sed -i "s/$server_ip mysql/127.0.0.1 mysql/g" /etc/hosts
+            sed -i "s/$server_ip minio/127.0.0.1 minio/g" /etc/hosts
+            log_success "服务映射已更新为本地回环地址"
+        fi
     fi
 
     # 验证主机名映射是否正确配置
