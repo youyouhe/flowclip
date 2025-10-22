@@ -30,8 +30,9 @@ def load_system_configs(max_retries=10, retry_interval=3, silent=False):
     """从数据库加载系统配置，带重试机制"""
     for attempt in range(max_retries):
         try:
-            # 显式加载环境变量
-            dotenv_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.env')
+            # 显式加载环境变量 (使用项目根目录的.env)
+            project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            dotenv_path = os.path.join(project_root, '.env')
             load_dotenv(dotenv_path)
 
             # 导入必要的模块
