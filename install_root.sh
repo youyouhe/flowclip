@@ -577,6 +577,33 @@ install_mysql() {
             read -p "配置完成后按回车继续..."
         fi
 
+        # 配置 MySQL 允许外部连接（支持 Docker 主机名）
+        log_info "配置 MySQL 允许外部连接..."
+
+        # 修改 MySQL 绑定地址，允许通过主机名连接
+        if [[ -f "/etc/mysql/mysql.conf.d/mysqld.cnf" ]]; then
+            # 备份原配置文件
+            cp /etc/mysql/mysql.conf.d/mysqld.cnf /etc/mysql/mysql.conf.d/mysqld.cnf.backup.$(date +%Y%m%d_%H%M%S)
+
+            # 修改绑定地址从 127.0.0.1 到 0.0.0.0
+            sed -i 's/bind-address\t\t= 127.0.0.1/bind-address\t\t= 0.0.0.0/' /etc/mysql/mysql.conf.d/mysqld.cnf
+
+            # 重启 MySQL 服务使配置生效
+            systemctl restart mysql
+
+            # 等待 MySQL 完全启动
+            sleep 5
+
+            # 验证配置是否生效
+            if netstat -tuln | grep -q ":3306.*0.0.0.0"; then
+                log_success "MySQL 已配置为接受外部连接"
+            else
+                log_warning "MySQL 外部连接配置可能需要手动验证"
+            fi
+        else
+            log_warning "MySQL 配置文件未找到，跳过外部连接配置"
+        fi
+
         # 创建应用数据库和用户
         log_info "创建应用数据库和用户..."
 
