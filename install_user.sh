@@ -66,69 +66,132 @@ clone_project() {
     chown -R "$(whoami):$(whoami)" "$PROJECT_DIR"
 }
 
+# 验证凭据格式
+validate_credential() {
+    local name="$1"
+    local value="$2"
+    local min_length="$3"
+
+    if [[ -z "$value" ]]; then
+        log_error "❌ $name 为空"
+        return 1
+    fi
+
+    if [[ ${#value} -lt $min_length ]]; then
+        log_error "❌ $name 长度不足 (${#value} < $min_length)"
+        return 1
+    fi
+
+    log_success "✓ $name 验证通过 (长度: ${#value})"
+    return 0
+}
+
 # 读取凭据文件
 load_credentials() {
     log_info "读取系统凭据..."
 
-    # 先尝试从用户目录读取 (install_root.sh 已复制到这里)
-    if [[ -f "$CREDENTIALS_FILE" ]]; then
-        log_info "从用户凭据文件读取: $CREDENTIALS_FILE"
-    else
-        log_warning "用户目录没有凭据文件，检查其他位置..."
+    # 定义凭据文件的可能位置
+    local credential_locations=(
+        "$CREDENTIALS_FILE"
+        "/root/flowclip_credentials.txt"
+        "$PROJECT_DIR/credentials.txt"
+        "/home/$(whoami)/credentials.txt"
+    )
 
-        # 检查 install_root.sh 是否已复制凭据文件
-        if [[ -f "/root/flowclip_credentials.txt" ]]; then
-            log_info "发现 root 目录凭据文件，复制到用户目录..."
-            if cp "/root/flowclip_credentials.txt" "$CREDENTIALS_FILE"; then
-                log_success "凭据文件复制成功"
-                chmod 600 "$CREDENTIALS_FILE"
-            else
-                log_error "凭据文件复制失败"
-                exit 1
-            fi
+    local found_credential_file=""
+
+    # 寻找凭据文件
+    for cred_file in "${credential_locations[@]}"; do
+        if [[ -f "$cred_file" ]] && [[ -r "$cred_file" ]]; then
+            log_info "✓ 找到凭据文件: $cred_file"
+            found_credential_file="$cred_file"
+            break
+        fi
+    done
+
+    # 如果没有找到凭据文件
+    if [[ -z "$found_credential_file" ]]; then
+        log_error "❌ 未找到凭据文件"
+        log_error "请确保已运行 root 安装脚本生成凭据文件"
+        log_error "预期文件位置："
+        for cred_file in "${credential_locations[@]}"; do
+            log_error "  • $cred_file"
+        done
+        exit 1
+    fi
+
+    # 如果找到的文件不是目标位置，尝试复制
+    if [[ "$found_credential_file" != "$CREDENTIALS_FILE" ]]; then
+        log_info "复制凭据文件到目标位置..."
+        if cp "$found_credential_file" "$CREDENTIALS_FILE"; then
+            log_success "✓ 凭据文件复制成功: $CREDENTIALS_FILE"
+            chmod 600 "$CREDENTIALS_FILE"
+            chown "$(whoami):$(whoami)" "$CREDENTIALS_FILE"
         else
-            log_error "凭据文件不存在，请先运行 root 安装脚本"
-            log_error "预期文件位置: /root/flowclip_credentials.txt"
-            log_error "或使用完整安装脚本: sudo bash install_all.sh"
+            log_error "❌ 凭据文件复制失败"
             exit 1
         fi
     fi
 
-    # 读取凭据 - 使用标准化的KEY=VALUE格式
-    if [[ -f "$CREDENTIALS_FILE" ]]; then
-        log_info "解析凭据文件: $CREDENTIALS_FILE"
+    # 验证凭据文件权限
+    local file_perms=$(stat -c "%a" "$CREDENTIALS_FILE" 2>/dev/null || echo "unknown")
+    if [[ "$file_perms" != "600" ]]; then
+        log_warning "凭据文件权限不安全 ($file_perms)，正在修复..."
+        chmod 600 "$CREDENTIALS_FILE"
+    fi
 
-        # 显示凭据文件前几行用于调试
-        log_info "凭据文件内容预览:"
-        head -5 "$CREDENTIALS_FILE" | while IFS= read -r line; do
-            log_info "  $line"
-        done
+    # 解析凭据文件
+    log_info "解析凭据文件: $CREDENTIALS_FILE"
 
-        # 读取凭据 - 使用标准化的KEY=VALUE格式
-        MYSQL_APP_PASSWORD=$(grep "^MYSQL_APP_PASSWORD=" "$CREDENTIALS_FILE" | cut -d'=' -f2)
-        MINIO_ACCESS_KEY=$(grep "^MINIO_ACCESS_KEY=" "$CREDENTIALS_FILE" | cut -d'=' -f2)
-        MINIO_SECRET_KEY=$(grep "^MINIO_SECRET_KEY=" "$CREDENTIALS_FILE" | cut -d'=' -f2)
-        APP_SECRET_KEY=$(grep "^SECRET_KEY=" "$CREDENTIALS_FILE" | cut -d'=' -f2)
+    # 使用更安全的方式读取凭据，避免grep找不到时的错误
+    local mysql_password=$(grep "^MYSQL_APP_PASSWORD=" "$CREDENTIALS_FILE" 2>/dev/null | cut -d'=' -f2- | head -n1)
+    local minio_access_key=$(grep "^MINIO_ACCESS_KEY=" "$CREDENTIALS_FILE" 2>/dev/null | cut -d'=' -f2- | head -n1)
+    local minio_secret_key=$(grep "^MINIO_SECRET_KEY=" "$CREDENTIALS_FILE" 2>/dev/null | cut -d'=' -f2- | head -n1)
+    local app_secret_key=$(grep "^SECRET_KEY=" "$CREDENTIALS_FILE" 2>/dev/null | cut -d'=' -f2- | head -n1)
 
-        # 验证解析结果
-        log_info "凭据解析结果:"
-        log_info "  MySQL密码长度: ${#MYSQL_APP_PASSWORD}"
-        log_info "  MinIO访问密钥长度: ${#MINIO_ACCESS_KEY}"
-        log_info "  MinIO秘密密钥长度: ${#MINIO_SECRET_KEY}"
-        log_info "  应用密钥长度: ${#APP_SECRET_KEY}"
-    else
-        log_error "凭据文件不存在: $CREDENTIALS_FILE"
+    # 验证每个凭据
+    log_info "验证凭据完整性..."
+    local validation_failed=false
+
+    if ! validate_credential "MySQL应用密码" "$mysql_password" 8; then
+        validation_failed=true
+    fi
+
+    if ! validate_credential "MinIO访问密钥" "$minio_access_key" 20; then
+        validation_failed=true
+    fi
+
+    if ! validate_credential "MinIO秘密密钥" "$minio_secret_key" 30; then
+        validation_failed=true
+    fi
+
+    if ! validate_credential "应用密钥" "$app_secret_key" 20; then
+        validation_failed=true
+    fi
+
+    # 如果验证失败，退出
+    if [[ "$validation_failed" == "true" ]]; then
+        log_error "❌ 凭据验证失败，请检查凭据文件格式和内容"
+        log_error "凭据文件: $CREDENTIALS_FILE"
         exit 1
     fi
 
-    # 验证凭据是否读取成功
-    if [[ -z "$MYSQL_APP_PASSWORD" ]] || [[ -z "$MINIO_ACCESS_KEY" ]] || [[ -z "$MINIO_SECRET_KEY" ]]; then
-        log_error "凭据文件解析失败"
-        log_error "请检查凭据文件格式: $CREDENTIALS_FILE"
-        exit 1
-    fi
+    # 导出凭据到全局变量
+    export MYSQL_APP_PASSWORD="$mysql_password"
+    export MINIO_ACCESS_KEY="$minio_access_key"
+    export MINIO_SECRET_KEY="$minio_secret_key"
+    export APP_SECRET_KEY="$app_secret_key"
 
-    log_success "系统凭据读取完成"
+    # 显示凭据文件信息（不显示实际值）
+    local file_size=$(stat -c %s "$CREDENTIALS_FILE" 2>/dev/null || echo "unknown")
+    local file_time=$(stat -c %y "$CREDENTIALS_FILE" 2>/dev/null || echo "unknown")
+
+    log_success "✅ 系统凭据读取完成"
+    log_info "凭据文件信息:"
+    log_info "  • 文件路径: $CREDENTIALS_FILE"
+    log_info "  • 文件大小: $file_size 字节"
+    log_info "  • 修改时间: $file_time"
+    log_info "  • 文件权限: $(stat -c "%A" "$CREDENTIALS_FILE" 2>/dev/null || echo "unknown")"
 }
 
 # 检查项目目录
@@ -250,14 +313,48 @@ install_backend_dependencies() {
     log_success "后端依赖安装完成"
 }
 
-# 创建环境配置文件
-create_env_file() {
-    log_info "创建应用环境配置文件..."
+# 转义特殊字符用于配置文件
+escape_config_value() {
+    local value="$1"
+    # 转义可能引起问题的特殊字符
+    echo "$value" | sed 's/[[\.*^$()+?{|]/\\&/g'
+}
 
+# 统一的环境配置文件设置函数
+setup_env_file() {
+    log_info "设置应用环境配置文件..."
+
+    # 检查.env文件是否存在，如果存在则备份
+    if [[ -f "$PROJECT_DIR/.env" ]]; then
+        log_info "发现现有 .env 文件，创建备份..."
+        cp "$PROJECT_DIR/.env" "$PROJECT_DIR/.env.backup.$(date +%Y%m%d_%H%M%S)"
+    fi
+
+    # 使用已导出的凭据变量（确保使用最新值）
+    local mysql_password="$MYSQL_APP_PASSWORD"
+    local minio_access_key="$MINIO_ACCESS_KEY"
+    local minio_secret_key="$MINIO_SECRET_KEY"
+    local app_secret_key="$APP_SECRET_KEY"
     local server_ip=$(hostname -I | awk '{print $1}')
 
-    # 创建 .env 文件
+    # 验证凭据是否读取成功
+    if [[ -z "$mysql_password" ]] || [[ -z "$minio_access_key" ]] || [[ -z "$minio_secret_key" ]] || [[ -z "$app_secret_key" ]]; then
+        log_error "凭据解析失败，无法创建 .env 文件"
+        return 1
+    fi
+
+    # 验证解析结果
+    log_info "凭据解析结果:"
+    log_info "  MySQL密码长度: ${#mysql_password}"
+    log_info "  MinIO访问密钥长度: ${#minio_access_key}"
+    log_info "  MinIO秘密密钥长度: ${#minio_secret_key}"
+    log_info "  应用密钥长度: ${#app_secret_key}"
+
+    # 创建全新的 .env 文件
     cat > "$PROJECT_DIR/.env" << EOF
+# Flowclip Application Configuration
+# Generated on $(date)
+
 # Server Configuration
 PUBLIC_IP=$server_ip
 
@@ -268,65 +365,46 @@ FRONTEND_URL=http://$server_ip:3000
 API_URL=http://$server_ip:8001
 
 # Database Configuration
-DATABASE_URL=mysql+aiomysql://youtube_user:$MYSQL_APP_PASSWORD@localhost:3306/youtube_slicer?charset=utf8mb4
+DATABASE_URL=mysql+aiomysql://youtube_user:$mysql_password@localhost:3306/youtube_slicer?charset=utf8mb4
 
 # Redis Configuration
 REDIS_URL=redis://localhost:6379
 
 # MinIO Configuration
 MINIO_ENDPOINT=localhost:9000
-MINIO_ACCESS_KEY=$MINIO_ACCESS_KEY
-MINIO_SECRET_KEY=$MINIO_SECRET_KEY
+MINIO_ACCESS_KEY=$minio_access_key
+MINIO_SECRET_KEY=$minio_secret_key
 MINIO_BUCKET_NAME=youtube-videos
 
 # Security
-SECRET_KEY=$APP_SECRET_KEY
+SECRET_KEY=$app_secret_key
 
-# OpenAI API Key (for AI features)
+# OpenAI API Key (for AI features) - Please set your own key
 OPENAI_API_KEY=your-openai-api-key
 
 # Debug mode (set to false in production)
 DEBUG=true
+
+# Node.js Environment
+NODE_ENV=development
+
+# TUS Configuration
+TUS_API_URL=http://localhost:8000
+TUS_UPLOAD_URL=http://localhost:1080
+TUS_CALLBACK_PORT=9090
+TUS_CALLBACK_HOST=localhost
+TUS_FILE_SIZE_THRESHOLD_MB=10
+TUS_ENABLE_ROUTING=true
+TUS_MAX_RETRIES=3
+TUS_TIMEOUT_SECONDS=1800
 EOF
 
-    log_success "环境配置文件创建完成"
-}
+    # 设置文件权限
+    chmod 600 "$PROJECT_DIR/.env"
 
-# 更新环境配置文件
-update_env_file() {
-    log_info "更新应用环境配置文件..."
-
-    # 检查.env文件是否存在
-    if [[ ! -f "$PROJECT_DIR/.env" ]]; then
-        log_warning ".env文件不存在，将创建新文件"
-        create_env_file
-        return
-    fi
-
-    # 重新读取凭据（确保使用最新值）- 使用标准化的KEY=VALUE格式
-    local mysql_password=$(grep "^MYSQL_APP_PASSWORD=" "$CREDENTIALS_FILE" | cut -d'=' -f2)
-    local minio_access_key=$(grep "^MINIO_ACCESS_KEY=" "$CREDENTIALS_FILE" | cut -d'=' -f2)
-    local minio_secret_key=$(grep "^MINIO_SECRET_KEY=" "$CREDENTIALS_FILE" | cut -d'=' -f2)
-    local app_secret_key=$(grep "^SECRET_KEY=" "$CREDENTIALS_FILE" | cut -d'=' -f2)
-    local server_ip=$(hostname -I | awk '{print $1}')
-
-    # 更新.env文件中的敏感配置
-    sed -i "s|DATABASE_URL=.*|DATABASE_URL=mysql+aiomysql://youtube_user:$mysql_password@localhost:3306/youtube_slicer?charset=utf8mb4|" "$PROJECT_DIR/.env"
-    sed -i "s|MINIO_ACCESS_KEY=.*|MINIO_ACCESS_KEY=$minio_access_key|" "$PROJECT_DIR/.env"
-    sed -i "s|MINIO_SECRET_KEY=.*|MINIO_SECRET_KEY=$minio_secret_key|" "$PROJECT_DIR/.env"
-    sed -i "s|SECRET_KEY=.*|SECRET_KEY=$app_secret_key|" "$PROJECT_DIR/.env"
-    sed -i "s|PUBLIC_IP=.*|PUBLIC_IP=$server_ip|" "$PROJECT_DIR/.env"
-    sed -i "s|FRONTEND_URL=.*|FRONTEND_URL=http://$server_ip:3000|" "$PROJECT_DIR/.env"
-    sed -i "s|API_URL=.*|API_URL=http://$server_ip:8001|" "$PROJECT_DIR/.env"
-
-    log_success "环境配置文件更新完成"
-
-    # 验证解析结果
-    log_info "验证凭据解析结果..."
-    log_info "MySQL密码长度: ${#mysql_password}"
-    log_info "MinIO访问密钥长度: ${#minio_access_key}"
-    log_info "MinIO秘密密钥长度: ${#minio_secret_key}"
-    log_info "应用密钥长度: ${#app_secret_key}"
+    log_success "环境配置文件设置完成"
+    log_info "文件位置: $PROJECT_DIR/.env"
+    log_info "文件权限: 600 (仅用户可读写)"
 }
 
 # 配置数据库
@@ -390,10 +468,16 @@ create_pm2_config() {
 
     cd "$PROJECT_DIR"
 
-    # 创建 PM2 配置文件
-    # 检测服务器IP
-    local server_ip=$(hostname -I | awk '{print $1}')
+    # 验证凭据文件存在
+    if [[ ! -f "$PROJECT_DIR/.env" ]]; then
+        log_error ".env 文件不存在，无法创建 PM2 配置"
+        return 1
+    fi
 
+    # 创建日志目录
+    mkdir -p logs
+
+    # 创建统一的 PM2 配置文件，所有服务都使用 env_file
     cat > ecosystem.config.js << EOF
 module.exports = {
   apps: [
@@ -407,21 +491,12 @@ module.exports = {
       autorestart: true,
       watch: false,
       max_memory_restart: '1G',
-      env: {
-        NODE_ENV: 'development',
-        DATABASE_URL: 'mysql+aiomysql://youtube_user:$MYSQL_APP_PASSWORD@localhost:3306/youtube_slicer?charset=utf8mb4',
-        REDIS_URL: 'redis://localhost:6379',
-        MINIO_ENDPOINT: 'localhost:9000',
-        MINIO_ACCESS_KEY: '$MINIO_ACCESS_KEY',
-        MINIO_SECRET_KEY: '$MINIO_SECRET_KEY',
-        MINIO_BUCKET_NAME: 'youtube-videos',
-        SECRET_KEY: '$APP_SECRET_KEY',
-        DEBUG: 'true'
-      },
+      env_file: '$PROJECT_DIR/.env',
       log_file: '$PROJECT_DIR/logs/backend.log',
       out_file: '$PROJECT_DIR/logs/backend-out.log',
       error_file: '$PROJECT_DIR/logs/backend-error.log',
-      log_date_format: 'YYYY-MM-DD HH:mm:ss Z'
+      log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
+      time: true
     },
     {
       name: 'celery-worker',
@@ -429,25 +504,18 @@ module.exports = {
       cwd: '$PROJECT_DIR',
       interpreter: '$PROJECT_DIR/venv/bin/python',
       interpreter_args: '-u',
-      args: 'worker --loglevel=info --concurrency=4',
+      args: 'worker --loglevel=info --concurrency=2',
       instances: 1,
       autorestart: true,
       watch: false,
       max_memory_restart: '2G',
-      env: {
-        DATABASE_URL: 'mysql+aiomysql://youtube_user:$MYSQL_APP_PASSWORD@localhost:3306/youtube_slicer?charset=utf8mb4',
-        REDIS_URL: 'redis://localhost:6379',
-        MINIO_ENDPOINT: 'localhost:9000',
-        MINIO_ACCESS_KEY: '$MINIO_ACCESS_KEY',
-        MINIO_SECRET_KEY: '$MINIO_SECRET_KEY',
-        MINIO_BUCKET_NAME: 'youtube-videos',
-        SECRET_KEY: '$APP_SECRET_KEY',
-        PYTHONPATH: '/home/flowclip/EchoClip/backend:/home/flowclip/EchoClip/venv/lib/python3.10/site-packages'
-      },
-      log_file: '/home/flowclip/EchoClip/logs/celery-worker.log',
-      out_file: '/home/flowclip/EchoClip/logs/celery-worker-out.log',
-      error_file: '/home/flowclip/EchoClip/logs/celery-worker-error.log',
-      log_date_format: 'YYYY-MM-DD HH:mm:ss Z'
+      env_file: '$PROJECT_DIR/.env',
+      log_file: '$PROJECT_DIR/logs/celery-worker.log',
+      out_file: '$PROJECT_DIR/logs/celery-worker-out.log',
+      error_file: '$PROJECT_DIR/logs/celery-worker-error.log',
+      log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
+      time: true,
+      kill_timeout: 30000
     },
     {
       name: 'celery-beat',
@@ -460,47 +528,36 @@ module.exports = {
       autorestart: true,
       watch: false,
       max_memory_restart: '512M',
-      env: {
-        DATABASE_URL: 'mysql+aiomysql://youtube_user:$MYSQL_APP_PASSWORD@localhost:3306/youtube_slicer?charset=utf8mb4',
-        REDIS_URL: 'redis://localhost:6379',
-        MINIO_ENDPOINT: 'localhost:9000',
-        MINIO_ACCESS_KEY: '$MINIO_ACCESS_KEY',
-        MINIO_SECRET_KEY: '$MINIO_SECRET_KEY',
-        MINIO_BUCKET_NAME: 'youtube-videos',
-        SECRET_KEY: '$APP_SECRET_KEY',
-        PYTHONPATH: '/home/flowclip/EchoClip/backend:/home/flowclip/EchoClip/venv/lib/python3.10/site-packages'
-      },
-      log_file: '/home/flowclip/EchoClip/logs/celery-beat.log',
-      out_file: '/home/flowclip/EchoClip/logs/celery-beat-out.log',
-      error_file: '/home/flowclip/EchoClip/logs/celery-beat-error.log',
-      log_date_format: 'YYYY-MM-DD HH:mm:ss Z'
+      env_file: '$PROJECT_DIR/.env',
+      log_file: '$PROJECT_DIR/logs/celery-beat.log',
+      out_file: '$PROJECT_DIR/logs/celery-beat-out.log',
+      error_file: '$PROJECT_DIR/logs/celery-beat-error.log',
+      log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
+      time: true,
+      kill_timeout: 15000
     },
     {
       name: 'frontend-react',
       script: 'npm',
-      cwd: '/home/flowclip/EchoClip/frontend',
+      cwd: '$PROJECT_DIR/frontend',
       args: 'run dev',
       instances: 1,
       autorestart: true,
       watch: false,
       max_memory_restart: '1G',
-      env: {
-        NODE_ENV: 'development',
-        VITE_API_URL: '/api'
-      },
-      log_file: '/home/flowclip/EchoClip/logs/frontend.log',
-      out_file: '/home/flowclip/EchoClip/logs/frontend-out.log',
-      error_file: '/home/flowclip/EchoClip/logs/frontend-error.log',
-      log_date_format: 'YYYY-MM-DD HH:mm:ss Z'
+      env_file: '$PROJECT_DIR/.env',
+      log_file: '$PROJECT_DIR/logs/frontend.log',
+      out_file: '$PROJECT_DIR/logs/frontend-out.log',
+      error_file: '$PROJECT_DIR/logs/frontend-error.log',
+      log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
+      time: true
     }
   ]
 };
 EOF
 
-    # 创建日志目录
-    mkdir -p logs
-
     log_success "PM2 配置文件创建完成"
+    log_info "所有服务统一使用 env_file: $PROJECT_DIR/.env"
 }
 
 # 创建服务启动脚本
@@ -573,6 +630,92 @@ EOF
     chmod +x "$PROJECT_DIR/restart_services.sh"
 
     log_success "服务管理脚本创建完成"
+}
+
+# 验证配置文件
+verify_configurations() {
+    log_info "验证生成的配置文件..."
+
+    local validation_errors=()
+
+    # 验证 .env 文件
+    if [[ -f "$PROJECT_DIR/.env" ]]; then
+        log_info "验证 .env 文件..."
+
+        # 检查关键配置项是否存在
+        local required_vars=(
+            "DATABASE_URL"
+            "REDIS_URL"
+            "MINIO_ENDPOINT"
+            "MINIO_ACCESS_KEY"
+            "MINIO_SECRET_KEY"
+            "SECRET_KEY"
+        )
+
+        for var in "${required_vars[@]}"; do
+            if grep -q "^$var=" "$PROJECT_DIR/.env"; then
+                local value=$(grep "^$var=" "$PROJECT_DIR/.env" | cut -d'=' -f2)
+                if [[ -z "$value" ]]; then
+                    validation_errors+=(".env: $var 值为空")
+                else
+                    log_success "✓ .env: $var 配置正确"
+                fi
+            else
+                validation_errors+=(".env: 缺少 $var 配置")
+            fi
+        done
+    else
+        validation_errors+=(".env 文件不存在")
+    fi
+
+    # 验证 PM2 配置文件
+    if [[ -f "$PROJECT_DIR/ecosystem.config.js" ]]; then
+        log_info "验证 ecosystem.config.js 文件..."
+
+        # 检查是否所有应用都使用 env_file
+        local app_names=("backend-api" "celery-worker" "celery-beat" "frontend-react")
+
+        for app in "${app_names[@]}"; do
+            if grep -q "'name': '$app'" "$PROJECT_DIR/ecosystem.config.js"; then
+                # 检查是否有 env_file 配置
+                if grep -A 20 "'name': '$app'" "$PROJECT_DIR/ecosystem.config.js" | grep -q "env_file"; then
+                    log_success "✓ PM2: $app 使用 env_file"
+                else
+                    validation_errors+=("PM2: $app 缺少 env_file 配置")
+                fi
+
+                # 检查是否没有硬编码 env 块
+                if grep -A 30 "'name': '$app'" "$PROJECT_DIR/ecosystem.config.js" | grep -q "env: {"; then
+                    validation_errors+=("PM2: $app 仍有硬编码 env 块")
+                else
+                    log_success "✓ PM2: $app 没有硬编码 env 块")
+                fi
+            else
+                validation_errors+=("PM2: 缺少 $app 应用配置")
+            fi
+        done
+    else
+        validation_errors+=("ecosystem.config.js 文件不存在")
+    fi
+
+    # 验证日志目录
+    if [[ ! -d "$PROJECT_DIR/logs" ]]; then
+        validation_errors+=("日志目录不存在")
+    else
+        log_success "✓ 日志目录已创建"
+    fi
+
+    # 报告验证结果
+    if [[ ${#validation_errors[@]} -eq 0 ]]; then
+        log_success "✅ 所有配置验证通过！"
+        return 0
+    else
+        log_error "❌ 发现 ${#validation_errors[@]} 个配置问题："
+        for error in "${validation_errors[@]}"; do
+            log_error "  • $error"
+        done
+        return 1
+    fi
 }
 
 # 创建启动服务脚本
@@ -759,8 +902,8 @@ main() {
     # 安装后端依赖
     install_backend_dependencies
 
-    # 创建/更新环境配置文件
-    update_env_file
+    # 设置环境配置文件
+    setup_env_file
 
     # 配置数据库
     setup_database
@@ -776,6 +919,9 @@ main() {
 
     # 创建后端启动脚本
     create_backend_starter
+
+  # 验证所有配置文件
+    verify_configurations
 
     echo
     echo "========================================"
