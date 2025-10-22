@@ -213,7 +213,7 @@ chapters (子主题/章节列表):
     capcut_draft_folder: Optional[str] = None
     
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file="../.env",
         env_file_encoding="utf-8",
         case_sensitive=False,
         extra="allow"
