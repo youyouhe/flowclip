@@ -398,7 +398,7 @@ create_pm2_config() {
 module.exports = {
   apps: [
     {
-      name: 'flowclip-backend',
+      name: 'backend-api',
       script: './backend/start_services.py',
       cwd: '$PROJECT_DIR',
       interpreter: '$PROJECT_DIR/venv/bin/python',
@@ -424,7 +424,7 @@ module.exports = {
       log_date_format: 'YYYY-MM-DD HH:mm:ss Z'
     },
     {
-      name: 'flowclip-celery-worker',
+      name: 'celery-worker',
       script: './backend/start_celery.py',
       cwd: '$PROJECT_DIR',
       interpreter: '$PROJECT_DIR/venv/bin/python',
@@ -450,7 +450,7 @@ module.exports = {
       log_date_format: 'YYYY-MM-DD HH:mm:ss Z'
     },
     {
-      name: 'flowclip-celery-beat',
+      name: 'celery-beat',
       script: './backend/start_celery.py',
       cwd: '$PROJECT_DIR',
       interpreter: '$PROJECT_DIR/venv/bin/python',
@@ -476,7 +476,7 @@ module.exports = {
       log_date_format: 'YYYY-MM-DD HH:mm:ss Z'
     },
     {
-      name: 'flowclip-frontend',
+      name: 'frontend-react',
       script: 'npm',
       cwd: '/home/flowclip/EchoClip/frontend',
       args: 'run dev',
