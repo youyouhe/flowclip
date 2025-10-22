@@ -14,7 +14,7 @@ else:
     else:
         project_root = current_dir
 env_path = os.path.join(project_root, '.env')
-load_dotenv(env_path)
+load_dotenv(env_path, override=True)
 
 class Settings(BaseSettings):
     # Server Configuration
