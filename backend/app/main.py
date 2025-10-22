@@ -158,7 +158,11 @@ async def wait_for_database(max_retries=30, retry_interval=2):
     """等待数据库连接就绪"""
     from app.core.database import async_engine
     import sqlalchemy
-    
+
+    # DEBUG: 打印数据库连接信息
+    logging.info(f"DEBUG: 尝试连接数据库，URL: {settings.database_url}")
+    logging.info(f"DEBUG: MySQL配置 - Host: {settings.mysql_host}, Port: {settings.mysql_port}, User: {settings.mysql_user}, Database: {settings.mysql_database}")
+
     for attempt in range(max_retries):
         try:
             async with async_engine.connect() as conn:
@@ -167,6 +171,7 @@ async def wait_for_database(max_retries=30, retry_interval=2):
                 return True
         except Exception as e:
             logging.warning(f"Database connection attempt {attempt + 1} failed: {e}")
+            logging.warning(f"DEBUG: 错误类型: {type(e).__name__}")
             if attempt < max_retries - 1:
                 await asyncio.sleep(retry_interval)
             else:
@@ -176,7 +181,10 @@ async def wait_for_database(max_retries=30, retry_interval=2):
 async def wait_for_redis(max_retries=30, retry_interval=2):
     """等待Redis连接就绪"""
     import redis.asyncio as redis
-    
+
+    # DEBUG: 打印Redis连接信息
+    logging.info(f"DEBUG: 尝试连接Redis，URL: {settings.redis_url}")
+
     for attempt in range(max_retries):
         try:
             redis_client = redis.from_url(settings.redis_url)
@@ -186,6 +194,7 @@ async def wait_for_redis(max_retries=30, retry_interval=2):
             return True
         except Exception as e:
             logging.warning(f"Redis connection attempt {attempt + 1} failed: {e}")
+            logging.warning(f"DEBUG: Redis错误类型: {type(e).__name__}")
             if attempt < max_retries - 1:
                 await asyncio.sleep(retry_interval)
             else:
@@ -194,16 +203,32 @@ async def wait_for_redis(max_retries=30, retry_interval=2):
 
 @app.on_event("startup")
 async def startup_event():
+    # DEBUG: 打印所有环境配置信息
+    logging.info("DEBUG: ===== 应用启动配置信息 =====")
+    logging.info(f"DEBUG: Debug模式: {settings.debug}")
+    logging.info(f"DEBUG: 主机: {settings.host}, 端口: {settings.port}")
+
     # 等待数据库和Redis就绪
     logging.info("Waiting for database connection...")
     if not await wait_for_database():
         logging.error("Failed to connect to database. Exiting.")
         return
-    
+
     logging.info("Waiting for Redis connection...")
     if not await wait_for_redis():
         logging.error("Failed to connect to Redis. Exiting.")
         return
+
+    # DEBUG: 打印Celery配置信息
+    from app.core.celery import celery_app
+    logging.info("DEBUG: ===== Celery配置信息 =====")
+    logging.info(f"DEBUG: Celery Broker URL: {celery_app.conf.broker_url}")
+    logging.info(f"DEBUG: Celery Result Backend: {celery_app.conf.result_backend}")
+    logging.info(f"DEBUG: Celery Task Serialization: {celery_app.conf.task_serializer}")
+
+    # 检查Celery transport选项
+    if hasattr(celery_app.conf, 'broker_transport_options'):
+        logging.info(f"DEBUG: Celery Transport Options: {celery_app.conf.broker_transport_options}")
     
     # 数据库连接成功，创建表
     await create_tables()
@@ -222,11 +247,17 @@ async def startup_event():
     
     # 重新加载MinIO配置以应用数据库中的设置
     from app.services.minio_client import minio_service
+
+    # DEBUG: 打印MinIO配置信息
+    logging.info(f"DEBUG: MinIO配置 - Endpoint: {settings.minio_endpoint}, Access Key: {settings.minio_access_key[:8]}..., Bucket: {settings.minio_bucket_name}")
+    logging.info(f"DEBUG: MinIO Public Endpoint: {settings.minio_public_endpoint}")
+
     minio_service.reload_config()
     logging.info("MinIO configuration reloaded from database")
-    
+
     # 初始化MinIO桶
     await minio_service.ensure_bucket_exists()
+    logging.info("MinIO bucket initialization completed")
     
     # 启动进度更新服务
     from app.services.progress_service import progress_service
