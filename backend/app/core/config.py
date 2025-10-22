@@ -1,4 +1,4 @@
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import Optional
 import os
 
@@ -8,9 +8,9 @@ class Settings(BaseSettings):
     private_ip: Optional[str] = None
     frontend_url: Optional[str] = None
     api_url: Optional[str] = None
-    
+
     # Database
-    database_url: str = os.getenv("DATABASE_URL", "mysql+aiomysql://youtube_user:youtube_password@localhost:3306/youtube_slicer?charset=utf8mb4")
+    database_url: str = "mysql+aiomysql://youtube_user:youtube_password@localhost:3306/youtube_slicer?charset=utf8mb4"
 
     # MySQL Configuration
     mysql_host: str = os.getenv("MYSQL_HOST", "localhost")
@@ -212,9 +212,11 @@ chapters (子主题/章节列表):
     capcut_api_key: Optional[str] = None
     capcut_draft_folder: Optional[str] = None
     
-    class Config:
-        env_file = ".env"
-        case_sensitive = False
-        extra = "allow"
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="allow"
+    )
 
 settings = Settings()
