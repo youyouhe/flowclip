@@ -1070,8 +1070,8 @@ fi
 export DATABASE_URL="mysql+aiomysql://youtube_user:youtube_password@localhost:3306/youtube_slicer?charset=utf8mb4"
 export REDIS_URL="redis://localhost:6379"
 export MINIO_ENDPOINT="localhost:9000"
-export MINIO_ACCESS_KEY="i4W5jAG1j9w2MheEQ7GmYEotBrkAaIPSmLRQa6Iruc0="
-export MINIO_SECRET_KEY="TcFA+qUwvCnikxANs7k/HX7oZz2zEjLo3RakL1kZt5k="
+export MINIO_ACCESS_KEY="$MINIO_ACCESS_KEY"
+export MINIO_SECRET_KEY="$MINIO_SECRET_KEY"
 export MINIO_BUCKET_NAME="youtube-videos"
 export PUBLIC_IP="\$(hostname -I | awk '{print \$1}')"
 
