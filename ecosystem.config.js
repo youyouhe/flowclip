@@ -3,7 +3,7 @@ module.exports = {
     {
       name: 'flowclip-backend',
       script: '/home/flowclip/EchoClip/venv/bin/python',
-      args: '-m uvicorn app.main:app --host 0.0.0.0 --port 8001 --reload',
+      args: '-m uvicorn app.main:app --host 0.0.0.0 --port 8001 --log-level debug',
       cwd: '/home/flowclip/EchoClip/backend',
       instances: 1,
       autorestart: true,
