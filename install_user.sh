@@ -12,12 +12,13 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m'
 
-# 项目配置
-PROJECT_NAME="flowclip"
-PROJECT_DIR="/home/flowclip/EchoClip"
+# 项目配置 - 支持环境变量自定义
+PROJECT_NAME="${PROJECT_NAME:-flowclip}"
+PROJECT_USER="${PROJECT_USER:-$(whoami)}"
+PROJECT_DIR="${PROJECT_DIR:-/home/$PROJECT_USER/EchoClip}"
 BACKEND_DIR="$PROJECT_DIR/backend"
 FRONTEND_DIR="$PROJECT_DIR/frontend"
-CREDENTIALS_FILE="/home/flowclip/credentials.txt"
+CREDENTIALS_FILE="${CREDENTIALS_FILE:-/home/$PROJECT_USER/credentials.txt}"
 REPO_URL="https://github.com/youyouhe/flowclip.git"
 
 # 日志函数
@@ -69,19 +70,31 @@ clone_project() {
 load_credentials() {
     log_info "读取系统凭据..."
 
-    # 先尝试从用户目录读取
+    # 先尝试从用户目录读取 (install_root.sh 已复制到这里)
     if [[ -f "$CREDENTIALS_FILE" ]]; then
         log_info "从用户凭据文件读取: $CREDENTIALS_FILE"
-    # 如果用户目录没有，尝试多种方式获取
     else
-        log_info "用户目录没有凭据文件，尝试获取凭据..."
+        log_warning "用户目录没有凭据文件，检查其他位置..."
 
-        # 方法1: 检查环境变量（由install_all.sh传递）
-        if [[ -n "${MYSQL_APP_PASSWORD:-}" ]] && [[ -n "${MINIO_ACCESS_KEY:-}" ]] && [[ -n "${MINIO_SECRET_KEY:-}" ]]; then
-            log_info "从环境变量读取凭据..."
+        # 检查 install_root.sh 是否已复制凭据文件
+        if [[ -f "/root/flowclip_credentials.txt" ]]; then
+            log_info "发现 root 目录凭据文件，复制到用户目录..."
+            if cp "/root/flowclip_credentials.txt" "$CREDENTIALS_FILE"; then
+                log_success "凭据文件复制成功"
+                chmod 600 "$CREDENTIALS_FILE"
+            else
+                log_error "凭据文件复制失败"
+                exit 1
+            fi
+        else
+            log_error "凭据文件不存在，请先运行 root 安装脚本"
+            log_error "预期文件位置: /root/flowclip_credentials.txt"
+            log_error "或使用完整安装脚本: sudo bash install_all.sh"
+            exit 1
+        fi
+    fi
 
-            # 创建用户凭据文件
-            cat > "$CREDENTIALS_FILE" << EOF
+    # 读取凭据 - 使用标准化的KEY=VALUE格式
 ========================================
     Flowclip 系统凭据信息
 ========================================
@@ -127,10 +140,31 @@ EOF
     fi
 
     # 读取凭据 - 使用标准化的KEY=VALUE格式
-    MYSQL_APP_PASSWORD=$(grep "^MYSQL_APP_PASSWORD=" "$CREDENTIALS_FILE" | cut -d'=' -f2)
-    MINIO_ACCESS_KEY=$(grep "^MINIO_ACCESS_KEY=" "$CREDENTIALS_FILE" | cut -d'=' -f2)
-    MINIO_SECRET_KEY=$(grep "^MINIO_SECRET_KEY=" "$CREDENTIALS_FILE" | cut -d'=' -f2)
-    APP_SECRET_KEY=$(grep "^SECRET_KEY=" "$CREDENTIALS_FILE" | cut -d'=' -f2)
+    if [[ -f "$CREDENTIALS_FILE" ]]; then
+        log_info "解析凭据文件: $CREDENTIALS_FILE"
+
+        # 显示凭据文件前几行用于调试
+        log_info "凭据文件内容预览:"
+        head -5 "$CREDENTIALS_FILE" | while IFS= read -r line; do
+            log_info "  $line"
+        done
+
+        # 读取凭据 - 使用标准化的KEY=VALUE格式
+        MYSQL_APP_PASSWORD=$(grep "^MYSQL_APP_PASSWORD=" "$CREDENTIALS_FILE" | cut -d'=' -f2)
+        MINIO_ACCESS_KEY=$(grep "^MINIO_ACCESS_KEY=" "$CREDENTIALS_FILE" | cut -d'=' -f2)
+        MINIO_SECRET_KEY=$(grep "^MINIO_SECRET_KEY=" "$CREDENTIALS_FILE" | cut -d'=' -f2)
+        APP_SECRET_KEY=$(grep "^SECRET_KEY=" "$CREDENTIALS_FILE" | cut -d'=' -f2)
+
+        # 验证解析结果
+        log_info "凭据解析结果:"
+        log_info "  MySQL密码长度: ${#MYSQL_APP_PASSWORD}"
+        log_info "  MinIO访问密钥长度: ${#MINIO_ACCESS_KEY}"
+        log_info "  MinIO秘密密钥长度: ${#MINIO_SECRET_KEY}"
+        log_info "  应用密钥长度: ${#APP_SECRET_KEY}"
+    else
+        log_error "凭据文件不存在: $CREDENTIALS_FILE"
+        exit 1
+    fi
 
     # 验证凭据是否读取成功
     if [[ -z "$MYSQL_APP_PASSWORD" ]] || [[ -z "$MINIO_ACCESS_KEY" ]] || [[ -z "$MINIO_SECRET_KEY" ]]; then
@@ -402,14 +436,17 @@ create_pm2_config() {
     cd "$PROJECT_DIR"
 
     # 创建 PM2 配置文件
+    # 检测服务器IP
+    local server_ip=$(hostname -I | awk '{print $1}')
+
     cat > ecosystem.config.js << EOF
 module.exports = {
   apps: [
     {
       name: 'flowclip-backend',
       script: './backend/start_services.py',
-      cwd: '/home/flowclip/EchoClip',
-      interpreter: '/home/flowclip/EchoClip/venv/bin/python',
+      cwd: '$PROJECT_DIR',
+      interpreter: '$PROJECT_DIR/venv/bin/python',
       interpreter_args: '-u',
       instances: 1,
       autorestart: true,
@@ -426,16 +463,16 @@ module.exports = {
         SECRET_KEY: '$APP_SECRET_KEY',
         DEBUG: 'true'
       },
-      log_file: '/home/flowclip/EchoClip/logs/backend.log',
-      out_file: '/home/flowclip/EchoClip/logs/backend-out.log',
-      error_file: '/home/flowclip/EchoClip/logs/backend-error.log',
+      log_file: '$PROJECT_DIR/logs/backend.log',
+      out_file: '$PROJECT_DIR/logs/backend-out.log',
+      error_file: '$PROJECT_DIR/logs/backend-error.log',
       log_date_format: 'YYYY-MM-DD HH:mm:ss Z'
     },
     {
       name: 'flowclip-celery-worker',
       script: './backend/start_celery.py',
-      cwd: '/home/flowclip/EchoClip',
-      interpreter: '/home/flowclip/EchoClip/venv/bin/python',
+      cwd: '$PROJECT_DIR',
+      interpreter: '$PROJECT_DIR/venv/bin/python',
       interpreter_args: '-u',
       args: 'worker --loglevel=info --concurrency=4',
       instances: 1,
@@ -460,8 +497,8 @@ module.exports = {
     {
       name: 'flowclip-celery-beat',
       script: './backend/start_celery.py',
-      cwd: '/home/flowclip/EchoClip',
-      interpreter: '/home/flowclip/EchoClip/venv/bin/python',
+      cwd: '$PROJECT_DIR',
+      interpreter: '$PROJECT_DIR/venv/bin/python',
       interpreter_args: '-u',
       args: 'beat --loglevel=info',
       instances: 1,
