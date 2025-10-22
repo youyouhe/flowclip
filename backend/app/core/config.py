@@ -220,3 +220,17 @@ chapters (子主题/章节列表):
     )
 
 settings = Settings()
+
+# 调试信息：输出环境变量加载情况
+import logging
+logger = logging.getLogger(__name__)
+logger.info("=== 环境变量配置调试信息 ===")
+logger.info(f"数据库URL: {settings.database_url}")
+logger.info(f"MySQL配置 - Host: {settings.mysql_host}, Port: {settings.mysql_port}, User: {settings.mysql_user}, Database: {settings.mysql_database}")
+logger.info(f"Redis URL: {settings.redis_url}")
+logger.info(f"MinIO配置 - Endpoint: {settings.minio_endpoint}, Bucket: {settings.minio_bucket_name}")
+logger.info(f"前端URL: {settings.frontend_url}")
+logger.info(f"API URL: {settings.api_url}")
+logger.info(f"Debug模式: {settings.debug}")
+logger.info(f"TUS配置 - API URL: {settings.tus_api_url}, 阈值: {settings.tus_file_size_threshold_mb}MB")
+logger.info("=== 环境变量配置调试信息结束 ===")

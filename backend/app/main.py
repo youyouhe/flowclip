@@ -154,7 +154,7 @@ async def log_requests(request: Request, call_next):
 # Include routers
 app.include_router(api_router, prefix="/api/v1")
 
-async def wait_for_database(max_retries=30, retry_interval=2):
+async def wait_for_database(max_retries=3, retry_interval=2):
     """等待数据库连接就绪"""
     from app.core.database import async_engine
     import sqlalchemy
@@ -178,7 +178,7 @@ async def wait_for_database(max_retries=30, retry_interval=2):
                 logging.error("Database connection failed after all retries")
                 return False
 
-async def wait_for_redis(max_retries=30, retry_interval=2):
+async def wait_for_redis(max_retries=3, retry_interval=2):
     """等待Redis连接就绪"""
     import redis.asyncio as redis
 
