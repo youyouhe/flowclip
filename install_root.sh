@@ -617,11 +617,16 @@ install_mysql() {
         mysql -uroot -p"$MYSQL_ROOT_PASSWORD" -e "DROP USER IF EXISTS 'youtube_user'@'localhost';" || {
             log_warning "删除现有用户失败，可能用户不存在"
         }
+        mysql -uroot -p"$MYSQL_ROOT_PASSWORD" -e "DROP USER IF EXISTS 'youtube_user'@'%';" || {
+            log_warning "删除现有通配符用户失败，可能用户不存在"
+        }
 
-        # 创建新用户并设置权限
+        # 创建新用户并设置权限（支持 localhost 和外部连接）
         mysql -uroot -p"$MYSQL_ROOT_PASSWORD" -e "
             CREATE USER 'youtube_user'@'localhost' IDENTIFIED BY '$MYSQL_APP_PASSWORD';
+            CREATE USER 'youtube_user'@'%' IDENTIFIED BY '$MYSQL_APP_PASSWORD';
             GRANT ALL PRIVILEGES ON youtube_slicer.* TO 'youtube_user'@'localhost';
+            GRANT ALL PRIVILEGES ON youtube_slicer.* TO 'youtube_user'@'%';
             FLUSH PRIVILEGES;
         " || {
             log_error "应用用户创建失败"
