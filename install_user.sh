@@ -688,7 +688,7 @@ verify_configurations() {
                 if grep -A 30 "'name': '$app'" "$PROJECT_DIR/ecosystem.config.js" | grep -q "env: {"; then
                     validation_errors+=("PM2: $app 仍有硬编码 env 块")
                 else
-                    log_success "✓ PM2: $app 没有硬编码 env 块")
+                    log_success "✓ PM2: $app 没有硬编码 env 块"
                 fi
             else
                 validation_errors+=("PM2: 缺少 $app 应用配置")
