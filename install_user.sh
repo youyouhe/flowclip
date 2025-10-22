@@ -676,16 +676,16 @@ verify_configurations() {
         local app_names=("backend-api" "celery-worker" "celery-beat" "frontend-react")
 
         for app in "${app_names[@]}"; do
-            if grep -q "'name': '$app'" "$PROJECT_DIR/ecosystem.config.js"; then
+            if grep -q "name.*'$app'" "$PROJECT_DIR/ecosystem.config.js"; then
                 # 检查是否有 env_file 配置
-                if grep -A 20 "'name': '$app'" "$PROJECT_DIR/ecosystem.config.js" | grep -q "env_file"; then
+                if grep -A 20 "name.*'$app'" "$PROJECT_DIR/ecosystem.config.js" | grep -q "env_file"; then
                     log_success "✓ PM2: $app 使用 env_file"
                 else
                     validation_errors+=("PM2: $app 缺少 env_file 配置")
                 fi
 
                 # 检查是否没有硬编码 env 块
-                if grep -A 30 "'name': '$app'" "$PROJECT_DIR/ecosystem.config.js" | grep -q "env: {"; then
+                if grep -A 30 "name.*'$app'" "$PROJECT_DIR/ecosystem.config.js" | grep -q "env: {"; then
                     validation_errors+=("PM2: $app 仍有硬编码 env 块")
                 else
                     log_success "✓ PM2: $app 没有硬编码 env 块"
