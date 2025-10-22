@@ -953,6 +953,26 @@ setup_user_environment() {
     # 设置目录权限
     chown -R "$username:$username" "$PROJECT_DIR"
 
+    # 配置 Docker 兼容的主机名映射
+    log_info "配置 Docker 兼容的主机名映射..."
+
+    # 备份原始 hosts 文件
+    cp /etc/hosts /etc/hosts.backup.$(date +%Y%m%d_%H%M%S)
+
+    # 添加 Docker 服务的主机名映射
+    local server_ip=$(hostname -I | awk '{print $1}')
+
+    # 检查是否已存在映射，避免重复添加
+    if ! grep -q "redis localhost" /etc/hosts; then
+        echo "# Flowclip Docker 服务映射" >> /etc/hosts
+        echo "$server_ip redis" >> /etc/hosts
+        echo "$server_ip mysql" >> /etc/hosts
+        echo "$server_ip minio" >> /etc/hosts
+        log_success "Docker 主机名映射已添加到 /etc/hosts"
+    else
+        log_info "Docker 主机名映射已存在，跳过添加"
+    fi
+
     # 为专用用户配置 Python 环境
     if command -v python3.11 &> /dev/null; then
         log_info "为专用用户配置 Python 3.11 环境..."
