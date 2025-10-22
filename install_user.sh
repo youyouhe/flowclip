@@ -980,13 +980,17 @@ if __name__ == "__main__":
     if service_type == "worker":
         # 启动 Celery Worker
         import subprocess
-        cmd = ["celery", "-A", "app.core.celery", "worker"] + sys.argv[2:]
+        # 使用当前 Python 解释器下的 celery
+        celery_path = os.path.join(os.path.dirname(sys.executable), "celery")
+        cmd = [celery_path, "-A", "app.core.celery", "worker"] + sys.argv[2:]
         logger.info(f"启动 Celery Worker: {' '.join(cmd)}")
         subprocess.run(cmd)
     elif service_type == "beat":
         # 启动 Celery Beat
         import subprocess
-        cmd = ["celery", "-A", "app.core.celery", "beat"] + sys.argv[2:]
+        # 使用当前 Python 解释器下的 celery
+        celery_path = os.path.join(os.path.dirname(sys.executable), "celery")
+        cmd = [celery_path, "-A", "app.core.celery", "beat"] + sys.argv[2:]
         logger.info(f"启动 Celery Beat: {' '.join(cmd)}")
         subprocess.run(cmd)
     else:
