@@ -4,7 +4,15 @@ import os
 from dotenv import load_dotenv
 
 # 显式加载.env文件 (从backend/app/core/config.py 向上3级到项目根目录)
-project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+if '__file__' in globals():
+    project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+else:
+    # 如果__file__未定义(如python -c命令)，使用当前工作目录推断
+    current_dir = os.getcwd()
+    if current_dir.endswith('/backend'):
+        project_root = os.path.dirname(current_dir)
+    else:
+        project_root = current_dir
 env_path = os.path.join(project_root, '.env')
 load_dotenv(env_path)
 
