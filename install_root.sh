@@ -621,12 +621,20 @@ install_mysql() {
             log_warning "删除现有通配符用户失败，可能用户不存在"
         }
 
-        # 创建新用户并设置权限（支持 localhost 和外部连接）
+        # 创建新用户并设置权限（支持 localhost 和外部连接，确保通用性）
         mysql -uroot -p"$MYSQL_ROOT_PASSWORD" -e "
-            CREATE USER 'youtube_user'@'localhost' IDENTIFIED BY '$MYSQL_APP_PASSWORD';
+            -- 删除可能存在的旧用户，避免冲突
+            DROP USER IF EXISTS 'youtube_user'@'localhost';
+            DROP USER IF EXISTS 'youtube_user'@'%';
+
+            -- 创建用户并授予所有权限（使用 '%' 通配符确保任何主机都能连接）
             CREATE USER 'youtube_user'@'%' IDENTIFIED BY '$MYSQL_APP_PASSWORD';
-            GRANT ALL PRIVILEGES ON youtube_slicer.* TO 'youtube_user'@'localhost';
             GRANT ALL PRIVILEGES ON youtube_slicer.* TO 'youtube_user'@'%';
+
+            -- 也创建 localhost 用户以支持本地连接
+            CREATE USER 'youtube_user'@'localhost' IDENTIFIED BY '$MYSQL_APP_PASSWORD';
+            GRANT ALL PRIVILEGES ON youtube_slicer.* TO 'youtube_user'@'localhost';
+
             FLUSH PRIVILEGES;
         " || {
             log_error "应用用户创建失败"
@@ -1005,6 +1013,17 @@ setup_user_environment() {
         log_info "Docker 主机名映射已存在，跳过添加"
     fi
 
+    # 验证主机名映射是否正确配置
+    log_info "验证主机名映射配置..."
+    local test_hosts=("mysql" "redis" "minio")
+    for host in "${test_hosts[@]}"; do
+        if ping -c 1 "$host" &>/dev/null; then
+            log_success "✓ $host 主机名解析正常"
+        else
+            log_warning "⚠ $host 主机名解析可能有问题"
+        fi
+    done
+
     # 为专用用户配置 Python 环境
     if command -v python3.11 &> /dev/null; then
         log_info "为专用用户配置 Python 3.11 环境..."
@@ -1033,16 +1052,16 @@ export NODE_PATH="/usr/lib/node_modules"
 EOF
     fi
 
-    # 创建 .env 文件模板
+    # 创建 .env 文件模板（使用 Docker 兼容的主机名配置）
     cat > "$PROJECT_DIR/.env" << EOF
 # Database Configuration
-DATABASE_URL=mysql+aiomysql://youtube_user:$MYSQL_APP_PASSWORD@localhost:3306/youtube_slicer?charset=utf8mb4
+DATABASE_URL=mysql+aiomysql://youtube_user:$MYSQL_APP_PASSWORD@mysql:3306/youtube_slicer?charset=utf8mb4
 
 # Redis Configuration
-REDIS_URL=redis://localhost:6379
+REDIS_URL=redis://redis:6379
 
 # MinIO Configuration
-MINIO_ENDPOINT=localhost:9000
+MINIO_ENDPOINT=minio:9000
 MINIO_ACCESS_KEY=$MINIO_ACCESS_KEY
 MINIO_SECRET_KEY=$MINIO_SECRET_KEY
 MINIO_BUCKET_NAME=youtube-videos
