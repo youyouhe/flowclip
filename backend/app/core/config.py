@@ -19,11 +19,11 @@ class Settings(BaseSettings):
     mysql_password: str = os.getenv("MYSQL_APP_PASSWORD", "youtube_password")
     mysql_database: str = os.getenv("MYSQL_DATABASE", "youtube_slicer")
     
-    # MinIO
+    # MinIO Configuration
     minio_endpoint: str = "minio:9000"
     minio_public_endpoint: Optional[str] = None
-    minio_access_key: str = "minioadmin"
-    minio_secret_key: str = "minioadmin"
+    minio_access_key: str = os.getenv("MINIO_ACCESS_KEY", "minioadmin")
+    minio_secret_key: str = os.getenv("MINIO_SECRET_KEY", "minioadmin")
     minio_bucket_name: str = "youtube-videos"
     minio_secure: bool = False
     
