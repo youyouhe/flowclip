@@ -38,9 +38,10 @@ app = FastAPI(
 # Get allowed origins from environment or use defaults
 allowed_origins = [
     "http://localhost:3000",
-    "http://127.0.0.1:3000", 
+    "http://127.0.0.1:3000",
     "http://0.0.0.0:3000",
     "http://192.168.8.107:3000",  # 局域网访问
+    "http://10.0.0.1:3000",      # 服务器局域网访问
     "http://frontend:3000"  # Docker内部访问
 ]
 
