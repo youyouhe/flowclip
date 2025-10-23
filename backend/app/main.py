@@ -239,12 +239,52 @@ async def startup_event():
     from app.core.database import get_sync_db
     try:
         db = get_sync_db()
+
+        # 如果使用bootstrap配置且未初始化，则将bootstrap配置写入数据库
+        if USE_BOOTSTRAP and bootstrap_config and not bootstrap_config.is_initialized():
+            logging.info("Initializing system configuration from bootstrap...")
+
+            # 更新MySQL配置到数据库
+            mysql_config = bootstrap_config.get('mysql', {})
+            for key, value in mysql_config.items():
+                db_key = f"mysql_{key}" if key != 'password' else 'mysql_password'
+                SystemConfigService.set_config_sync(db, db_key, str(value), "数据库配置", "数据库配置")
+
+            # 更新其他基础配置到数据库
+            basic_configs = {
+                'redis_url': bootstrap_config.get('redis', {}).get('url', settings.redis_url),
+                'secret_key': bootstrap_config.get('secret_key', settings.secret_key),
+            }
+
+            # MinIO配置
+            minio_config = bootstrap_config.get('minio', {})
+            if minio_config:
+                basic_configs.update({
+                    'minio_endpoint': minio_config.get('endpoint', settings.minio_endpoint),
+                    'minio_access_key': minio_config.get('access_key', settings.minio_access_key),
+                    'minio_secret_key': minio_config.get('secret_key', settings.minio_secret_key),
+                    'minio_bucket_name': minio_config.get('bucket_name', settings.minio_bucket_name),
+                })
+
+            # 将配置写入数据库
+            for key, value in basic_configs.items():
+                category = "Redis配置" if key.startswith('redis') else \
+                          "安全配置" if key == 'secret_key' else \
+                          "MinIO配置" if key.startswith('minio') else "其他服务配置"
+                SystemConfigService.set_config_sync(db, key, str(value), category, category)
+
+            # 标记bootstrap为已初始化
+            bootstrap_config.mark_initialized()
+            logging.info("Bootstrap configuration initialized and saved to database")
+
         # 使用同步版本的函数，避免在异步上下文中使用asyncio.run()
         SystemConfigService.update_settings_from_db_sync(db)
         db.close()
         logging.info("System configurations loaded from database")
     except Exception as e:
         logging.warning(f"Failed to load system configurations from database: {e}")
+        if USE_BOOTSTRAP and bootstrap_config:
+            logging.warning("Bootstrap configuration may not have been properly initialized")
     
     # 重新加载MinIO配置以应用数据库中的设置
     from app.services.minio_client import minio_service

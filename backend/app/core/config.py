@@ -1,7 +1,23 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import Optional
 import os
+import sys
 from dotenv import load_dotenv
+
+# 添加backend路径到sys.path以便导入bootstrap_config
+backend_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if backend_path not in sys.path:
+    sys.path.insert(0, backend_path)
+
+# 尝试导入bootstrap配置
+try:
+    from bootstrap_config import get_bootstrap_config
+    bootstrap_config = get_bootstrap_config()
+    USE_BOOTSTRAP = True
+except ImportError:
+    print("WARNING: bootstrap_config not available, using environment variables only")
+    bootstrap_config = None
+    USE_BOOTSTRAP = False
 
 # 显式加载.env文件 (从backend/app/core/config.py 向上3级到项目根目录)
 if '__file__' in globals():
@@ -26,12 +42,13 @@ class Settings(BaseSettings):
     # Database
     database_url: str = "mysql+aiomysql://youtube_user:youtube_password@localhost:3306/youtube_slicer?charset=utf8mb4"
 
-    # MySQL Configuration
+    # MySQL Configuration - 支持bootstrap配置
     mysql_host: str = os.getenv("MYSQL_HOST", "localhost")
     mysql_port: int = int(os.getenv("MYSQL_PORT", "3306"))
     mysql_user: str = os.getenv("MYSQL_USER", "youtube_user")
     mysql_password: str = os.getenv("MYSQL_APP_PASSWORD", "youtube_password")
     mysql_database: str = os.getenv("MYSQL_DATABASE", "youtube_slicer")
+    mysql_root_password: str = os.getenv("MYSQL_ROOT_PASSWORD", "rootpassword")
     
     # MinIO Configuration
     minio_endpoint: str = "minio:9000"
@@ -232,6 +249,57 @@ chapters (子主题/章节列表):
         case_sensitive=False,
         extra="allow"
     )
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        # 如果bootstrap配置可用，则从bootstrap加载基础配置
+        if USE_BOOTSTRAP and bootstrap_config:
+            self.load_from_bootstrap()
+
+    def load_from_bootstrap(self):
+        """从bootstrap配置加载基础设置"""
+        try:
+            # 只在未初始化时使用bootstrap配置
+            if not bootstrap_config.is_initialized():
+                print("Loading configuration from bootstrap...")
+
+                # 加载数据库配置
+                mysql_config = bootstrap_config.get('mysql', {})
+                if mysql_config.get('password'):
+                    self.mysql_password = mysql_config['password']
+                    self.mysql_user = mysql_config.get('user', self.mysql_user)
+                    self.mysql_host = mysql_config.get('host', self.mysql_host)
+                    self.mysql_port = mysql_config.get('port', self.mysql_port)
+                    self.mysql_database = mysql_config.get('database', self.mysql_database)
+
+                    # 更新database_url
+                    self.database_url = bootstrap_config.get_database_url()
+                    print(f"Updated database URL from bootstrap config")
+
+                # 加载其他基础配置
+                if bootstrap_config.get('secret_key'):
+                    self.secret_key = bootstrap_config.get('secret_key')
+
+                # 加载Redis配置
+                redis_config = bootstrap_config.get('redis', {})
+                if redis_config.get('url'):
+                    self.redis_url = redis_config['url']
+
+                # 加载MinIO配置
+                minio_config = bootstrap_config.get('minio', {})
+                if minio_config.get('endpoint'):
+                    self.minio_endpoint = minio_config['endpoint']
+                if minio_config.get('access_key'):
+                    self.minio_access_key = minio_config['access_key']
+                if minio_config.get('secret_key'):
+                    self.minio_secret_key = minio_config['secret_key']
+                if minio_config.get('bucket_name'):
+                    self.minio_bucket_name = minio_config['bucket_name']
+
+                print("Bootstrap configuration loaded successfully")
+        except Exception as e:
+            print(f"WARNING: Failed to load bootstrap config: {e}")
+            print("Falling back to environment variables")
 
 settings = Settings()
 

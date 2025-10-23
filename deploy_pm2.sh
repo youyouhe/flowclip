@@ -241,7 +241,44 @@ alembic upgrade head || {
     log_warn "数据库迁移失败，继续部署..."
 }
 
-# 11. 初始化系统配置
+# 11. 初始化 Bootstrap 配置
+log_info "初始化 Bootstrap 配置..."
+if [ -f "$HOME/credentials.txt" ]; then
+    log_info "读取凭证文件并初始化 Bootstrap 配置..."
+
+    # 从凭证文件读取密码并设置环境变量
+    MYSQL_ROOT_PASSWORD=$(grep "MYSQL_ROOT_PASSWORD=" "$HOME/credentials.txt" | cut -d'=' -f2)
+    MYSQL_APP_PASSWORD=$(grep "MYSQL_APP_PASSWORD=" "$HOME/credentials.txt" | cut -d'=' -f2)
+    MINIO_ACCESS_KEY=$(grep "MINIO_ACCESS_KEY=" "$HOME/credentials.txt" | cut -d'=' -f2)
+    MINIO_SECRET_KEY=$(grep "MINIO_SECRET_KEY=" "$HOME/credentials.txt" | cut -d'=' -f2)
+    SECRET_KEY=$(grep "SECRET_KEY=" "$HOME/credentials.txt" | cut -d'=' -f2)
+
+    export DYNAMIC_MYSQL_ROOT_PASSWORD="$MYSQL_ROOT_PASSWORD"
+    export DYNAMIC_MYSQL_PASSWORD="$MYSQL_APP_PASSWORD"
+    export DYNAMIC_MINIO_ACCESS_KEY="$MINIO_ACCESS_KEY"
+    export DYNAMIC_MINIO_SECRET_KEY="$MINIO_SECRET_KEY"
+    export DYNAMIC_SECRET_KEY="$SECRET_KEY"
+
+    log_success "凭证读取完成，密码长度: Root=${#MYSQL_ROOT_PASSWORD}, App=${#MYSQL_APP_PASSWORD}"
+
+    # 初始化 Bootstrap 配置
+    python -c "
+from bootstrap_config import get_bootstrap_config, init_bootstrap_from_deployment
+import os
+print('Initializing bootstrap configuration from deployment...')
+init_bootstrap_from_deployment()
+config = get_bootstrap_config()
+config.update_from_env()
+print('Bootstrap configuration updated from credentials')
+" || {
+        log_warn "Bootstrap 配置初始化失败，继续部署..."
+    }
+else
+    log_warn "凭证文件不存在: $HOME/credentials.txt"
+    log_info "将使用环境变量或默认配置"
+fi
+
+# 12. 初始化系统配置
 log_info "初始化系统配置..."
 if [ -f "init_system_config.py" ]; then
     python init_system_config.py || {
