@@ -24,9 +24,11 @@ class WebSocketService {
     }
 
     this.token = token;
-    // 直接连接到后端WebSocket，不通过Vite代理
-    // 在服务器环境中，可以直接连接到后端8001端口
-    const wsUrl = `ws://localhost:8001/api/v1/progress/${token}`;
+    // 通过前端代理连接WebSocket，确保端口安全
+    // 使用当前页面协议，自动选择 ws 或 wss
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const host = '10.0.0.1:3000'; // 使用实际访问的主机地址
+    const wsUrl = `${protocol}//${host}/api/v1/progress/${token}`;
     
     console.log('🔌 [WebSocket] Connection URL:', wsUrl);
     console.log('🔌 [WebSocket] Ready state before connection:', this.ws?.readyState);
