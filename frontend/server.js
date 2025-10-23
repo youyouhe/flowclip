@@ -18,9 +18,7 @@ const apiProxy = createProxyMiddleware({
   ws: true, // 支持 WebSocket
   secure: false,
   timeout: 30000,
-  pathRewrite: {
-    '^/api': '/api/v1', // 将 /api 重写为 /api/v1
-  },
+  // 移除 pathRewrite，因为前端已经生成正确的 /api/v1 路径
   onProxyReq: (proxyReq, req, res) => {
     console.log(`Proxying: ${req.method} ${req.url} -> http://localhost:8001${proxyReq.path}`);
   },
