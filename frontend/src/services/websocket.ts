@@ -28,7 +28,7 @@ class WebSocketService {
     // 使用当前页面协议，自动选择 ws 或 wss
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const host = '10.0.0.1:3000'; // 使用实际访问的主机地址
-    const wsUrl = `${protocol}//${host}/api/v1/progress/${token}`;
+    const wsUrl = `${protocol}//${host}/api/v1/ws/progress/${token}`;
     
     console.log('🔌 [WebSocket] Connection URL:', wsUrl);
     console.log('🔌 [WebSocket] Ready state before connection:', this.ws?.readyState);
