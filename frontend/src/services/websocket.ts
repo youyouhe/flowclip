@@ -24,8 +24,8 @@ class WebSocketService {
     }
 
     this.token = token;
-    // 使用相对路径，让WebSocket通过Vite代理连接到后端
-    const wsUrl = `ws://localhost:3000/api/v1/ws/progress/${token}`;
+    // 使用正确的WebSocket路径，通过Vite代理连接到后端
+    const wsUrl = `ws://localhost:3000/api/v1/progress/${token}`;
     
     console.log('🔌 [WebSocket] Connection URL:', wsUrl);
     console.log('🔌 [WebSocket] Ready state before connection:', this.ws?.readyState);
