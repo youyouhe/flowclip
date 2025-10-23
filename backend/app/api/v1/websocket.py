@@ -168,11 +168,20 @@ async def websocket_progress_endpoint(websocket: WebSocket, token: str):
     """WebSocket端点用于实时进度更新"""
     user_id: Optional[int] = None
     try:
+        logger.info(f"🔌 [WebSocket] 收到连接请求，token: {token[:20]}...")
         async with AsyncSessionLocal() as db_session:
             # 验证token
-            user = await get_current_user_from_token(token=token, db=db_session)
-            
+            logger.info(f"🔌 [WebSocket] 开始验证token...")
+            try:
+                user = await get_current_user_from_token(token=token, db=db_session)
+                logger.info(f"🔌 [WebSocket] Token验证成功，用户: {user.id if user else None}")
+            except Exception as e:
+                logger.error(f"🔌 [WebSocket] Token验证失败: {type(e).__name__}: {str(e)}")
+                await websocket.close(code=4001, reason="Invalid token")
+                return
+
             if not user:
+                logger.warning(f"🔌 [WebSocket] 用户验证失败")
                 await websocket.close(code=4001, reason="Invalid token")
                 return
             
