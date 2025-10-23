@@ -94,20 +94,20 @@ module.exports = {
       kill_timeout: 15000
     },
 
-    // Frontend (Production Mode)
+    // Frontend (Static Production Server)
     {
       name: 'flowclip-frontend',
-      script: '/usr/bin/npm',
-      args: 'run preview',
+      script: '/usr/bin/node',
+      args: 'server.js',
       cwd: '/home/flowclip/EchoClip/frontend',
       instances: 1,
       autorestart: true,
       watch: false,
-      max_memory_restart: '512M',
+      max_memory_restart: '256M',
       env_file: '/home/flowclip/EchoClip/.env',
       env: {
         NODE_ENV: 'production',
-        VITE_API_URL: '/api'
+        PORT: '3000'
       },
       error_file: '/home/flowclip/.pm2/logs/frontend-error.log',
       out_file: '/home/flowclip/.pm2/logs/frontend-out.log',
