@@ -86,18 +86,24 @@ const register = async (userData: any) => {
       console.log('API URL:', import.meta.env.VITE_API_URL);
       const response = await authAPI.register(userData);
       console.log('Registration response:', response.data);
-      const { access_token } = response.data;
+
+      // 注册成功后，自动登录获取token
+      console.log('Registration successful, attempting auto login...');
+      const loginResponse = await authAPI.login(userData.username, userData.password);
+      const { access_token } = loginResponse.data;
       localStorage.setItem('token', access_token);
-      
-      // 使用注册返回的数据，跳过获取用户信息的请求
-      console.log('Registration successful, using registration data');
+
+      // 获取用户信息
+      const userResponse = await authAPI.getCurrentUser();
+      console.log('Auto login successful, user data:', userResponse.data);
+
       setUser({
-        id: response.data.id,
-        email: response.data.email,
-        username: response.data.username,
-        fullName: response.data.full_name,
-        isActive: true,
-        createdAt: response.data.created_at || new Date().toISOString(),
+        id: userResponse.data.id,
+        email: userResponse.data.email,
+        username: userResponse.data.username,
+        fullName: userResponse.data.full_name,
+        isActive: userResponse.data.is_active,
+        createdAt: userResponse.data.created_at || new Date().toISOString(),
       });
     } catch (error: any) {
       console.error('Registration error:', error);
