@@ -47,6 +47,10 @@ class CapCutService:
                 headers = {"Content-Type": "application/json"}
                 if self.api_key:
                     headers["X-API-KEY"] = self.api_key
+                    print(f"DEBUG: 发送请求到 {self.base_url}/create_draft")
+                    print(f"DEBUG: 使用API Key: '{self.api_key}' (长度: {len(self.api_key)})")
+                else:
+                    print("DEBUG: 警告 - API Key 为空！")
 
                 response = requests.post(
                     f"{self.base_url}/create_draft",
