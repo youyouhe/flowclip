@@ -243,6 +243,11 @@ temp/
 *.ogg
 *.m4a
 
+# Exception: Allow media directory for default resources
+!backend/media/
+!backend/media/*.mp4
+!backend/media/*.mp3
+
 # Downloaded YouTube videos
 backend/downloads/
 
