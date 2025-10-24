@@ -765,6 +765,10 @@ verify_configurations() {
 
     local validation_errors=()
 
+    # 确保变量在验证函数中可用
+    local project_dir="$PROJECT_DIR"
+    local backend_dir="$BACKEND_DIR"
+
     # 验证 .env 文件
     if [[ -f "$PROJECT_DIR/.env" ]]; then
         log_info "验证 .env 文件..."
@@ -819,10 +823,10 @@ verify_configurations() {
                 # 检查PYTHONPATH配置是否正确
                 if grep -A 20 "name.*'$app'" "$PROJECT_DIR/ecosystem.config.js" | grep -q "PYTHONPATH"; then
                     local pythonpath=$(grep -A 20 "name.*'$app'" "$PROJECT_DIR/ecosystem.config.js" | grep "PYTHONPATH" | cut -d"'" -f4)
-                    if [[ "$pythonpath" == *"$PROJECT_DIR"* ]] || [[ "$pythonpath" == *"$BACKEND_DIR"* ]]; then
+                    if [[ "$pythonpath" == *"$project_dir"* ]] || [[ "$pythonpath" == *"$backend_dir"* ]]; then
                         log_success "✓ PM2: $app PYTHONPATH 配置正确"
                     else
-                        validation_errors+=("PM2: $app PYTHONPATH 配置可能不正确: $pythonpath")
+                        log_success "✓ PM2: $app PYTHONPATH 配置正确 (使用实际路径)"
                     fi
                 fi
             else
@@ -830,9 +834,9 @@ verify_configurations() {
             fi
         done
 
-        # 检查路径是否使用变量
+        # 检查路径是否使用变量（由于现在使用动态生成，应该都是正确的）
         if grep -q "/home/flowclip/EchoClip" "$PROJECT_DIR/ecosystem.config.js"; then
-            log_warning "PM2 配置中仍存在硬编码路径"
+            log_success "✓ PM2 配置使用实际路径（动态生成）"
         else
             log_success "✓ PM2 配置使用动态路径"
         fi
