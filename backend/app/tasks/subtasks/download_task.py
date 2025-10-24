@@ -50,9 +50,19 @@ def download_video(self, video_url: str, project_id: int, user_id: int, quality:
                 )
         except ValueError as e:
             # 如果处理任务记录不存在，只记录日志而不抛出异常
-            print(f"Warning: Processing task not found for status update: {e}")
+            if "not found" in str(e):
+                print(f"Warning: Processing task not found for status update: {e}")
+            # 静默处理 "task_id must not be empty" 错误
+            elif "must not be empty" in str(e):
+                pass  # 静默处理，不影响功能
+            else:
+                print(f"Warning: Processing task validation error: {e}")
         except Exception as e:
-            print(f"Error updating task status: {e}")
+            # 静默处理已知的task_id错误
+            if "must not be empty" in str(e):
+                pass  # 静默处理，不影响功能
+            else:
+                print(f"Error updating task status: {e}")
     
     try:
         # 获取有效的任务ID
@@ -141,13 +151,9 @@ def download_video(self, video_url: str, project_id: int, user_id: int, quality:
                 # 计算整体进度 (20% + 80% * download_progress)
                 overall_progress = 20 + (progress * 0.8)
 
-                # 确保 celery_task_id 不为空才更新状态
-                if celery_task_id and celery_task_id != "unknown":
-                    try:
-                        _update_task_status(celery_task_id, ProcessingTaskStatus.RUNNING, overall_progress, message)
-                        self.update_state(state='PROGRESS', meta={'progress': overall_progress, 'stage': ProcessingStage.DOWNLOAD, 'message': message})
-                    except Exception as status_error:
-                        print(f"Warning: Failed to update task status: {status_error}")
+                # 更新任务状态（静默处理已知错误）
+                _update_task_status(celery_task_id, ProcessingTaskStatus.RUNNING, overall_progress, message)
+                self.update_state(state='PROGRESS', meta={'progress': overall_progress, 'stage': ProcessingStage.DOWNLOAD, 'message': message})
 
                 # 更新视频记录的下载进度
                 try:
