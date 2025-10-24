@@ -32,8 +32,12 @@ def download_video(self, video_url: str, project_id: int, user_id: int, quality:
     def _update_task_status(celery_task_id: str, status: str, progress: float, message: str = None, error: str = None):
         """更新任务状态 - 同步版本"""
         try:
-            with get_sync_db() as db:
-                state_manager = get_state_manager(db)
+            # 明确使用全局导入的函数，避免作用域冲突
+            from app.core.database import get_sync_db as _get_sync_db
+            from app.services.state_manager import get_state_manager as _get_state_manager
+
+            with _get_sync_db() as db:
+                state_manager = _get_state_manager(db)
                 state_manager.update_celery_task_status_sync(
                     celery_task_id=celery_task_id,
                     celery_status=status,
@@ -51,10 +55,13 @@ def download_video(self, video_url: str, project_id: int, user_id: int, quality:
             print(f"Error updating task status: {e}")
     
     try:
-        celery_task_id = self.request.id
-        if not celery_task_id:
-            celery_task_id = "unknown"
-            
+        # 获取有效的任务ID
+        celery_task_id = self.request.id if self.request and hasattr(self.request, 'id') and self.request.id else f"download_{int(time.time())}"
+
+        # 确保 task_id 不为空
+        if not celery_task_id or celery_task_id == "unknown":
+            celery_task_id = f"download_{int(time.time())}"
+
         _update_task_status(celery_task_id, ProcessingTaskStatus.RUNNING, 5, "开始下载视频")
         self.update_state(state='PROGRESS', meta={'progress': 5, 'stage': ProcessingStage.DOWNLOAD, 'message': '开始下载视频'})
         
@@ -133,14 +140,19 @@ def download_video(self, video_url: str, project_id: int, user_id: int, quality:
             try:
                 # 计算整体进度 (20% + 80% * download_progress)
                 overall_progress = 20 + (progress * 0.8)
-                
-                # 更新任务状态
-                _update_task_status(celery_task_id, ProcessingTaskStatus.RUNNING, overall_progress, message)
-                self.update_state(state='PROGRESS', meta={'progress': overall_progress, 'stage': ProcessingStage.DOWNLOAD, 'message': message})
-                
+
+                # 确保 celery_task_id 不为空才更新状态
+                if celery_task_id and celery_task_id != "unknown":
+                    try:
+                        _update_task_status(celery_task_id, ProcessingTaskStatus.RUNNING, overall_progress, message)
+                        self.update_state(state='PROGRESS', meta={'progress': overall_progress, 'stage': ProcessingStage.DOWNLOAD, 'message': message})
+                    except Exception as status_error:
+                        print(f"Warning: Failed to update task status: {status_error}")
+
                 # 更新视频记录的下载进度
                 try:
-                    with get_sync_db() as db:
+                    from app.core.database import get_sync_db as _get_sync_db
+                    with _get_sync_db() as db:
                         if video_id:
                             video = db.query(Video).filter(Video.id == video_id).first()
                             if video:
@@ -150,13 +162,13 @@ def download_video(self, video_url: str, project_id: int, user_id: int, quality:
                                 video.processing_message = message
                                 db.commit()
                                 print(f"已更新视频 {video_id} 进度: {overall_progress}%")
-                            
+
                             # 只更新数据库，不发送WebSocket通知
                             # 前端会通过定时查询获取最新状态
-                                
+
                 except Exception as e:
                     print(f"更新视频进度失败: {e}")
-                        
+
             except Exception as e:
                 print(f"Progress callback error: {e}")
         

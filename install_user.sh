@@ -537,6 +537,11 @@ create_pm2_config() {
     local python_version=$(python3 --version 2>/dev/null | grep -oP '\d+\.\d+' | head -n1)
     local site_packages_path="$PROJECT_DIR/venv/lib/python${python_version}/site-packages"
 
+    # 构建包含虚拟环境的PATH
+    local venv_path="$PROJECT_DIR/venv/bin"
+    local system_path="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin"
+    local full_path="$venv_path:$system_path"
+
     # 生成动态的PM2配置文件
     cat > ecosystem.config.js << EOF
 module.exports = {
@@ -555,6 +560,7 @@ module.exports = {
       env: {
         NODE_ENV: 'production',
         PYTHONPATH: '$BACKEND_DIR:$PROJECT_DIR',
+        PATH: '$full_path',
         DEBUG: 'false'
       },
       error_file: '$HOME/.pm2/logs/backend-error.log',
@@ -577,6 +583,7 @@ module.exports = {
       env: {
         NODE_ENV: 'production',
         PYTHONPATH: '$BACKEND_DIR:$PROJECT_DIR',
+        PATH: '$full_path',
         CALLBACK_HOST: '0.0.0.0',
         CALLBACK_PORT: '9090',
         REDIS_KEY_PREFIX: 'tus_callback',
@@ -603,6 +610,7 @@ module.exports = {
       env: {
         NODE_ENV: 'production',
         PYTHONPATH: '$BACKEND_DIR:$PROJECT_DIR',
+        PATH: '$full_path',
         C_FORCE_ROOT: 'true'
       },
       error_file: '$HOME/.pm2/logs/celery-worker-error.log',
@@ -626,6 +634,7 @@ module.exports = {
       env: {
         NODE_ENV: 'production',
         PYTHONPATH: '$BACKEND_DIR:$PROJECT_DIR',
+        PATH: '$full_path',
         C_FORCE_ROOT: 'true'
       },
       error_file: '$HOME/.pm2/logs/celery-beat-error.log',
@@ -670,6 +679,7 @@ module.exports = {
       env: {
         NODE_ENV: 'production',
         PYTHONPATH: '$BACKEND_DIR:$PROJECT_DIR',
+        PATH: '$full_path',
         DEBUG: 'false'
       },
       error_file: '$HOME/.pm2/logs/mcp-server-error.log',
@@ -685,6 +695,7 @@ EOF
     log_info "配置文件位置: $PROJECT_DIR/ecosystem.config.js"
     log_info "所有服务统一使用 env_file: $PROJECT_DIR/.env"
     log_info "日志目录: $HOME/.pm2/logs/"
+    log_info "✓ 已为所有Python服务配置正确的PATH环境变量，确保能找到虚拟环境中的工具"
 }
 
 # 创建服务启动脚本
@@ -821,12 +832,26 @@ verify_configurations() {
                 fi
 
                 # 检查PYTHONPATH配置是否正确
-                if grep -A 20 "name.*'$app'" "$PROJECT_DIR/ecosystem.config.js" | grep -q "PYTHONPATH"; then
-                    local pythonpath=$(grep -A 20 "name.*'$app'" "$PROJECT_DIR/ecosystem.config.js" | grep "PYTHONPATH" | cut -d"'" -f4)
+                if grep -A 25 "name.*'$app'" "$PROJECT_DIR/ecosystem.config.js" | grep -q "PYTHONPATH"; then
+                    local pythonpath=$(grep -A 25 "name.*'$app'" "$PROJECT_DIR/ecosystem.config.js" | grep "PYTHONPATH" | cut -d"'" -f4)
                     if [[ "$pythonpath" == *"$project_dir"* ]] || [[ "$pythonpath" == *"$backend_dir"* ]]; then
                         log_success "✓ PM2: $app PYTHONPATH 配置正确"
                     else
                         log_success "✓ PM2: $app PYTHONPATH 配置正确 (使用实际路径)"
+                    fi
+                fi
+
+                # 检查PATH配置是否正确（对于Python服务）
+                if [[ "$app" != "flowclip-frontend" ]]; then
+                    if grep -A 25 "name.*'$app'" "$PROJECT_DIR/ecosystem.config.js" | grep -q "PATH"; then
+                        local path_config=$(grep -A 25 "name.*'$app'" "$PROJECT_DIR/ecosystem.config.js" | grep "PATH" | cut -d"'" -f4)
+                        if [[ "$path_config" == *"venv/bin"* ]]; then
+                            log_success "✓ PM2: $app PATH 配置正确 (包含虚拟环境)"
+                        else
+                            log_warning "⚠ PM2: $app PATH 配置可能不包含虚拟环境"
+                        fi
+                    else
+                        log_warning "⚠ PM2: $app 缺少 PATH 配置"
                     fi
                 fi
             else

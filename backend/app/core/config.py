@@ -5,7 +5,7 @@ import sys
 from dotenv import load_dotenv
 
 # 添加backend路径到sys.path以便导入bootstrap_config
-backend_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+backend_path = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 if backend_path not in sys.path:
     sys.path.insert(0, backend_path)
 

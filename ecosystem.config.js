@@ -14,6 +14,7 @@ module.exports = {
       env: {
         NODE_ENV: 'production',
         PYTHONPATH: '/home/flowclip/EchoClip/backend:/home/flowclip/EchoClip',
+        PATH: '/home/flowclip/EchoClip/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin',
         DEBUG: 'false'
       },
       error_file: '/home/flowclip/.pm2/logs/backend-error.log',
@@ -62,6 +63,7 @@ module.exports = {
       env: {
         NODE_ENV: 'production',
         PYTHONPATH: '/home/flowclip/EchoClip/backend:/home/flowclip/EchoClip',
+        PATH: '/home/flowclip/EchoClip/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin',
         C_FORCE_ROOT: 'true'
       },
       error_file: '/home/flowclip/.pm2/logs/celery-worker-error.log',
@@ -85,6 +87,7 @@ module.exports = {
       env: {
         NODE_ENV: 'production',
         PYTHONPATH: '/home/flowclip/EchoClip/backend:/home/flowclip/EchoClip',
+        PATH: '/home/flowclip/EchoClip/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin',
         C_FORCE_ROOT: 'true'
       },
       error_file: '/home/flowclip/.pm2/logs/celery-beat-error.log',
@@ -129,6 +132,7 @@ module.exports = {
       env: {
         NODE_ENV: 'production',
         PYTHONPATH: '/home/flowclip/EchoClip/backend:/home/flowclip/EchoClip',
+        PATH: '/home/flowclip/EchoClip/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin',
         DEBUG: 'false'
       },
       error_file: '/home/flowclip/.pm2/logs/mcp-server-error.log',
