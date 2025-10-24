@@ -24,13 +24,10 @@ logger = logging.getLogger(__name__)
 # 定义特效数组
 OPEN_EFFECTS = [
     {"type": "爆炸", "params": None},
-    {"type": "闪电", "params": None},
-    {"type": "闪光灯_I", "params": None},
     {"type": "渐显开幕", "params": None},
-    {"type": "横条开幕", "params": None},
     {"type": "模糊开幕", "params": None},
     {"type": "分屏开幕", "params": None},
-    {"type": "擦拭开幕", "params": None}            
+    {"type": "擦拭开幕", "params": None}
 ]
 
 CLOSE_EFFECTS = [
