@@ -6,7 +6,7 @@ from app.api.v1 import api_router
 import uvicorn
 import logging
 import asyncio
-from app.core.config import settings, USE_BOOTSTRAP
+from app.core.config import settings, USE_BOOTSTRAP, bootstrap_config
 from app.services.minio_client import minio_service
 
 # 配置日志
