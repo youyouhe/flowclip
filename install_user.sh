@@ -337,6 +337,28 @@ setup_env_file() {
     local app_secret_key="$APP_SECRET_KEY"
     local server_ip=$(hostname -I | awk '{print $1}')
 
+    # 动态配置参数
+    local mysql_host="${MYSQL_HOST:-localhost}"
+    local mysql_port="${MYSQL_PORT:-3306}"
+    local mysql_user="${MYSQL_USER:-youtube_user}"
+    local mysql_database="${MYSQL_DATABASE:-youtube_slicer}"
+    local redis_host="${REDIS_HOST:-localhost}"
+    local redis_port="${REDIS_PORT:-6379}"
+    local minio_host="${MINIO_HOST:-localhost}"
+    local minio_port="${MINIO_PORT:-9000}"
+    local minio_bucket="${MINIO_BUCKET_NAME:-youtube-videos}"
+    local backend_port="${BACKEND_PORT:-8001}"
+    local frontend_port="${FRONTEND_PORT:-3000}"
+    local tus_api_port="${TUS_API_PORT:-8000}"
+    local tus_upload_port="${TUS_UPLOAD_PORT:-1080}"
+    local tus_callback_port="${TUS_CALLBACK_PORT:-9090}"
+    local tus_callback_host="${TUS_CALLBACK_HOST:-localhost}"
+    local tus_file_size_threshold="${TUS_FILE_SIZE_THRESHOLD_MB:-10}"
+    local tus_max_retries="${TUS_MAX_RETRIES:-3}"
+    local tus_timeout="${TUS_TIMEOUT_SECONDS:-1800}"
+    local debug_mode="${DEBUG_MODE:-true}"
+    local node_env="${NODE_ENV:-development}"
+
     # 验证凭据是否读取成功
     if [[ -z "$mysql_password" ]] || [[ -z "$minio_access_key" ]] || [[ -z "$minio_secret_key" ]] || [[ -z "$app_secret_key" ]]; then
         log_error "凭据解析失败，无法创建 .env 文件"
@@ -350,31 +372,48 @@ setup_env_file() {
     log_info "  MinIO秘密密钥长度: ${#minio_secret_key}"
     log_info "  应用密钥长度: ${#app_secret_key}"
 
+    log_info "动态配置参数:"
+    log_info "  服务器IP: $server_ip"
+    log_info "  MySQL: $mysql_user@$mysql_host:$mysql_port/$mysql_database"
+    log_info "  Redis: $redis_host:$redis_port"
+    log_info "  MinIO: $minio_host:$minio_port/$minio_bucket"
+    log_info "  后端端口: $backend_port"
+    log_info "  前端端口: $frontend_port"
+
     # 创建全新的 .env 文件
     cat > "$PROJECT_DIR/.env" << EOF
 # Flowclip Application Configuration
 # Generated on $(date)
+# Server: $server_ip
 
 # Server Configuration
 PUBLIC_IP=$server_ip
 
 # Frontend URL (where users access the application)
-FRONTEND_URL=http://$server_ip:3000
+FRONTEND_URL=http://$server_ip:$frontend_port
 
 # Backend API URL (used by frontend to call backend)
-API_URL=http://$server_ip:8001
+API_URL=http://$server_ip:$backend_port
 
 # Database Configuration
-DATABASE_URL=mysql+aiomysql://youtube_user:$mysql_password@localhost:3306/youtube_slicer?charset=utf8mb4
+MYSQL_HOST=$mysql_host
+MYSQL_PORT=$mysql_port
+MYSQL_USER=$mysql_user
+MYSQL_DATABASE=$mysql_database
+DATABASE_URL=mysql+aiomysql://$mysql_user:$mysql_password@$mysql_host:$mysql_port/$mysql_database?charset=utf8mb4
 
 # Redis Configuration
-REDIS_URL=redis://localhost:6379
+REDIS_HOST=$redis_host
+REDIS_PORT=$redis_port
+REDIS_URL=redis://$redis_host:$redis_port
 
 # MinIO Configuration
-MINIO_ENDPOINT=localhost:9000
+MINIO_HOST=$minio_host
+MINIO_PORT=$minio_port
+MINIO_ENDPOINT=$minio_host:$minio_port
 MINIO_ACCESS_KEY=$minio_access_key
 MINIO_SECRET_KEY=$minio_secret_key
-MINIO_BUCKET_NAME=youtube-videos
+MINIO_BUCKET_NAME=$minio_bucket
 
 # Security
 SECRET_KEY=$app_secret_key
@@ -383,20 +422,28 @@ SECRET_KEY=$app_secret_key
 OPENAI_API_KEY=your-openai-api-key
 
 # Debug mode (set to false in production)
-DEBUG=true
+DEBUG=$debug_mode
 
 # Node.js Environment
-NODE_ENV=development
+NODE_ENV=$node_env
 
 # TUS Configuration
-TUS_API_URL=http://localhost:8000
-TUS_UPLOAD_URL=http://localhost:1080
-TUS_CALLBACK_PORT=9090
-TUS_CALLBACK_HOST=localhost
-TUS_FILE_SIZE_THRESHOLD_MB=10
+TUS_API_URL=http://$server_ip:$tus_api_port
+TUS_UPLOAD_URL=http://$server_ip:$tus_upload_port
+TUS_CALLBACK_PORT=$tus_callback_port
+TUS_CALLBACK_HOST=$tus_callback_host
+TUS_FILE_SIZE_THRESHOLD_MB=$tus_file_size_threshold
 TUS_ENABLE_ROUTING=true
-TUS_MAX_RETRIES=3
-TUS_TIMEOUT_SECONDS=1800
+TUS_MAX_RETRIES=$tus_max_retries
+TUS_TIMEOUT_SECONDS=$tus_timeout
+
+# Bootstrap Configuration Support
+MYSQL_APP_PASSWORD=$mysql_password
+MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD:-}
+DYNAMIC_MYSQL_PASSWORD=$mysql_password
+DYNAMIC_MINIO_ACCESS_KEY=$minio_access_key
+DYNAMIC_MINIO_SECRET_KEY=$minio_secret_key
+DYNAMIC_SECRET_KEY=$app_secret_key
 EOF
 
     # 设置文件权限
@@ -405,6 +452,7 @@ EOF
     log_success "环境配置文件设置完成"
     log_info "文件位置: $PROJECT_DIR/.env"
     log_info "文件权限: 600 (仅用户可读写)"
+    log_info "支持环境变量覆盖，可在运行时通过环境变量调整配置"
 }
 
 # 配置数据库
@@ -474,92 +522,159 @@ create_pm2_config() {
         return 1
     fi
 
-    # 创建日志目录
+    # 创建必要的目录
     mkdir -p logs
+    mkdir -p ~/.pm2/logs
 
-    # 创建统一的 PM2 配置文件，所有服务都使用 env_file
+    # 获取Python路径和虚拟环境路径
+    local python_path=$(which python3)
+    local venv_python="$PROJECT_DIR/venv/bin/python"
+    if [[ -f "$venv_python" ]]; then
+        python_path="$venv_python"
+    fi
+
+    # 获取当前用户的Python包路径
+    local python_version=$(python3 --version 2>/dev/null | grep -oP '\d+\.\d+' | head -n1)
+    local site_packages_path="$PROJECT_DIR/venv/lib/python${python_version}/site-packages"
+
+    # 生成动态的PM2配置文件
     cat > ecosystem.config.js << EOF
 module.exports = {
   apps: [
+    // Backend API
     {
-      name: 'backend-api',
-      script: './backend/start_services.py',
-      cwd: '$PROJECT_DIR',
-      interpreter: '$PROJECT_DIR/venv/bin/python',
-      interpreter_args: '-u',
+      name: 'flowclip-backend',
+      script: '$python_path',
+      args: '-m uvicorn app.main:app --host 0.0.0.0 --port 8001 --log-level info',
+      cwd: '$BACKEND_DIR',
       instances: 1,
       autorestart: true,
       watch: false,
       max_memory_restart: '1G',
       env_file: '$PROJECT_DIR/.env',
-      log_file: '$PROJECT_DIR/logs/backend.log',
-      out_file: '$PROJECT_DIR/logs/backend-out.log',
-      error_file: '$PROJECT_DIR/logs/backend-error.log',
-      log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
+      env: {
+        NODE_ENV: 'production',
+        PYTHONPATH: '$BACKEND_DIR:$PROJECT_DIR',
+        DEBUG: 'false'
+      },
+      error_file: '$HOME/.pm2/logs/backend-error.log',
+      out_file: '$HOME/.pm2/logs/backend-out.log',
+      log_file: '$HOME/.pm2/logs/backend-combined.log',
       time: true
     },
+
+    // TUS Callback Server
     {
-      name: 'celery-worker',
-      script: './backend/start_celery.py',
-      cwd: '$PROJECT_DIR',
-      interpreter: '$PROJECT_DIR/venv/bin/python',
-      interpreter_args: '-u',
-      args: 'worker --loglevel=info --concurrency=2',
+      name: 'flowclip-callback',
+      script: '$python_path',
+      args: 'callback_server.py',
+      cwd: '$BACKEND_DIR',
+      instances: 1,
+      autorestart: true,
+      watch: false,
+      max_memory_restart: '256M',
+      env_file: '$PROJECT_DIR/.env',
+      env: {
+        NODE_ENV: 'production',
+        PYTHONPATH: '$BACKEND_DIR:$PROJECT_DIR',
+        CALLBACK_HOST: '0.0.0.0',
+        CALLBACK_PORT: '9090',
+        REDIS_KEY_PREFIX: 'tus_callback',
+        REDIS_RESULT_PREFIX: 'tus_result',
+        REDIS_STATS_KEY: 'tus_callback_stats'
+      },
+      error_file: '$HOME/.pm2/logs/callback-error.log',
+      out_file: '$HOME/.pm2/logs/callback-out.log',
+      log_file: '$HOME/.pm2/logs/callback-combined.log',
+      time: true
+    },
+
+    // Celery Worker
+    {
+      name: 'flowclip-celery-worker',
+      script: '$python_path',
+      args: 'start_celery.py worker --loglevel=info --concurrency=4',
+      cwd: '$BACKEND_DIR',
       instances: 1,
       autorestart: true,
       watch: false,
       max_memory_restart: '2G',
       env_file: '$PROJECT_DIR/.env',
       env: {
-        "PATH": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/bin:/bin:/usr/games:/usr/local/games:/snap/bin",
-        "VIRTUAL_ENV": "/home/flowclip/EchoClip/venv",
-        "PYTHONPATH": "/home/flowclip/EchoClip/backend:/home/flowclip/EchoClip/venv/lib/python3.10/site-packages"
+        NODE_ENV: 'production',
+        PYTHONPATH: '$BACKEND_DIR:$PROJECT_DIR',
+        C_FORCE_ROOT: 'true'
       },
-      log_file: '$PROJECT_DIR/logs/celery-worker.log',
-      out_file: '$PROJECT_DIR/logs/celery-worker-out.log',
-      error_file: '$PROJECT_DIR/logs/celery-worker-error.log',
-      log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
+      error_file: '$HOME/.pm2/logs/celery-worker-error.log',
+      out_file: '$HOME/.pm2/logs/celery-worker-out.log',
+      log_file: '$HOME/.pm2/logs/celery-worker-combined.log',
       time: true,
       kill_timeout: 30000
     },
+
+    // Celery Beat
     {
-      name: 'celery-beat',
-      script: './backend/start_celery.py',
-      cwd: '$PROJECT_DIR',
-      interpreter: '$PROJECT_DIR/venv/bin/python',
-      interpreter_args: '-u',
-      args: 'beat --loglevel=info',
+      name: 'flowclip-celery-beat',
+      script: '$python_path',
+      args: 'start_celery.py beat --loglevel=info',
+      cwd: '$BACKEND_DIR',
       instances: 1,
       autorestart: true,
       watch: false,
       max_memory_restart: '512M',
       env_file: '$PROJECT_DIR/.env',
       env: {
-        "PATH": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/bin:/usr/games:/usr/local/games:/snap/bin",
-        "VIRTUAL_ENV": "/home/flowclip/EchoClip/venv",
-        "PYTHONPATH": "/home/flowclip/EchoClip/backend:/home/flowclip/EchoClip/venv/lib/python3.10/site-packages"
+        NODE_ENV: 'production',
+        PYTHONPATH: '$BACKEND_DIR:$PROJECT_DIR',
+        C_FORCE_ROOT: 'true'
       },
-      log_file: '$PROJECT_DIR/logs/celery-beat.log',
-      out_file: '$PROJECT_DIR/logs/celery-beat-out.log',
-      error_file: '$PROJECT_DIR/logs/celery-beat-error.log',
-      log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
+      error_file: '$HOME/.pm2/logs/celery-beat-error.log',
+      out_file: '$HOME/.pm2/logs/celery-beat-out.log',
+      log_file: '$HOME/.pm2/logs/celery-beat-combined.log',
       time: true,
       kill_timeout: 15000
     },
+
+    // Frontend (Static Production Server)
     {
-      name: 'frontend-react',
-      script: 'npm',
-      cwd: '$PROJECT_DIR/frontend',
-      args: 'run dev',
+      name: 'flowclip-frontend',
+      script: '/usr/bin/node',
+      args: 'server.js',
+      cwd: '$FRONTEND_DIR',
       instances: 1,
       autorestart: true,
       watch: false,
-      max_memory_restart: '1G',
+      max_memory_restart: '256M',
       env_file: '$PROJECT_DIR/.env',
-      log_file: '$PROJECT_DIR/logs/frontend.log',
-      out_file: '$PROJECT_DIR/logs/frontend-out.log',
-      error_file: '$PROJECT_DIR/logs/frontend-error.log',
-      log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
+      env: {
+        NODE_ENV: 'production',
+        PORT: '3000'
+      },
+      error_file: '$HOME/.pm2/logs/frontend-error.log',
+      out_file: '$HOME/.pm2/logs/frontend-out.log',
+      log_file: '$HOME/.pm2/logs/frontend-combined.log',
+      time: true
+    },
+
+    // MCP Server
+    {
+      name: 'flowclip-mcp-server',
+      script: '$python_path',
+      args: 'run_mcp_server_complete.py',
+      cwd: '$BACKEND_DIR',
+      instances: 1,
+      autorestart: true,
+      watch: false,
+      max_memory_restart: '512M',
+      env_file: '$PROJECT_DIR/.env',
+      env: {
+        NODE_ENV: 'production',
+        PYTHONPATH: '$BACKEND_DIR:$PROJECT_DIR',
+        DEBUG: 'false'
+      },
+      error_file: '$HOME/.pm2/logs/mcp-server-error.log',
+      out_file: '$HOME/.pm2/logs/mcp-server-out.log',
+      log_file: '$HOME/.pm2/logs/mcp-server-combined.log',
       time: true
     }
   ]
@@ -567,7 +682,9 @@ module.exports = {
 EOF
 
     log_success "PM2 配置文件创建完成"
+    log_info "配置文件位置: $PROJECT_DIR/ecosystem.config.js"
     log_info "所有服务统一使用 env_file: $PROJECT_DIR/.env"
+    log_info "日志目录: $HOME/.pm2/logs/"
 }
 
 # 创建服务启动脚本
@@ -660,6 +777,11 @@ verify_configurations() {
             "MINIO_ACCESS_KEY"
             "MINIO_SECRET_KEY"
             "SECRET_KEY"
+            "DYNAMIC_MYSQL_PASSWORD"
+            "MYSQL_HOST"
+            "MYSQL_PORT"
+            "MYSQL_USER"
+            "MYSQL_DATABASE"
         )
 
         for var in "${required_vars[@]}"; do
@@ -683,7 +805,7 @@ verify_configurations() {
         log_info "验证 ecosystem.config.js 文件..."
 
         # 检查是否所有应用都使用 env_file
-        local app_names=("backend-api" "celery-worker" "celery-beat" "frontend-react")
+        local app_names=("flowclip-backend" "flowclip-callback" "flowclip-celery-worker" "flowclip-celery-beat" "flowclip-frontend" "flowclip-mcp-server")
 
         for app in "${app_names[@]}"; do
             if grep -q "name.*'$app'" "$PROJECT_DIR/ecosystem.config.js"; then
@@ -694,26 +816,44 @@ verify_configurations() {
                     validation_errors+=("PM2: $app 缺少 env_file 配置")
                 fi
 
-                # 检查是否没有硬编码 env 块
-                if grep -A 30 "name.*'$app'" "$PROJECT_DIR/ecosystem.config.js" | grep -q "env: {"; then
-                    validation_errors+=("PM2: $app 仍有硬编码 env 块")
-                else
-                    log_success "✓ PM2: $app 没有硬编码 env 块"
+                # 检查PYTHONPATH配置是否正确
+                if grep -A 20 "name.*'$app'" "$PROJECT_DIR/ecosystem.config.js" | grep -q "PYTHONPATH"; then
+                    local pythonpath=$(grep -A 20 "name.*'$app'" "$PROJECT_DIR/ecosystem.config.js" | grep "PYTHONPATH" | cut -d"'" -f4)
+                    if [[ "$pythonpath" == *"$PROJECT_DIR"* ]] || [[ "$pythonpath" == *"$BACKEND_DIR"* ]]; then
+                        log_success "✓ PM2: $app PYTHONPATH 配置正确"
+                    else
+                        validation_errors+=("PM2: $app PYTHONPATH 配置可能不正确: $pythonpath")
+                    fi
                 fi
             else
                 validation_errors+=("PM2: 缺少 $app 应用配置")
             fi
         done
+
+        # 检查路径是否使用变量
+        if grep -q "/home/flowclip/EchoClip" "$PROJECT_DIR/ecosystem.config.js"; then
+            log_warning "PM2 配置中仍存在硬编码路径"
+        else
+            log_success "✓ PM2 配置使用动态路径"
+        fi
+
     else
         validation_errors+=("ecosystem.config.js 文件不存在")
     fi
 
     # 验证日志目录
-    if [[ ! -d "$PROJECT_DIR/logs" ]]; then
-        validation_errors+=("日志目录不存在")
-    else
-        log_success "✓ 日志目录已创建"
+    if [[ ! -d "$HOME/.pm2/logs" ]]; then
+        log_info "创建 PM2 日志目录..."
+        mkdir -p "$HOME/.pm2/logs"
     fi
+    log_success "✓ PM2 日志目录已创建: $HOME/.pm2/logs/"
+
+    # 验证项目日志目录
+    if [[ ! -d "$PROJECT_DIR/logs" ]]; then
+        log_info "创建项目日志目录..."
+        mkdir -p "$PROJECT_DIR/logs"
+    fi
+    log_success "✓ 项目日志目录已创建: $PROJECT_DIR/logs/"
 
     # 报告验证结果
     if [[ ${#validation_errors[@]} -eq 0 ]]; then
