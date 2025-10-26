@@ -81,6 +81,7 @@ const SystemConfig: React.FC = () => {
   };
 
   useEffect(() => {
+    console.log('SystemConfig组件已加载');
     fetchSystemConfigs();
   }, []);
 
@@ -181,6 +182,7 @@ const SystemConfig: React.FC = () => {
   };
 
   const checkServiceStatus = async (serviceName: string) => {
+    console.log(`开始检查服务状态: ${serviceName}`);
     try {
       // 设置为检查中状态
       setServiceStatus(prev => ({
