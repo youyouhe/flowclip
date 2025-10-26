@@ -448,16 +448,16 @@ return (
                     <span className="ml-4">
                       {/* 显式列出所有相关服务的状态检查按钮 */}
                       <span key="asr-status" className="mr-4">
-                        {serviceDisplayNames['asr']}服务状态: <ServiceStatusTag serviceName="asr" />
+                        ASR服务状态: <ServiceStatusTag serviceName="asr" />
                       </span>
                       <span key="capcut-status" className="mr-4">
-                        {serviceDisplayNames['capcut']}服务状态: <ServiceStatusTag serviceName="capcut" />
+                        CapCut服务状态: <ServiceStatusTag serviceName="capcut" />
                       </span>
                       <span key="jianying-status" className="mr-4">
-                        {serviceDisplayNames['jianying']}服务状态: <ServiceStatusTag serviceName="jianying" />
+                        Jianying服务状态: <ServiceStatusTag serviceName="jianying" />
                       </span>
                       <span key="llm-status" className="mr-4">
-                        {serviceDisplayNames['llm']}服务状态: <ServiceStatusTag serviceName="llm" />
+                        LLM服务状态: <ServiceStatusTag serviceName="llm" />
                       </span>
                     </span>
                   )}
