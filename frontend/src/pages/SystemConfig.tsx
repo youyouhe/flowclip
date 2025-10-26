@@ -466,6 +466,11 @@ return (
                       {serviceDisplayNames[service] || service}服务状态: <ServiceStatusTag serviceName={service} />
                     </span>
                   )}
+
+                  {/* 测试：直接显示jianying按钮 */}
+                  <span className="ml-4">
+                    Jianying测试按钮: <Button size="small">测试</Button>
+                  </span>
                 </span>
               ),
               children: (
