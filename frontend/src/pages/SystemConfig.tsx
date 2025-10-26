@@ -444,14 +444,18 @@ return (
                   {category}
                   {category === '其他服务配置' && (
                     <span className="ml-4">
-                      {Object.keys(serviceCategoryMap).filter(key => serviceCategoryMap[key] === category).map(serviceKey => (
-                        <span key={serviceKey} className="mr-4">
-                          {serviceDisplayNames[serviceKey] || serviceKey}服务状态: <ServiceStatusTag serviceName={serviceKey} />
-                        </span>
-                      ))}
-                      {/* 确保显式显示jianying状态检查按钮 */}
-                      <span key="jianying-explicit" className="mr-4">
+                      {/* 显式列出所有相关服务的状态检查按钮 */}
+                      <span key="asr-status" className="mr-4">
+                        {serviceDisplayNames['asr']}服务状态: <ServiceStatusTag serviceName="asr" />
+                      </span>
+                      <span key="capcut-status" className="mr-4">
+                        {serviceDisplayNames['capcut']}服务状态: <ServiceStatusTag serviceName="capcut" />
+                      </span>
+                      <span key="jianying-status" className="mr-4">
                         {serviceDisplayNames['jianying']}服务状态: <ServiceStatusTag serviceName="jianying" />
+                      </span>
+                      <span key="llm-status" className="mr-4">
+                        {serviceDisplayNames['llm']}服务状态: <ServiceStatusTag serviceName="llm" />
                       </span>
                     </span>
                   )}
