@@ -322,7 +322,7 @@ async def proxy_jianying_resource(resource_path: str, db: Session = Depends(get_
         logger.error(f"Jianying资源代理失败: {str(e)}")
         raise HTTPException(status_code=500, detail="资源代理服务失败")
 
-@router.get("/jianying/status")
+@router.get("/status")
 async def check_jianying_status(db: Session = Depends(get_db)):
     """检查Jianying服务状态"""
     try:
