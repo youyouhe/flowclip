@@ -76,10 +76,25 @@ def init_system_config(max_retries=5, retry_delay=2):
                 # 安全配置
                 "secret_key": os.environ.get('SECRET_KEY', 'your-secret-key-change-this-in-production'),
                 
-                # 其他服务配置
+                # ASR配置
                 "asr_service_url": os.environ.get('ASR_SERVICE_URL', ''),
+                "asr_model_type": os.environ.get('ASR_MODEL_TYPE', 'whisper'),
+                "asr_api_key": os.environ.get('ASR_API_KEY', ''),
+
+                # LLM配置
                 "openrouter_api_key": os.environ.get('OPENROUTER_API_KEY', ''),
+                "llm_model_type": os.environ.get('LLM_MODEL_TYPE', 'google/gemini-2.5-flash'),
+                "llm_base_url": os.environ.get('LLM_BASE_URL', 'openrouter.ai/api/v1'),
+                "llm_temperature": os.environ.get('LLM_TEMPERATURE', '0.7'),
+                "llm_max_tokens": os.environ.get('LLM_MAX_TOKENS', '4000'),
+                "llm_system_prompt": os.environ.get('LLM_SYSTEM_PROMPT', ''),
+
+                # CapCut和Jianying配置
                 "capcut_api_url": os.environ.get('CAPCUT_API_URL', ''),
+                "capcut_api_key": os.environ.get('CAPCUT_API_KEY', ''),
+                "jianying_api_url": os.environ.get('JIANYING_API_URL', ''),
+                "jianying_api_key": os.environ.get('JIANYING_API_KEY', ''),
+                "jianying_draft_folder": os.environ.get('JIANYING_DRAFT_FOLDER', '剪映草稿'),
 
                 # TUS ASR配置
                 "tus_api_url": os.environ.get('TUS_API_URL', ''),
@@ -170,6 +185,8 @@ def get_config_category(key):
         return "安全配置"
     elif key in ['public_ip', 'private_ip', 'frontend_url', 'api_url']:
         return "服务器配置"
+    elif key.startswith('asr_') or key.startswith('openrouter_') or key.startswith('llm_') or key.startswith('capcut_') or key.startswith('jianying_'):
+        return "其他服务配置"
     else:
         return "其他服务配置"
 
