@@ -27,7 +27,7 @@ from pydantic import BaseModel, Field
 logger = logging.getLogger(__name__)
 
 # 创建路由器
-router = APIRouter(prefix="/jianying", tags=["Jianying"])
+router = APIRouter(tags=["Jianying"])
 
 # Pydantic 模型
 class JianyingExportRequest(BaseModel):
@@ -272,7 +272,7 @@ async def export_slice_to_jianying(
 
         raise HTTPException(status_code=500, detail="Jianying导出任务启动失败")
 
-@router.get("/jianying/proxy-resource/{resource_path:path}")
+@router.get("/proxy-resource/{resource_path:path}")
 async def proxy_jianying_resource(resource_path: str, db: Session = Depends(get_db)):
     """为Jianying服务器提供MinIO资源访问代理"""
     try:
@@ -322,7 +322,7 @@ async def proxy_jianying_resource(resource_path: str, db: Session = Depends(get_
         logger.error(f"Jianying资源代理失败: {str(e)}")
         raise HTTPException(status_code=500, detail="资源代理服务失败")
 
-@router.get("/jianying/status")
+@router.get("/status")
 async def check_jianying_status(db: Session = Depends(get_db)):
     """检查Jianying服务状态"""
     try:
