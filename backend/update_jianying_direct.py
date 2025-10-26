@@ -125,7 +125,7 @@ def add_jianying_configs(connection):
             with connection.cursor() as cursor:
                 # 检查配置是否已存在
                 cursor.execute(
-                    "SELECT COUNT(*) FROM system_configs WHERE key = %s",
+                    "SELECT COUNT(*) FROM system_configs WHERE `key` = %s",
                     (key,)
                 )
 
@@ -172,7 +172,7 @@ def verify_updates(connection):
         with connection.cursor() as cursor:
             for key in jianying_config_keys:
                 cursor.execute(
-                    "SELECT value FROM system_configs WHERE key = %s",
+                    "SELECT value FROM system_configs WHERE `key` = %s",
                     (key,)
                 )
                 result = cursor.fetchone()
