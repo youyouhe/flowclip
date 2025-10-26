@@ -132,7 +132,7 @@ def add_jianying_configs(connection):
                 if cursor.fetchone()[0] == 0:
                     # 插入新配置
                     cursor.execute("""
-                        INSERT INTO system_configs (key, value, description, category, created_at, updated_at)
+                        INSERT INTO system_configs (`key`, value, description, category, created_at, updated_at)
                         VALUES (%s, %s, %s, %s, NOW(), NOW())
                     """, (key, value, description, category))
                     print(f"  ➕ 添加配置: {key}")
