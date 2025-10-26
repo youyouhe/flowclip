@@ -64,10 +64,10 @@ def validate_draft_folder_path(draft_folder: str) -> str:
     # Windows 路径验证
     if re.match(r'^[A-Za-z]:\\', draft_folder):
         # Windows 绝对路径 (例如: C:\Users\username\Documents)
-        # 检查非法字符 (除了路径分隔符)
-        illegal_chars = r'[<>:"|?*]'
+        # 检查非法字符 (除了路径分隔符和冒号)
+        illegal_chars = r'[<>"|?*]'
         if re.search(illegal_chars, draft_folder):
-            raise ValueError("Windows 路径包含非法字符: < > : \" | ? *")
+            raise ValueError("Windows 路径包含非法字符: < > \" | ? *")
 
         # 检查保留名称 (针对路径中的每个部分)
         reserved_names = {
