@@ -315,12 +315,12 @@ async def check_service_status(
         elif service_name.lower() == "capcut":
             # CapCut服务健康检查
             capcut_api_url = get_config("capcut_api_url", settings.capcut_api_url)
-            
+
             logger.info(f"CapCut配置: url={capcut_api_url}")
-            
+
             try:
-                response = requests.post(f"{capcut_api_url}/create_draft", 
-                                       json={"width": 1080, "height": 1920}, 
+                response = requests.post(f"{capcut_api_url}/create_draft",
+                                       json={"width": 1080, "height": 1920},
                                        timeout=5)
                 if response.status_code == 200:
                     return ServiceStatus(
@@ -340,6 +340,43 @@ async def check_service_status(
                     service=service_name,
                     status="offline",
                     message=f"CapCut连接失败: {str(e)}"
+                )
+
+        elif service_name.lower() == "jianying":
+            # Jianying服务健康检查
+            jianying_api_url = get_config("jianying_api_url", getattr(settings, 'jianying_api_url', ''))
+
+            logger.info(f"Jianying配置: url={jianying_api_url}")
+
+            if not jianying_api_url:
+                return ServiceStatus(
+                    service=service_name,
+                    status="offline",
+                    message="Jianying API URL未配置"
+                )
+
+            try:
+                response = requests.post(f"{jianying_api_url}/create_draft",
+                                       json={"width": 1080, "height": 1920},
+                                       timeout=5)
+                if response.status_code == 200:
+                    return ServiceStatus(
+                        service=service_name,
+                        status="online",
+                        message="Jianying服务正常"
+                    )
+                else:
+                    return ServiceStatus(
+                        service=service_name,
+                        status="offline",
+                        message=f"Jianying健康检查失败，状态码: {response.status_code}"
+                    )
+            except Exception as e:
+                logger.error(f"Jianying连接失败: {str(e)}")
+                return ServiceStatus(
+                    service=service_name,
+                    status="offline",
+                    message=f"Jianying连接失败: {str(e)}"
                 )
                 
         elif service_name.lower() == "llm":

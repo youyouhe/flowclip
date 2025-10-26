@@ -37,6 +37,9 @@ class SystemConfigService:
         "capcut_api_url": "capcut_api_url",
         "capcut_api_key": "capcut_api_key",
         "capcut_draft_folder": "capcut_draft_folder",
+        "jianying_api_url": "jianying_api_url",
+        "jianying_api_key": "jianying_api_key",
+        "jianying_draft_folder": "jianying_draft_folder",
 
         # TUS配置
         "tus_api_url": "tus_api_url",
@@ -295,6 +298,9 @@ class SystemConfigService:
             {"key": "capcut_api_url", "label": "CapCut API URL", "category": "其他服务配置", "default": settings.capcut_api_url},
             {"key": "capcut_api_key", "label": "CapCut API密钥", "category": "其他服务配置", "default": settings.capcut_api_key or "", "sensitive": True, "description": "CapCut服务的API密钥"},
             {"key": "capcut_draft_folder", "label": "CapCut草稿文件夹路径", "category": "其他服务配置", "default": settings.capcut_draft_folder or "", "description": "CapCut草稿文件夹的完整路径"},
+            {"key": "jianying_api_url", "label": "Jianying API URL", "category": "其他服务配置", "default": getattr(settings, 'jianying_api_url', ''), "description": "Jianying API服务的URL地址，用于剪映视频编辑功能"},
+            {"key": "jianying_api_key", "label": "Jianying API密钥", "category": "其他服务配置", "default": getattr(settings, 'jianying_api_key', ''), "sensitive": True, "description": "Jianying API密钥，用于访问剪映服务"},
+            {"key": "jianying_draft_folder", "label": "Jianying草稿文件夹路径", "category": "其他服务配置", "default": getattr(settings, 'jianying_draft_folder', '剪映草稿'), "description": "Jianying导出的默认草稿保存文件夹路径，支持Windows和Unix路径格式"},
 
             # TUS配置
             {"key": "tus_api_url", "label": "TUS API URL", "category": "其他服务配置", "default": settings.tus_api_url, "description": "TUS ASR API服务器地址"},
