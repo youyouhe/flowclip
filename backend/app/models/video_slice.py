@@ -79,6 +79,12 @@ class VideoSlice(Base):
     capcut_task_id = Column(String(255), nullable=True)  # Celery任务ID
     capcut_draft_url = Column(Text, nullable=True)  # CapCut草稿文件URL
     capcut_error_message = Column(Text, nullable=True)  # CapCut导出错误信息
+
+    # Jianying 导出状态
+    jianying_status = Column(String(50), default="pending")  # pending, processing, completed, failed
+    jianying_task_id = Column(String(255), nullable=True)  # Celery任务ID
+    jianying_draft_url = Column(Text, nullable=True)  # Jianying草稿文件URL
+    jianying_error_message = Column(Text, nullable=True)  # Jianying导出错误信息
     
     # 元数据
     created_at = Column(DateTime(timezone=True), server_default=func.now())

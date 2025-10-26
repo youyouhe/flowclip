@@ -242,6 +242,11 @@ chapters (子主题/章节列表):
     capcut_api_url: str = "http://192.168.8.107:9002"
     capcut_api_key: Optional[str] = None
     capcut_draft_folder: Optional[str] = None
+
+    # Jianying Configuration
+    jianying_api_url: str = "http://192.168.8.107:9003"
+    jianying_api_key: Optional[str] = None
+    jianying_draft_folder: Optional[str] = None
     
     model_config = SettingsConfigDict(
         env_file="../.env",

@@ -84,6 +84,12 @@ class VideoSlice(VideoSliceBase):
     capcut_task_id: Optional[str] = None
     capcut_draft_url: Optional[str] = None
     capcut_error_message: Optional[str] = None
+
+    # Jianying导出相关字段
+    jianying_status: Optional[str] = None
+    jianying_task_id: Optional[str] = None
+    jianying_draft_url: Optional[str] = None
+    jianying_error_message: Optional[str] = None
     
     class Config:
         from_attributes = True

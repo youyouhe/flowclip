@@ -33,6 +33,7 @@ import {
 import { videoAPI } from '../services/api';
 import { videoSliceAPI } from '../services/api';
 import { capcutAPI } from '../services/api';
+import { jianyingAPI } from '../services/api';
 import { systemConfigAPI } from '../services/api';
 import { projectAPI } from '../services/api';
 
@@ -82,6 +83,9 @@ interface VideoSlice {
   capcut_status?: 'pending' | 'processing' | 'completed' | 'failed';
   capcut_task_id?: string;
   capcut_draft_url?: string;
+  jianying_status?: 'pending' | 'processing' | 'completed' | 'failed';
+  jianying_task_id?: string;
+  jianying_draft_url?: string;
 }
 
 const CapCut: React.FC = () => {
@@ -93,9 +97,18 @@ const CapCut: React.FC = () => {
   const [videosLoading, setVideosLoading] = useState(false);
   const [draftFolder, setDraftFolder] = useState('');
   const [capcutModalVisible, setCapcutModalVisible] = useState(false);
+  const [jianyingModalVisible, setJianyingModalVisible] = useState(false);
+  const [jianyingDraftFolder, setJianyingDraftFolder] = useState('');
   const [selectedSlice, setSelectedSlice] = useState<VideoSlice | null>(null);
   const [capcutStatus, setCapcutStatus] = useState<'online' | 'offline' | 'checking'>('checking');
+  const [jianyingStatus, setJianyingStatus] = useState<'online' | 'offline' | 'checking'>('checking');
   const [capcutProgress, setCapcutProgress] = useState({
+    isProcessing: false,
+    progress: 0,
+    message: '',
+    taskId: ''
+  });
+  const [jianyingProgress, setJianyingProgress] = useState({
     isProcessing: false,
     progress: 0,
     message: '',
@@ -119,6 +132,7 @@ const CapCut: React.FC = () => {
     loadVideos();
     loadProjects();
     checkCapCutStatus();
+    checkJianyingStatus();
   }, []);
 
   const checkCapCutStatus = async () => {
@@ -127,6 +141,15 @@ const CapCut: React.FC = () => {
       setCapcutStatus(response.data.status === 'online' ? 'online' : 'offline');
     } catch (error: any) {
       setCapcutStatus('offline');
+    }
+  };
+
+  const checkJianyingStatus = async () => {
+    try {
+      const response = await jianyingAPI.getStatus();
+      setJianyingStatus(response.data.status === 'online' ? 'online' : 'offline');
+    } catch (error: any) {
+      setJianyingStatus('offline');
     }
   };
 
@@ -345,26 +368,26 @@ const CapCut: React.FC = () => {
         message: '正在启动CapCut导出任务...',
         taskId: 'capcut_' + Date.now()
       });
-      
+
       setCapcutModalVisible(false);
-      
+
       const response = await capcutAPI.exportSlice(selectedSlice.id, draftFolder);
-      
+
       if (response.data.success) {
         // 更新切片状态
-        setSlices(prev => prev.map(s => 
-          s.id === selectedSlice.id 
-            ? {...s, capcut_status: 'processing', capcut_task_id: response.data.task_id} 
+        setSlices(prev => prev.map(s =>
+          s.id === selectedSlice.id
+            ? {...s, capcut_status: 'processing', capcut_task_id: response.data.task_id}
             : s
         ));
-        
+
         setCapcutProgress({
           isProcessing: false,
           progress: 100,
           message: 'CapCut导出任务已启动',
           taskId: response.data.task_id
         });
-        
+
         message.success('CapCut导出任务已启动');
       } else {
         throw new Error(response.data.message || '导出失败');
@@ -383,9 +406,90 @@ const CapCut: React.FC = () => {
     }
   };
 
+  const handleJianyingExport = async (slice: VideoSlice) => {
+    setSelectedSlice(slice);
+
+    // 首先尝试从系统配置获取Jianying草稿文件夹路径
+    try {
+      const response = await systemConfigAPI.getSystemConfigs();
+      const configs = response.data;
+      const draftFolderConfig = configs.find((config: any) => config.key === 'jianying_draft_folder');
+      let defaultDraftFolder = '';
+
+      if (draftFolderConfig && draftFolderConfig.value) {
+        defaultDraftFolder = draftFolderConfig.value;
+      } else {
+        // 如果系统配置中没有设置，则使用环境变量
+        defaultDraftFolder = import.meta.env.VITE_JIANYING_DRAFT_FOLDER || '';
+      }
+
+      setJianyingDraftFolder(defaultDraftFolder);
+    } catch (error: any) {
+      // 如果获取系统配置失败，使用环境变量作为备选
+      const defaultDraftFolder = import.meta.env.VITE_JIANYING_DRAFT_FOLDER || '';
+      setJianyingDraftFolder(defaultDraftFolder);
+      console.error('获取系统配置失败:', error);
+    }
+
+    setJianyingModalVisible(true);
+  };
+
+  const handleProcessJianying = async () => {
+    if (!selectedSlice || !jianyingDraftFolder.trim()) {
+      message.error('请填写Jianying草稿文件夹路径');
+      return;
+    }
+
+    try {
+      setLoading(true);
+      // 调用后端API来处理Jianying导出
+      setJianyingProgress({
+        isProcessing: true,
+        progress: 0,
+        message: '正在启动Jianying导出任务...',
+        taskId: 'jianying_' + Date.now()
+      });
+
+      setJianyingModalVisible(false);
+
+      const response = await jianyingAPI.exportSlice(selectedSlice.id, jianyingDraftFolder);
+
+      if (response.data.success) {
+        // 更新切片状态
+        setSlices(prev => prev.map(s =>
+          s.id === selectedSlice.id
+            ? {...s, jianying_status: 'processing', jianying_task_id: response.data.task_id}
+            : s
+        ));
+
+        setJianyingProgress({
+          isProcessing: false,
+          progress: 100,
+          message: 'Jianying导出任务已启动',
+          taskId: response.data.task_id
+        });
+
+        message.success('Jianying导出任务已启动');
+      } else {
+        throw new Error(response.data.message || '导出失败');
+      }
+    } catch (error: any) {
+      console.error('Jianying导出失败:', error);
+      message.error('启动Jianying导出失败: ' + (error.response?.data?.detail || error.message || '未知错误'));
+      setJianyingProgress({
+        isProcessing: false,
+        progress: 0,
+        message: '处理失败: ' + (error.response?.data?.detail || error.message || '未知错误'),
+        taskId: ''
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleDownloadDraft = async (slice: VideoSlice) => {
     if (!slice.capcut_draft_url) {
-      message.error('草稿文件尚未生成');
+      message.error('CapCut草稿文件尚未生成');
       return;
     }
 
@@ -393,6 +497,21 @@ const CapCut: React.FC = () => {
       message.success('正在准备下载...');
       // 直接在浏览器中打开下载链接
       window.open(slice.capcut_draft_url, '_blank');
+    } catch (error: any) {
+      message.error('下载失败');
+    }
+  };
+
+  const handleDownloadJianyingDraft = async (slice: VideoSlice) => {
+    if (!slice.jianying_draft_url) {
+      message.error('Jianying草稿文件尚未生成');
+      return;
+    }
+
+    try {
+      message.success('正在准备下载...');
+      // 直接在浏览器中打开下载链接
+      window.open(slice.jianying_draft_url, '_blank');
     } catch (error: any) {
       message.error('下载失败');
     }
@@ -449,16 +568,16 @@ const CapCut: React.FC = () => {
         if (!record.capcut_status) {
           return <Tag color="default">未处理</Tag>;
         }
-        
+
         const statusConfig = {
           pending: { color: 'default', text: '待处理' },
           processing: { color: 'processing', text: '处理中' },
           completed: { color: 'success', text: '已完成' },
           failed: { color: 'error', text: '失败' }
         };
-        
+
         const config = statusConfig[record.capcut_status] || statusConfig.pending;
-        
+
         if (record.capcut_status === 'completed' && record.capcut_draft_url) {
           return (
             <Space>
@@ -467,7 +586,36 @@ const CapCut: React.FC = () => {
             </Space>
           );
         }
-        
+
+        return <Tag color={config.color}>{config.text}</Tag>;
+      },
+    },
+    {
+      title: 'Jianying状态',
+      key: 'jianying_status',
+      render: (record: VideoSlice) => {
+        if (!record.jianying_status) {
+          return <Tag color="default">未处理</Tag>;
+        }
+
+        const statusConfig = {
+          pending: { color: 'default', text: '待处理' },
+          processing: { color: 'processing', text: '处理中' },
+          completed: { color: 'success', text: '已完成' },
+          failed: { color: 'error', text: '失败' }
+        };
+
+        const config = statusConfig[record.jianying_status] || statusConfig.pending;
+
+        if (record.jianying_status === 'completed' && record.jianying_draft_url) {
+          return (
+            <Space>
+              <Tag color={config.color}>{config.text}</Tag>
+              <Tag color="default">📄 草稿已生成</Tag>
+            </Space>
+          );
+        }
+
         return <Tag color={config.color}>{config.text}</Tag>;
       },
     },
@@ -476,28 +624,59 @@ const CapCut: React.FC = () => {
       key: 'actions',
       render: (record: VideoSlice) => (
         <Space>
+          {/* Jianying导出按钮 */}
+          <Button
+            type="default"
+            style={{ backgroundColor: '#ff4d4f', borderColor: '#ff4d4f', color: '#fff' }}
+            icon={<VideoCameraAddOutlined />}
+            onClick={() => handleJianyingExport(record)}
+            disabled={jianyingStatus !== 'online' || record.jianying_status === 'processing'}
+            title={
+              jianyingStatus !== 'online'
+                ? 'Jianying服务不可用'
+                : record.jianying_status === 'processing'
+                ? '正在处理中'
+                : ''
+            }
+          >
+            Jianying导出
+          </Button>
+
+          {/* CapCut导出按钮 */}
           <Button
             type="primary"
             icon={<VideoCameraAddOutlined />}
             onClick={() => handleCapCutExport(record)}
             disabled={capcutStatus !== 'online' || record.capcut_status === 'processing'}
             title={
-              capcutStatus !== 'online' 
-                ? 'CapCut服务不可用' 
-                : record.capcut_status === 'processing' 
-                ? '正在处理中' 
+              capcutStatus !== 'online'
+                ? 'CapCut服务不可用'
+                : record.capcut_status === 'processing'
+                ? '正在处理中'
                 : ''
             }
           >
             CapCut导出
           </Button>
+
+          {/* 下载按钮 */}
           {record.capcut_status === 'completed' && record.capcut_draft_url && (
             <Button
               type="primary"
               icon={<DownloadOutlined />}
               onClick={() => handleDownloadDraft(record)}
             >
-              下载草稿
+              CapCut草稿
+            </Button>
+          )}
+          {record.jianying_status === 'completed' && record.jianying_draft_url && (
+            <Button
+              type="default"
+              style={{ backgroundColor: '#52c41a', borderColor: '#52c41a', color: '#fff' }}
+              icon={<DownloadOutlined />}
+              onClick={() => handleDownloadJianyingDraft(record)}
+            >
+              Jianying草稿
             </Button>
           )}
           <Button
@@ -512,6 +691,9 @@ const CapCut: React.FC = () => {
                     <p><strong>文件路径:</strong> {record.sliced_file_path}</p>
                     {record.capcut_draft_url && (
                       <p><strong>CapCut草稿:</strong> 已生成</p>
+                    )}
+                    {record.jianying_draft_url && (
+                      <p><strong>Jianying草稿:</strong> 已生成</p>
                     )}
                   </div>
                 ),
@@ -530,9 +712,9 @@ const CapCut: React.FC = () => {
     <div className="capcut-management">
       <Row gutter={[24, 24]}>
         <Col span={24}>
-          <Card title="CapCut导出管理">
+          <Card title="视频导出管理">
             <Space direction="vertical" style={{ width: '100%' }} size="large">
-              {/* CapCut服务状态 */}
+              {/* 服务状态 */}
               <Row gutter={16} style={{ marginBottom: 16 }}>
                 <Col>
                   <Tag color={capcutStatus === 'online' ? 'success' : capcutStatus === 'checking' ? 'processing' : 'error'}>
@@ -542,9 +724,17 @@ const CapCut: React.FC = () => {
                     刷新
                   </Button>
                 </Col>
+                <Col>
+                  <Tag color={jianyingStatus === 'online' ? 'success' : jianyingStatus === 'checking' ? 'processing' : 'error'}>
+                    Jianying服务: {jianyingStatus === 'online' ? '在线' : jianyingStatus === 'checking' ? '检查中...' : '离线'}
+                  </Tag>
+                  <Button size="small" onClick={checkJianyingStatus} style={{ marginLeft: 8 }}>
+                    刷新
+                  </Button>
+                </Col>
               </Row>
               
-              {/* CapCut处理进度显示 */}
+              {/* 处理进度显示 */}
               {capcutProgress.isProcessing && (
                 <Alert
                   message="CapCut导出中"
@@ -562,8 +752,26 @@ const CapCut: React.FC = () => {
                   style={{ marginBottom: 16 }}
                 />
               )}
+
+              {jianyingProgress.isProcessing && (
+                <Alert
+                  message="Jianying导出中"
+                  description={
+                    <div>
+                      <Progress percent={jianyingProgress.progress} status="active" />
+                      <p>{jianyingProgress.message}</p>
+                      {jianyingProgress.taskId && (
+                        <Text type="secondary">任务ID: {jianyingProgress.taskId}</Text>
+                      )}
+                    </div>
+                  }
+                  type="info"
+                  showIcon
+                  style={{ marginBottom: 16 }}
+                />
+              )}
               
-              {/* CapCut处理完成或失败提示 */}
+              {/* 处理完成或失败提示 */}
               {!capcutProgress.isProcessing && capcutProgress.progress === 100 && (
                 <Alert
                   message="CapCut导出完成"
@@ -573,6 +781,18 @@ const CapCut: React.FC = () => {
                   style={{ marginBottom: 16 }}
                   closable
                   onClose={() => setCapcutProgress(prev => ({ ...prev, progress: 0, message: '' }))}
+                />
+              )}
+
+              {!jianyingProgress.isProcessing && jianyingProgress.progress === 100 && (
+                <Alert
+                  message="Jianying导出完成"
+                  description={jianyingProgress.message}
+                  type="success"
+                  showIcon
+                  style={{ marginBottom: 16 }}
+                  closable
+                  onClose={() => setJianyingProgress(prev => ({ ...prev, progress: 0, message: '' }))}
                 />
               )}
               
@@ -809,17 +1029,17 @@ const CapCut: React.FC = () => {
               type="info"
               showIcon
             />
-            
+
             <div>
               <Text strong>切片标题：</Text>
               <Text>{selectedSlice.cover_title}</Text>
             </div>
-            
+
             <div>
               <Text strong>子切片数量：</Text>
               <Text>{selectedSlice.sub_slices?.length || 0}</Text>
             </div>
-            
+
             <Form layout="vertical">
               <Form.Item
                 label="草稿文件夹路径"
@@ -833,10 +1053,62 @@ const CapCut: React.FC = () => {
                 />
               </Form.Item>
             </Form>
-            
+
             <Alert
               message="提示"
               description="请确保草稿文件夹路径正确，否则可能导致导出失败。"
+              type="warning"
+              showIcon
+            />
+          </Space>
+        )}
+      </Modal>
+
+      {/* Jianying导出模态框 */}
+      <Modal
+        title="Jianying导出设置"
+        open={jianyingModalVisible}
+        onOk={handleProcessJianying}
+        onCancel={() => setJianyingModalVisible(false)}
+        width={600}
+        confirmLoading={loading}
+      >
+        {selectedSlice && (
+          <Space direction="vertical" style={{ width: '100%' }} size="middle">
+            <Alert
+              message="确认导出到Jianying"
+              description="将为选中的切片生成Jianying草稿文件，包含彩虹渐变特效和水滴音频。"
+              type="info"
+              showIcon
+            />
+
+            <div>
+              <Text strong>切片标题：</Text>
+              <Text>{selectedSlice.cover_title}</Text>
+            </div>
+
+            <div>
+              <Text strong>子切片数量：</Text>
+              <Text>{selectedSlice.sub_slices?.length || 0}</Text>
+            </div>
+
+            <Form layout="vertical">
+              <Form.Item
+                label="Jianying草稿文件夹路径"
+                required
+              >
+                <Input
+                  value={jianyingDraftFolder}
+                  onChange={(e) => setJianyingDraftFolder(e.target.value)}
+                  placeholder="请输入Jianying草稿文件夹路径"
+                  addonBefore="路径"
+                />
+              </Form.Item>
+            </Form>
+
+            <Alert
+              message="提示"
+              description="请确保Jianying草稿文件夹路径正确，否则可能导致导出失败。"
               type="warning"
               showIcon
             />

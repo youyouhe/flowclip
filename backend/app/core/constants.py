@@ -35,6 +35,7 @@ class ProcessingTaskType(str, Enum):
     GENERATE_SRT = "generate_srt"    # 生成字幕
     VIDEO_SLICE = "video_slice"      # 视频切片
     CAPCUT_EXPORT = "capcut_export"  # CapCut导出
+    JIANYING_EXPORT = "jianying_export"  # Jianying导出
     PROCESS_COMPLETE = "process_complete"  # 完整处理流程
 
 class ProcessingTaskStatus(str, Enum):
@@ -54,6 +55,7 @@ class ProcessingStage(str, Enum):
     ANALYZE_CONTENT = "analyze_content"  # 内容分析阶段
     SLICE_VIDEO = "slice_video"      # 视频切片阶段
     CAPCUT_EXPORT = "capcut_export"  # CapCut导出阶段
+    JIANYING_EXPORT = "jianying_export"  # Jianying导出阶段
     COMPLETED = "completed"          # 完成
 
 # 状态映射
@@ -74,6 +76,7 @@ PROCESSING_STAGE_DESCRIPTIONS = {
     ProcessingStage.ANALYZE_CONTENT: "内容分析",
     ProcessingStage.SLICE_VIDEO: "视频切片",
     ProcessingStage.CAPCUT_EXPORT: "CapCut导出",
+    ProcessingStage.JIANYING_EXPORT: "剪映导出",
     ProcessingStage.COMPLETED: "处理完成"
 }
 

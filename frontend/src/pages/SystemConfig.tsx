@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Card, Row, Col, Form, Input, Button, Spin, Alert, Typography, Divider, Collapse, Tag, Select, Upload, message, Tabs, Switch, Radio } from 'antd';
-import { systemConfigAPI, capcutAPI, asrAPI, llmAPI } from '../services/api';
+import { systemConfigAPI, capcutAPI, jianyingAPI, asrAPI, llmAPI } from '../services/api';
 import { useAuth } from '../components/AuthProvider';
 import { UploadOutlined, PlayCircleOutlined } from '@ant-design/icons';
 import { AxiosResponse } from 'axios';
@@ -51,6 +51,8 @@ const SystemConfig: React.FC = () => {
       'asr_service_url': 'ASR服务地址',
       'openrouter_api_key': 'OpenRouter API密钥',
       'capcut_api_url': 'CapCut API地址',
+      'jianying_api_url': 'Jianying API地址',
+      'jianying_draft_folder': 'Jianying默认草稿文件夹',
     };
 
     return displayNames[key] || key;
@@ -71,6 +73,8 @@ const SystemConfig: React.FC = () => {
       'asr_service_url': 'ASR服务的URL地址，用于音频转文字处理',
       'openrouter_api_key': 'OpenRouter API密钥，用于访问LLM服务',
       'capcut_api_url': 'CapCut API服务的URL地址，用于视频编辑功能',
+      'jianying_api_url': 'Jianying API服务的URL地址，用于剪映视频编辑功能',
+      'jianying_draft_folder': 'Jianying导出的默认草稿保存文件夹路径，支持Windows和Unix路径格式',
     };
 
     return descriptions[key] || '';
@@ -188,7 +192,7 @@ const SystemConfig: React.FC = () => {
         }
       }));
 
-      // 对于CapCut服务，使用专门的API检查
+      // 对于CapCut和Jianying服务，使用专门的API检查
       let response: AxiosResponse<any, any, {}>;
       if (serviceName === 'capcut') {
         response = await capcutAPI.getStatus();
@@ -198,6 +202,16 @@ const SystemConfig: React.FC = () => {
             service: serviceName,
             status: response.data.status === 'online' ? 'online' : 'offline',
             message: response.data.status === 'online' ? 'CapCut服务正常' : 'CapCut服务离线'
+          }
+        }));
+      } else if (serviceName === 'jianying') {
+        response = await jianyingAPI.getStatus();
+        setServiceStatus(prev => ({
+          ...prev,
+          [serviceName]: {
+            service: serviceName,
+            status: response.data.status === 'online' ? 'online' : 'offline',
+            message: response.data.status === 'online' ? 'Jianying服务正常' : 'Jianying服务离线'
           }
         }));
       } else {
@@ -324,6 +338,7 @@ const serviceCategoryMap: Record<string, string> = {
   'minio': 'MinIO配置',
   'asr': '其他服务配置',
   'capcut': '其他服务配置',
+  'jianying': '其他服务配置',
   'llm': 'LLM配置'
 };
 
@@ -334,6 +349,7 @@ const serviceDisplayNames: Record<string, string> = {
   'minio': 'MinIO',
   'asr': 'ASR',
   'capcut': 'CapCut',
+  'jianying': 'Jianying',
   'llm': 'LLM'
 };
 
@@ -589,6 +605,14 @@ return (
                             <Form.Item name={config.key} noStyle>
                               <Input.Password
                                 placeholder={config.default || "请输入CapCut API密钥"}
+                                visibilityToggle={true}
+                              />
+                            </Form.Item>
+                          ) : config.key === 'jianying_api_key' ? (
+                            // Jianying API密钥输入框
+                            <Form.Item name={config.key} noStyle>
+                              <Input.Password
+                                placeholder={config.default || "请输入Jianying API密钥"}
                                 visibilityToggle={true}
                               />
                             </Form.Item>

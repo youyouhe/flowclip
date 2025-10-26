@@ -11,6 +11,7 @@ from .subtasks.sub_slice_audio_task import extract_sub_slice_audio
 from .subtasks.srt_task import generate_srt
 from .subtasks.slice_task import process_video_slices
 from .subtasks.capcut_task import export_slice_to_capcut
+from .subtasks.jianying_task import export_slice_to_jianying
 from .subtasks import task_utils
 
 # 为了向后兼容，也可以在这里重新导出工具函数
@@ -29,6 +30,7 @@ __all__ = [
     'generate_srt',
     'process_video_slices',
     'export_slice_to_capcut',
+    'export_slice_to_jianying',
     'run_async',
     'update_task_status',
     '_wait_for_task_sync'

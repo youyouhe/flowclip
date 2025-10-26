@@ -6,6 +6,7 @@ from .processing import router as processing_router
 from .upload import router as upload_router
 from .status import router as status_router
 from .capcut import router as capcut_router
+from .jianying import router as jianying_router
 from .resource import router as resource_router
 from .llm import router as llm_router
 from .video_slice import router as video_slice_router
@@ -22,6 +23,7 @@ api_router.include_router(processing_router, prefix="/processing", tags=["proces
 api_router.include_router(upload_router, prefix="/upload", tags=["upload"])
 api_router.include_router(status_router, prefix="/status", tags=["status"])
 api_router.include_router(capcut_router, prefix="/capcut", tags=["capcut"])
+api_router.include_router(jianying_router, prefix="/jianying", tags=["jianying"])
 api_router.include_router(resource_router, prefix="/resources", tags=["resources"])
 api_router.include_router(llm_router, prefix="/llm", tags=["llm"])
 api_router.include_router(video_slice_router, prefix="/video-slice", tags=["video-slice"])

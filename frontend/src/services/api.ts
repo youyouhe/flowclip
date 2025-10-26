@@ -280,6 +280,14 @@ export const capcutAPI = {
     api.get('/capcut/status'),
 };
 
+// Jianying相关API
+export const jianyingAPI = {
+  exportSlice: (sliceId: number, draftFolder: string) =>
+    api.post(`/jianying/export-slice-jianying/${sliceId}`, { draft_folder: draftFolder }),
+  getStatus: () =>
+    api.get('/jianying/status'),
+};
+
 // ASR相关API
 export const asrAPI = {
   getStatus: () =>
