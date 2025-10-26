@@ -449,6 +449,10 @@ return (
                           {serviceDisplayNames[serviceKey] || serviceKey}服务状态: <ServiceStatusTag serviceName={serviceKey} />
                         </span>
                       ))}
+                      {/* 确保显式显示jianying状态检查按钮 */}
+                      <span key="jianying-explicit" className="mr-4">
+                        {serviceDisplayNames['jianying']}服务状态: <ServiceStatusTag serviceName="jianying" />
+                      </span>
                     </span>
                   )}
                   {service && category !== '其他服务配置' && (
