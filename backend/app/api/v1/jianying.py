@@ -27,7 +27,7 @@ from pydantic import BaseModel, Field
 logger = logging.getLogger(__name__)
 
 # 创建路由器
-router = APIRouter(prefix="/jianying", tags=["Jianying"])
+router = APIRouter(tags=["Jianying"])
 
 # Pydantic 模型
 class JianyingExportRequest(BaseModel):
@@ -64,10 +64,10 @@ def validate_draft_folder_path(draft_folder: str) -> str:
     # Windows 路径验证
     if re.match(r'^[A-Za-z]:\\', draft_folder):
         # Windows 绝对路径 (例如: C:\Users\username\Documents)
-        # 检查非法字符 (除了路径分隔符)
-        illegal_chars = r'[<>:"|?*]'
+        # 检查非法字符 (除了路径分隔符和冒号)
+        illegal_chars = r'[<>"|?*]'
         if re.search(illegal_chars, draft_folder):
-            raise ValueError("Windows 路径包含非法字符: < > : \" | ? *")
+            raise ValueError("Windows 路径包含非法字符: < > \" | ? *")
 
         # 检查保留名称 (针对路径中的每个部分)
         reserved_names = {
@@ -272,7 +272,7 @@ async def export_slice_to_jianying(
 
         raise HTTPException(status_code=500, detail="Jianying导出任务启动失败")
 
-@router.get("/jianying/proxy-resource/{resource_path:path}")
+@router.get("/proxy-resource/{resource_path:path}")
 async def proxy_jianying_resource(resource_path: str, db: Session = Depends(get_db)):
     """为Jianying服务器提供MinIO资源访问代理"""
     try:

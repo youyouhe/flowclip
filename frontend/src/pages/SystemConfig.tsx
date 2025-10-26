@@ -454,7 +454,7 @@ return (
                         CapCut服务状态: <ServiceStatusTag serviceName="capcut" />
                       </span>
                       <span key="jianying-status" className="mr-4">
-                        Jianying服务状态: <ServiceStatusTag serviceName="jianying" />
+                        {serviceDisplayNames['jianying']}服务状态: <ServiceStatusTag serviceName="jianying" />
                       </span>
                       <span key="llm-status" className="mr-4">
                         LLM服务状态: <ServiceStatusTag serviceName="llm" />
@@ -467,11 +467,7 @@ return (
                     </span>
                   )}
 
-                  {/* 测试：直接显示jianying按钮 */}
-                  <span className="ml-4">
-                    Jianying测试按钮: <Button size="small">测试</Button>
                   </span>
-                </span>
               ),
               children: (
                 <>
