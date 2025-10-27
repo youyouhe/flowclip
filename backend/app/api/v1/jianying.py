@@ -180,7 +180,7 @@ class JianyingServiceAPI:
 # 创建Jianying服务实例
 jianying_service = JianyingServiceAPI()
 
-@router.post("/export-slice-jianying/{slice_id}", response_model=JianyingExportResponse)
+@router.post("/export-slice-jianying/{slice_id}", response_model=JianyingExportResponse, operation_id="export_jianying_slice")
 async def export_slice_to_jianying(
     slice_id: int = Path(..., description="视频切片ID", gt=0),
     request: JianyingExportRequest = ...,

@@ -31,6 +31,9 @@ ALLOWED_OPERATIONS = [
     'capcut_status',
     'export_slice',
 
+    # Jianying集成 (1个)
+    'export_jianying_slice',
+
     # LLM聊天 (3个)
     'llm_chat',
     'get_models',
@@ -89,8 +92,8 @@ ALLOWED_OPERATIONS = [
 mcp = FastApiMCP(
     app,
     name="Flowclip API",
-    description="Flowclip视频处理平台 - 28个精选工具，移除了管理类操作，专注于查询和处理功能",
-    include_operations=ALLOWED_OPERATIONS,  # 包含所有28个精选操作
+    description="Flowclip视频处理平台 - 29个精选工具，移除了管理类操作，专注于查询和处理功能",
+    include_operations=ALLOWED_OPERATIONS,  # 包含所有29个精选操作
     describe_all_responses=True,
     describe_full_response_schema=True,
 )
@@ -104,6 +107,7 @@ categories = {
     'ASR服务': ['asr_status'],
     '认证相关': ['login', 'get_current_user'],
     'CapCut集成': ['capcut_status', 'export_slice'],
+    'Jianying集成': ['export_jianying_slice'],
     'LLM聊天': ['llm_chat', 'get_models', 'get_system_prompt'],
     '项目管理': ['list_projects', 'get_project', 'get_project_videos'],
     '处理日志': ['get_logs', 'get_task_logs', 'get_video_logs', 'get_logs_stats'],
