@@ -169,14 +169,14 @@ const CapCut: React.FC = () => {
   useEffect(() => {
     const completedSlices = slices.filter(s => s.capcut_status === 'completed');
     const processingSlices = slices.filter(s => s.capcut_status === 'processing');
-    
+
     // 检查是否有新的完成的切片（避免重复提示）
     if (completedSlices.length > prevCompleted.current.length) {
       const newCompleted = completedSlices.filter(s => !prevCompleted.current.includes(s.id));
       if (newCompleted.length > 0) {
         const latestCompleted = newCompleted[0];
         message.success(`CapCut导出完成：${latestCompleted.cover_title}`);
-        
+
         // 如果有草稿URL，也显示一个提示
         if (latestCompleted.capcut_draft_url) {
           setTimeout(() => {
@@ -185,16 +185,44 @@ const CapCut: React.FC = () => {
         }
       }
     }
-    
+
     prevCompleted.current = completedSlices.map(s => s.id);
   }, [slices]);
 
-  // 定时检查CapCut任务状态
+  // 监听Jianying切片状态变化，当有切片完成时显示提示
+  const prevJianyingCompleted = useRef<number[]>([]);
+
   useEffect(() => {
-    const checkCapCutTaskStatus = async () => {
+    const completedSlices = slices.filter(s => s.jianying_status === 'completed');
+
+    // 检查是否有新的完成的Jianying切片（避免重复提示）
+    if (completedSlices.length > prevJianyingCompleted.current.length) {
+      const newCompleted = completedSlices.filter(s => !prevJianyingCompleted.current.includes(s.id));
+      if (newCompleted.length > 0) {
+        const latestCompleted = newCompleted[0];
+        message.success(`Jianying导出完成：${latestCompleted.cover_title}`);
+
+        // 如果有草稿URL，也显示一个提示
+        if (latestCompleted.jianying_draft_url) {
+          setTimeout(() => {
+            message.info(`📄 Jianying草稿文件已生成，可以点击"Jianying草稿"按钮下载`);
+          }, 1000);
+        }
+      }
+    }
+
+    prevJianyingCompleted.current = completedSlices.map(s => s.id);
+  }, [slices]);
+
+  // 定时检查任务状态（CapCut和Jianying）
+  useEffect(() => {
+    const checkTaskStatus = async () => {
       if (!selectedVideo) return;
 
-      const processingSlices = slices.filter(s => s.capcut_status === 'processing');
+      const processingSlices = [
+        ...slices.filter(s => s.capcut_status === 'processing'),
+        ...slices.filter(s => s.jianying_status === 'processing')
+      ];
       if (processingSlices.length > 0) {
         // 有正在处理的任务，刷新切片列表获取最新状态
         try {
@@ -205,9 +233,9 @@ const CapCut: React.FC = () => {
       }
     };
 
-    const intervalId = setInterval(checkCapCutTaskStatus, 3000); // 每3秒检查一次
+    const intervalId = setInterval(checkTaskStatus, 3000); // 每3秒检查一次
     return () => clearInterval(intervalId);
-  }, [slices, capcutProgress.isProcessing, selectedVideo]);
+  }, [slices, capcutProgress.isProcessing, jianyingProgress.isProcessing, selectedVideo]);
 
   const loadVideos = async () => {
     try {
