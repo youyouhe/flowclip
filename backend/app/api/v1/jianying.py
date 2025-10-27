@@ -3,6 +3,7 @@ Jianying API 路由模块
 """
 from fastapi import APIRouter, Depends, HTTPException, Query, Path, BackgroundTasks, Request
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Session
 from sqlalchemy import select, and_
 from typing import Dict, Any, Optional
 import logging
@@ -10,7 +11,7 @@ import re
 from datetime import datetime
 
 # 导入依赖
-from app.core.database import get_db
+from app.core.database import get_db, get_sync_db_context
 from app.models.video_slice import VideoSlice, VideoSubSlice
 from app.models.transcript import Transcript
 from app.models.video import Video
@@ -124,7 +125,7 @@ class JianyingServiceAPI:
             from app.services.system_config_service import SystemConfigService
 
             # 尝试从数据库获取配置
-            with get_db() as db:
+            with get_sync_db_context() as db:
                 configs = SystemConfigService.get_all_configs_sync(db)
                 self.base_url = configs.get("jianying_api_url", settings.jianying_api_url)
                 self.api_key = configs.get("jianying_api_key", settings.jianying_api_key)
