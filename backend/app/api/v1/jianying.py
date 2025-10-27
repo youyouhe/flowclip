@@ -2,7 +2,7 @@
 Jianying API 路由模块
 """
 from fastapi import APIRouter, Depends, HTTPException, Query, Path, BackgroundTasks, Request
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_
 from typing import Dict, Any, Optional
 import logging
@@ -184,7 +184,7 @@ async def export_slice_to_jianying(
     slice_id: int = Path(..., description="视频切片ID", gt=0),
     request: JianyingExportRequest = ...,
     background_tasks: BackgroundTasks = BackgroundTasks(),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """导出视频切片到Jianying"""
     try:
@@ -192,7 +192,7 @@ async def export_slice_to_jianying(
         validated_draft_folder = validate_draft_folder_path(request.draft_folder)
 
         # 获取切片信息
-        slice_obj = db.get(VideoSlice, slice_id)
+        slice_obj = await db.get(VideoSlice, slice_id)
         if not slice_obj:
             raise HTTPException(status_code=404, detail="切片不存在")
 
@@ -213,14 +213,14 @@ async def export_slice_to_jianying(
             created_at=datetime.utcnow()
         )
         db.add(processing_task)
-        db.commit()
-        db.refresh(processing_task)
+        await db.commit()
+        await db.refresh(processing_task)
 
         # 更新切片的Jianying状态
         slice_obj.jianying_status = "pending"
         slice_obj.jianying_task_id = processing_task.celery_task_id
         slice_obj.jianying_error_message = None
-        db.commit()
+        await db.commit()
 
         # 触发Celery异步任务
         try:
@@ -232,7 +232,7 @@ async def export_slice_to_jianying(
 
             # 更新处理任务记录中的Celery任务ID
             processing_task.celery_task_id = celery_task.id
-            db.commit()
+            await db.commit()
 
             logger.info(f"Jianying Celery任务已提交 - Celery任务ID: {celery_task.id}, 处理任务ID: {processing_task.id}")
 
@@ -241,7 +241,7 @@ async def export_slice_to_jianying(
             # 更新处理任务状态为失败
             processing_task.status = ProcessingTaskStatus.FAILURE
             processing_task.error_message = f"提交Celery任务失败: {str(e)}"
-            db.commit()
+            await db.commit()
             raise HTTPException(status_code=500, detail=f"提交Jianying导出任务失败: {str(e)}")
 
         return JianyingExportResponse(
@@ -266,14 +266,14 @@ async def export_slice_to_jianying(
 
         # 尝试回滚数据库操作
         try:
-            db.rollback()
+            await db.rollback()
         except:
             pass
 
         raise HTTPException(status_code=500, detail="Jianying导出任务启动失败")
 
 @router.get("/proxy-resource/{resource_path:path}")
-async def proxy_jianying_resource(resource_path: str, db: Session = Depends(get_db)):
+async def proxy_jianying_resource(resource_path: str, db: AsyncSession = Depends(get_db)):
     """为Jianying服务器提供MinIO资源访问代理"""
     try:
         logger.info(f"Jianying资源代理请求 - 资源路径: {resource_path}")
@@ -323,13 +323,13 @@ async def proxy_jianying_resource(resource_path: str, db: Session = Depends(get_
         raise HTTPException(status_code=500, detail="资源代理服务失败")
 
 @router.get("/status")
-async def check_jianying_status(db: Session = Depends(get_db)):
+async def check_jianying_status(db: AsyncSession = Depends(get_db)):
     """检查Jianying服务状态"""
     try:
         # 从数据库获取最新的Jianying API URL配置
         try:
             from app.services.system_config_service import SystemConfigService
-            configs = SystemConfigService.get_all_configs_sync(db)
+            configs = await SystemConfigService.get_all_configs(db)
             jianying_api_url = configs.get("jianying_api_url", settings.jianying_api_url)
         except Exception as e:
             logger.warning(f"无法从数据库获取Jianying配置，使用默认配置: {e}")
