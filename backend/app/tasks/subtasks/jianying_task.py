@@ -880,9 +880,15 @@ def export_slice_to_jianying(self, slice_id: int, draft_folder: str, user_id: in
                     print(f"草稿保存成功: {draft_url}")
 
                     # 更新切片的Jianying导出状态
-                    slice_obj.jianying_draft_url = draft_url
-                    slice_obj.jianying_status = "completed"
-                    db.commit()
+                    # 重新获取对象以确保与数据库会话同步
+                    slice_obj = db.get(VideoSlice, slice_id)
+                    if slice_obj:
+                        slice_obj.jianying_draft_url = draft_url
+                        slice_obj.jianying_status = "completed"
+                        db.commit()
+                        print(f"DEBUG: Jianying状态已更新 - 切片ID: {slice_id}, 状态: {slice_obj.jianying_status}, draft_url: {slice_obj.jianying_draft_url}")
+                    else:
+                        print(f"ERROR: 无法重新获取切片对象 - 切片ID: {slice_id}")
 
                     print(f"DEBUG: Jianying导出任务完成 - 切片ID: {slice_id}")
                     _update_task_status(celery_task_id, ProcessingTaskStatus.SUCCESS, 100, "Jianying导出完成")
