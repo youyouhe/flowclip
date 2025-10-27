@@ -165,7 +165,7 @@ const CapCut: React.FC = () => {
 
   // 监听切片状态变化，当有切片完成时显示提示
   const prevCompleted = useRef<number[]>([]);
-  
+
   useEffect(() => {
     const completedSlices = slices.filter(s => s.capcut_status === 'completed');
     const processingSlices = slices.filter(s => s.capcut_status === 'processing');
@@ -187,7 +187,7 @@ const CapCut: React.FC = () => {
     }
 
     prevCompleted.current = completedSlices.map(s => s.id);
-  }, [slices]);
+  }, [slices]); // 这个主要依赖loadSlices的更新，所以是合理的
 
   // 监听Jianying切片状态变化，当有切片完成时显示提示
   const prevJianyingCompleted = useRef<number[]>([]);
@@ -212,7 +212,7 @@ const CapCut: React.FC = () => {
     }
 
     prevJianyingCompleted.current = completedSlices.map(s => s.id);
-  }, [slices]);
+  }, [slices]); // 这个主要依赖loadSlices的更新，所以是合理的
 
   // 定时检查任务状态（CapCut和Jianying）
   useEffect(() => {
