@@ -469,7 +469,7 @@ def export_slice_to_jianying(self, slice_id: int, draft_folder: str, user_id: in
                                 text=formatted_sub_title,
                                 start=current_time,
                                 end=current_time + 3,
-                                font="默认字体",
+                                font="挥墨体",
                                 font_color="#ffde00",
                                 font_size=8.0,
                                 track_name=f"title_track_{i+1}",
@@ -539,7 +539,7 @@ def export_slice_to_jianying(self, slice_id: int, draft_folder: str, user_id: in
                                         draft_id=draft_id,
                                         srt_path=srt_content,  # 传递实际内容而不是URL
                                         time_offset=current_time,
-                                        font="默认字体",
+                                        font="挥墨体",
                                         font_size=8.0,
                                         font_color="#ffde00",
                                         bold=False,
@@ -764,7 +764,7 @@ def export_slice_to_jianying(self, slice_id: int, draft_folder: str, user_id: in
                 text=cover_title_with_date,
                 start=0,
                 end=current_time,
-                font="默认字体",
+                font="挥墨体",
                 font_color="#ffde00",
                 font_size=8.0,
                 track_name="cover_title_track",
@@ -821,7 +821,7 @@ def export_slice_to_jianying(self, slice_id: int, draft_folder: str, user_id: in
                             subtitle_result = asyncio.run(jianying_service.add_subtitle(
                                 draft_id=draft_id,
                                 srt_path=srt_content,  # 传递实际内容而不是URL
-                                font="默认字体",
+                                font="挥墨体",
                                 font_size=8.0,
                                 font_color="#ffde00",
                                 bold=False,
