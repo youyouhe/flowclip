@@ -250,11 +250,12 @@ const CapCut: React.FC = () => {
   }, [selectedVideo]);
 
   // 定时检查任务状态（CapCut和Jianying）
-  useEffect(() => {
-    const checkTaskStatus = async () => {
-      if (!selectedVideo) return;
+  const [isCheckingTasks, setIsCheckingTasks] = useState(false);
 
-      // 总是重新获取切片数据，不依赖闭包中的slices状态
+  useEffect(() => {
+    if (!isCheckingTasks || !selectedVideo) return;
+
+    const checkTaskStatus = async () => {
       try {
         console.log('定时检查：重新获取切片状态');
         await loadSlices();
@@ -264,8 +265,28 @@ const CapCut: React.FC = () => {
     };
 
     const intervalId = setInterval(checkTaskStatus, 3000); // 每3秒检查一次
-    return () => clearInterval(intervalId);
-  }, [selectedVideo, loadSlices]); // 添加loadSlices依赖
+    console.log('开始定时检查任务状态');
+
+    return () => {
+      clearInterval(intervalId);
+      console.log('停止定时检查任务状态');
+    };
+  }, [isCheckingTasks, selectedVideo, loadSlices]);
+
+  // 监控任务完成状态，自动停止定时检查
+  useEffect(() => {
+    if (!isCheckingTasks) return;
+
+    const processingSlices = [
+      ...slices.filter(s => s.capcut_status === 'processing'),
+      ...slices.filter(s => s.jianying_status === 'processing')
+    ];
+
+    if (processingSlices.length === 0) {
+      console.log('检测到所有任务已完成，停止定时检查');
+      setIsCheckingTasks(false);
+    }
+  }, [slices, isCheckingTasks]);
 
   const loadVideos = async () => {
     try {
@@ -412,6 +433,9 @@ const CapCut: React.FC = () => {
         });
 
         message.success('CapCut导出任务已启动');
+
+        // 开始定时检查任务状态
+        setIsCheckingTasks(true);
       } else {
         throw new Error(response.data.message || '导出失败');
       }
@@ -493,6 +517,9 @@ const CapCut: React.FC = () => {
         });
 
         message.success('Jianying导出任务已启动');
+
+        // 开始定时检查任务状态
+        setIsCheckingTasks(true);
       } else {
         throw new Error(response.data.message || '导出失败');
       }
