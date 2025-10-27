@@ -202,16 +202,15 @@ async def export_slice_to_jianying(
 
         # 创建处理任务记录
         processing_task = ProcessingTask(
+            video_id=slice_obj.video_id,
             task_type=ProcessingTaskType.JIANYING_EXPORT,
+            task_name="Jianying导出",
             status=ProcessingTaskStatus.PENDING,
-            progress=0.0,
+            stage=ProcessingStage.JIANYING_EXPORT,
             input_data={
                 "slice_id": slice_id,
                 "draft_folder": validated_draft_folder
-            },
-            video_id=slice_obj.video_id,
-            user_id=getattr(background_tasks, 'user_id', None),
-            created_at=datetime.utcnow()
+            }
         )
         db.add(processing_task)
         await db.commit()
