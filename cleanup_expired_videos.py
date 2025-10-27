@@ -40,15 +40,30 @@ class VideoCleaner:
             print(f"✗ 登录异常: {str(e)}")
             return False
 
-    def get_videos(self) -> List[Dict]:
-        """获取视频列表"""
+    def get_videos(self, page: int = 1, page_size: int = 100, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict]:
+        """获取视频列表，支持分页和时间过滤"""
         try:
-            response = self.session.get(f"{self.base_url}/api/v1/videos/")
+            # 构建查询参数
+            params = {
+                'page': page,
+                'page_size': page_size
+            }
+
+            # 添加时间过滤参数
+            if start_date:
+                params['start_date'] = start_date
+            if end_date:
+                params['end_date'] = end_date
+
+            response = self.session.get(f"{self.base_url}/api/v1/videos/", params=params)
 
             if response.status_code == 200:
                 data = response.json()
                 videos = data.get("videos", [])
-                print(f"✓ 获取到 {len(videos)} 个视频")
+                pagination = data.get("pagination", {})
+                total = pagination.get("total", 0)
+
+                print(f"✓ 获取到第{page}页 {len(videos)} 个视频 (总计: {total})")
                 return videos
             else:
                 print(f"✗ 获取视频列表失败: {response.status_code} - {response.text}")
@@ -58,16 +73,56 @@ class VideoCleaner:
             print(f"✗ 获取视频列表异常: {str(e)}")
             return []
 
+    def get_all_videos_with_pagination(self, hours_threshold: int = 48, use_date_filter: bool = True) -> List[Dict]:
+        """获取所有视频，支持分页和时间过滤"""
+        all_videos = []
+        page = 1
+        page_size = 100
+
+        # 计算过期时间点
+        threshold_time = datetime.now() - timedelta(hours=hours_threshold)
+
+        # 如果使用时间过滤，设置查询的结束时间为过期时间点
+        if use_date_filter:
+            end_date = threshold_time.strftime('%Y-%m-%d')
+            # 开始时间设置为更早的时间，比如30天前
+            start_date = (threshold_time - timedelta(days=30)).strftime('%Y-%m-%d')
+            print(f"使用时间过滤: {start_date} 到 {end_date}")
+        else:
+            end_date = None
+            start_date = None
+            print("不使用时间过滤，获取所有视频")
+
+        while True:
+            videos = self.get_videos(page, page_size, start_date, end_date)
+
+            if not videos:
+                break
+
+            # 只保留已完成的视频
+            completed_videos = [v for v in videos if v.get("status") == "completed"]
+            all_videos.extend(completed_videos)
+
+            # 如果返回的视频数少于page_size，说明已经是最后一页
+            if len(videos) < page_size:
+                break
+
+            page += 1
+
+            # 防止无限循环，最多查询100页
+            if page > 100:
+                print("⚠️  达到最大页数限制(100)，停止获取")
+                break
+
+        print(f"✓ 总共获取到 {len(all_videos)} 个已完成视频")
+        return all_videos
+
     def get_expired_videos(self, videos: List[Dict], hours_threshold: int = 48) -> List[Dict]:
         """获取超过指定时间的已完成视频"""
         expired_videos = []
         threshold_time = datetime.now() - timedelta(hours=hours_threshold)
 
         for video in videos:
-            # 只处理已完成的视频
-            if video.get("status") != "completed":
-                continue
-
             # 解析创建时间
             created_at_str = video.get("created_at")
             if not created_at_str:
@@ -106,11 +161,12 @@ class VideoCleaner:
             print(f"✗ 删除视频 {video_id} 异常: {str(e)}")
             return False
 
-    def clean_expired_videos(self, hours_threshold: int = 48, dry_run: bool = False) -> int:
+    def clean_expired_videos(self, hours_threshold: int = 48, dry_run: bool = False, use_date_filter: bool = True) -> int:
         """清理超期视频的主函数"""
         print(f"{'='*60}")
         print(f"开始清理超期视频（超过 {hours_threshold} 小时）")
         print(f"模式: {'试运行（不会实际删除）' if dry_run else '正式删除'}")
+        print(f"时间过滤: {'启用' if use_date_filter else '禁用'}")
         print(f"时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         print(f"{'='*60}")
 
@@ -118,10 +174,10 @@ class VideoCleaner:
         if not self.login():
             return 0
 
-        # 2. 获取视频列表
-        videos = self.get_videos()
+        # 2. 获取视频列表（使用分页和时间过滤）
+        videos = self.get_all_videos_with_pagination(hours_threshold, use_date_filter)
         if not videos:
-            print("没有找到视频，退出")
+            print("没有找到已完成视频，退出")
             return 0
 
         # 3. 筛选超期视频
@@ -180,18 +236,21 @@ def main():
     parser.add_argument('--hours', type=int, default=48, help='超时阈值（小时），默认48小时')
     parser.add_argument('--dry-run', action='store_true', help='试运行模式，不实际删除')
     parser.add_argument('--base-url', type=str, default='http://localhost:8001', help='API基础URL')
+    parser.add_argument('--no-date-filter', action='store_true', help='禁用时间过滤，获取所有视频后筛选')
+    parser.add_argument('--page-size', type=int, default=100, help='每页视频数量，默认100')
 
     args = parser.parse_args()
 
     cleaner = VideoCleaner(args.base_url)
-    deleted_count = cleaner.clean_expired_videos(args.hours, args.dry_run)
+    use_date_filter = not args.no_date_filter
+    deleted_count = cleaner.clean_expired_videos(args.hours, args.dry_run, use_date_filter)
 
     # 如果是试运行模式，返回找到的视频数量
     if args.dry_run:
         sys.exit(0)  # 试运行总是返回成功
     else:
         # 如果删除失败的视频超过成功删除的视频，返回错误码
-        total_expired = len(cleaner.get_expired_videos(cleaner.get_videos(), args.hours))
+        total_expired = len(cleaner.get_expired_videos(cleaner.get_all_videos_with_pagination(args.hours, use_date_filter), args.hours))
         if deleted_count == 0 and total_expired > 0:
             sys.exit(1)
 
