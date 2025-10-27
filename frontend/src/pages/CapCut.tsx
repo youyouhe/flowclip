@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { 
   Card, 
   Select, 
@@ -219,24 +219,18 @@ const CapCut: React.FC = () => {
     const checkTaskStatus = async () => {
       if (!selectedVideo) return;
 
-      const processingSlices = [
-        ...slices.filter(s => s.capcut_status === 'processing'),
-        ...slices.filter(s => s.jianying_status === 'processing')
-      ];
-      if (processingSlices.length > 0) {
-        // 有正在处理的任务，刷新切片列表获取最新状态
-        try {
-          console.log('定时检查：发现处理中的任务，刷新切片状态');
-          await loadSlices();
-        } catch (error) {
-          console.error('刷新切片状态失败:', error);
-        }
+      // 总是重新获取切片数据，不依赖闭包中的slices状态
+      try {
+        console.log('定时检查：重新获取切片状态');
+        await loadSlices();
+      } catch (error) {
+        console.error('刷新切片状态失败:', error);
       }
     };
 
     const intervalId = setInterval(checkTaskStatus, 3000); // 每3秒检查一次
     return () => clearInterval(intervalId);
-  }, [selectedVideo]); // 移除对progress状态的依赖，只依赖selectedVideo
+  }, [selectedVideo, loadSlices]); // 添加loadSlices依赖
 
   const loadVideos = async () => {
     try {
@@ -304,7 +298,7 @@ const CapCut: React.FC = () => {
     });
   };
 
-  const loadSlices = async () => {
+  const loadSlices = useCallback(async () => {
     if (!selectedVideo) return;
 
     try {
@@ -337,7 +331,7 @@ const CapCut: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [selectedVideo]);
 
   const formatTime = (seconds: number) => {
     const hours = Math.floor(seconds / 3600);
