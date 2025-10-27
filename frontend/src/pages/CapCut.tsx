@@ -214,6 +214,41 @@ const CapCut: React.FC = () => {
     prevJianyingCompleted.current = completedSlices.map(s => s.id);
   }, [slices]); // 这个主要依赖loadSlices的更新，所以是合理的
 
+  const loadSlices = useCallback(async () => {
+    if (!selectedVideo) return;
+
+    try {
+      setLoading(true);
+      const response = await videoSliceAPI.getVideoSlices(selectedVideo);
+      const slicesData = response.data;
+
+      // 为每个切片加载子切片
+      const slicesWithSubs = await Promise.all(
+        slicesData.map(async (slice: VideoSlice) => {
+          try {
+            const subResponse = await videoSliceAPI.getSliceSubSlices(slice.id);
+            return {
+              ...slice,
+              sub_slices: subResponse.data
+            };
+          } catch (error: any) {
+            console.error(`加载切片 ${slice.id} 的子切片失败:`, error);
+            return {
+              ...slice,
+              sub_slices: []
+            };
+          }
+        })
+      );
+
+      setSlices(slicesWithSubs);
+    } catch (error: any) {
+      message.error('加载切片数据失败');
+    } finally {
+      setLoading(false);
+    }
+  }, [selectedVideo]);
+
   // 定时检查任务状态（CapCut和Jianying）
   useEffect(() => {
     const checkTaskStatus = async () => {
@@ -297,41 +332,6 @@ const CapCut: React.FC = () => {
       max_file_size: undefined,
     });
   };
-
-  const loadSlices = useCallback(async () => {
-    if (!selectedVideo) return;
-
-    try {
-      setLoading(true);
-      const response = await videoSliceAPI.getVideoSlices(selectedVideo);
-      const slicesData = response.data;
-
-      // 为每个切片加载子切片
-      const slicesWithSubs = await Promise.all(
-        slicesData.map(async (slice: VideoSlice) => {
-          try {
-            const subResponse = await videoSliceAPI.getSliceSubSlices(slice.id);
-            return {
-              ...slice,
-              sub_slices: subResponse.data
-            };
-          } catch (error: any) {
-            console.error(`加载切片 ${slice.id} 的子切片失败:`, error);
-            return {
-              ...slice,
-              sub_slices: []
-            };
-          }
-        })
-      );
-
-      setSlices(slicesWithSubs);
-    } catch (error: any) {
-      message.error('加载切片数据失败');
-    } finally {
-      setLoading(false);
-    }
-  }, [selectedVideo]);
 
   const formatTime = (seconds: number) => {
     const hours = Math.floor(seconds / 3600);
