@@ -335,15 +335,15 @@ class LLMService:
             分析结果
         """
         # 构建包含SRT内容的用户消息
-        user_message = f"""请基于以下视频字幕内容来回答我的问题：
+        user_message = f"""请基于以下视频字幕内容来回答我的问题(Please answer my question based on the following video subtitle content)：
 
-视频字幕内容：
+视频字幕内容(Video Subtitle Content)：
 {srt_content}
 
-我的问题是：
+我的问题是(My question is)：
 {user_question}
 
-请基于字幕内容提供详细的分析和回答。"""
+请基于字幕内容提供详细的分析和回答。(Please provide a detailed analysis and answer based on the subtitle content.)"""
         
         messages = [
             {

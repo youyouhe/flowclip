@@ -119,8 +119,8 @@ def extract_video_audio(self, video_id: str, project_id: int, user_id: int, vide
         if not celery_task_id:
             celery_task_id = "unknown"
             
-        _update_task_status(celery_task_id, ProcessingTaskStatus.RUNNING, 10, "开始提取音频", video_id=video_id)
-        self.update_state(state='PROGRESS', meta={'progress': 10, 'stage': ProcessingStage.EXTRACT_AUDIO, 'message': '开始提取音频'})
+        _update_task_status(celery_task_id, ProcessingTaskStatus.RUNNING, 10, "Start Extracting Audio", video_id=video_id)
+        self.update_state(state='PROGRESS', meta={'progress': 10, 'stage': ProcessingStage.EXTRACT_AUDIO, 'message': 'Start Extracting Audio'})
         
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir)

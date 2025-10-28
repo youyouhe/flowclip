@@ -50,7 +50,7 @@ async def extract_audio_endpoint(
     """
     from app.services.minio_client import minio_service
     
-    logger.info(f"开始提取音频 - video_id: {video_id}, user_id: {current_user.id}")
+    logger.info(f"Start Extracting Audio - video_id: {video_id}, user_id: {current_user.id}")
     
     # 验证视频属于当前用户
     stmt = select(Video).join(Project).where(
