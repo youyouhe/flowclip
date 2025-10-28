@@ -87,7 +87,7 @@ class AudioProcessor:
                 if not audio_url:
                     raise Exception("音频文件上传到MinIO失败")
                 
-                logger.info(f"音频提取完成，上传到: {audio_url}")
+                logger.info(f"Audio Extraction Completed，上传到: {audio_url}")
                 
                 return {
                     'success': True,

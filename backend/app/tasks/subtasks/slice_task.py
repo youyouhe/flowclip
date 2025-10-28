@@ -83,11 +83,11 @@ def process_video_slices(self, analysis_id: int, video_id: int, project_id: int,
                         video_slice.audio_processing_status = "processing"
                         video_slice.audio_task_id = audio_task.id
                         print(f"音频提取任务已提交: task_id={audio_task.id}")
-                        print(f"Full类型切片将等待音频提取完成后自动触发SRT生成")
+                        print(f"Full类型切片将等待Audio Extraction Completed后自动触发SRT生成")
                         
                     elif video_slice.type == "fragment":
                         # Fragment类型切片：只为所有子切片提交音频提取任务
-                        # SRT任务将在音频提取完成后触发
+                        # SRT任务将在Audio Extraction Completed后触发
                         print(f"提交Fragment类型切片处理任务: slice_id={video_slice.id}, sub_slices_count={len(video_slice.sub_slices)}")
                         
                         for i, sub_slice in enumerate(video_slice.sub_slices):
@@ -95,7 +95,7 @@ def process_video_slices(self, analysis_id: int, video_id: int, project_id: int,
                                 print(f"处理子切片 {i+1}/{len(video_slice.sub_slices)}: sub_slice_id={sub_slice.id}")
                                 
                                 # 提交子切片音频提取任务
-                                # 音频提取完成后将自动触发SRT任务
+                                # Audio Extraction Completed后将自动触发SRT任务
                                 sub_audio_task = extract_sub_slice_audio.delay(
                                     video_id=str(video_slice.video_id),
                                     project_id=project_id,
@@ -108,7 +108,7 @@ def process_video_slices(self, analysis_id: int, video_id: int, project_id: int,
                                 sub_slice.audio_processing_status = "processing"
                                 sub_slice.audio_task_id = sub_audio_task.id
                                 print(f"子切片音频提取任务已提交: sub_slice_id={sub_slice.id}, task_id={sub_audio_task.id}")
-                                print(f"子切片音频提取完成后将自动触发SRT生成")
+                                print(f"子切片Audio Extraction Completed后将自动触发SRT生成")
                                 
                             except Exception as e:
                                 print(f"提交子切片 {sub_slice.id} 处理任务失败: {str(e)}")
@@ -352,7 +352,7 @@ def process_video_slices(self, analysis_id: int, video_id: int, project_id: int,
                     analysis.status = "applied"
                     db.commit()
                     
-                    _update_task_status(self.request.id, ProcessingTaskStatus.SUCCESS, 100, f"视频切片处理完成，成功处理 {processed_slices}/{total_slices} 个切片")
+                    _update_task_status(self.request.id, ProcessingTaskStatus.SUCCESS, 100, f"Video Clip Processing Completed，成功处理 {processed_slices}/{total_slices} 个切片")
                     
                     # 只更新数据库，不发送WebSocket通知
                     # 前端会通过定时查询获取最新状态
@@ -385,12 +385,12 @@ def process_video_slices(self, analysis_id: int, video_id: int, project_id: int,
         if not celery_task_id:
             celery_task_id = "unknown"
             
-        _update_task_status(celery_task_id, ProcessingTaskStatus.RUNNING, 10, "开始处理视频切片")
-        self.update_state(state='PROGRESS', meta={'progress': 10, 'stage': ProcessingStage.SLICE_VIDEO, 'message': '开始处理视频切片'})
+        _update_task_status(celery_task_id, ProcessingTaskStatus.RUNNING, 10, "Start Processing Video Clips")
+        self.update_state(state='PROGRESS', meta={'progress': 10, 'stage': ProcessingStage.SLICE_VIDEO, 'message': 'Start Processing Video Clips'})
         
         # 运行同步处理
         result = _process_slices()
-        _update_task_status(celery_task_id, ProcessingTaskStatus.SUCCESS, 100, "视频切片处理完成")
+        _update_task_status(celery_task_id, ProcessingTaskStatus.SUCCESS, 100, "Video Clip Processing Completed")
         return result
         
     except Exception as e:

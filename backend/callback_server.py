@@ -607,7 +607,7 @@ class StandaloneCallbackServer:
                 # 更新processing_task的output_data
                 processing_task.output_data = existing_output_data
                 logger.info(f"✅ 已合并更新output_data，总字段数: {len(processing_task.output_data)}")
-                processing_task.message = f"TUS ASR处理完成 (任务ID: {task_id})"
+                processing_task.message = f"TUS ASR Processing Completed (任务ID: {task_id})"
 
                 # 根据任务类型更新相关表
                 self._update_related_records(session, processing_task, result)

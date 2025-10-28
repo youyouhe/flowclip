@@ -144,8 +144,8 @@ def extract_video_audio(self, video_id: str, project_id: int, user_id: int, vide
                 else:
                     object_name = video_minio_path
             
-            _update_task_status(celery_task_id, ProcessingTaskStatus.RUNNING, 30, "正在下载视频文件", video_id=video_id)
-            self.update_state(state='PROGRESS', meta={'progress': 30, 'stage': ProcessingStage.EXTRACT_AUDIO, 'message': '正在下载视频文件'})
+            _update_task_status(celery_task_id, ProcessingTaskStatus.RUNNING, 30, "The video file is being downloaded.", video_id=video_id)
+            self.update_state(state='PROGRESS', meta={'progress': 30, 'stage': ProcessingStage.EXTRACT_AUDIO, 'message': 'The video file is being downloaded.'})
             
             video_url = run_async(minio_service.get_file_url(object_name, expiry=3600))
             if not video_url:
@@ -220,7 +220,7 @@ def extract_video_audio(self, video_id: str, project_id: int, user_id: int, vide
                                 task_id=task.id,
                                 status=ProcessingTaskStatus.SUCCESS,
                                 progress=100,
-                                message="音频提取完成",
+                                message="Audio Extraction Completed",
                                 output_data={
                                     'audio_filename': result['audio_filename'],
                                     'minio_path': result['minio_path'],
@@ -232,15 +232,15 @@ def extract_video_audio(self, video_id: str, project_id: int, user_id: int, vide
                                 stage=ProcessingStage.EXTRACT_AUDIO
                             )
                         else:
-                            _update_task_status(celery_task_id, ProcessingTaskStatus.SUCCESS, 100, "音频提取完成", video_id=video_id)
+                            _update_task_status(celery_task_id, ProcessingTaskStatus.SUCCESS, 100, "Audio Extraction Completed", video_id=video_id)
                 except Exception as e:
                     print(f"状态更新失败: {e}")
                     # 回退到原来的状态更新方式
                     try:
-                        _update_task_status(celery_task_id, ProcessingTaskStatus.SUCCESS, 100, "音频提取完成", video_id=video_id)
+                        _update_task_status(celery_task_id, ProcessingTaskStatus.SUCCESS, 100, "Audio Extraction Completed", video_id=video_id)
                     except Exception as fallback_error:
                         print(f"回退状态更新也失败: {fallback_error}")
-                self.update_state(state='SUCCESS', meta={'progress': 100, 'stage': ProcessingStage.EXTRACT_AUDIO, 'message': '音频提取完成'})
+                self.update_state(state='SUCCESS', meta={'progress': 100, 'stage': ProcessingStage.EXTRACT_AUDIO, 'message': 'Audio Extraction Completed'})
                 
                 # 更新视频的音频路径和时长信息
                 try:

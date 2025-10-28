@@ -252,8 +252,8 @@ def generate_srt(self, video_id: str, project_id: int, user_id: int, split_files
             asr_model_type = db_configs.get("asr_model_type", settings.asr_model_type)
             logger.info(f"动态获取ASR服务URL: {asr_service_url}, 模型类型: {asr_model_type}")
         
-        _update_task_status(celery_task_id, ProcessingTaskStatus.RUNNING, 10, "开始生成字幕")
-        self.update_state(state='PROGRESS', meta={'progress': 10, 'stage': ProcessingStage.GENERATE_SRT, 'message': '开始生成字幕'})
+        _update_task_status(celery_task_id, ProcessingTaskStatus.RUNNING, 10, "Start Generating Subtitles")
+        self.update_state(state='PROGRESS', meta={'progress': 10, 'stage': ProcessingStage.GENERATE_SRT, 'message': 'Start Generating Subtitles'})
         
         print(f"DEBUG: 任务状态已更新为运行中")
         

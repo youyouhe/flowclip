@@ -235,7 +235,7 @@ const VideoDetail: React.FC = () => {
         
         {stageInfo.status === 'processing' && stageInfo.progress > 0 && (
           <div className="mt-2 text-xs text-gray-500 text-center">
-            {current_stage === 'download' && '正在下载视频文件...'}
+            {current_stage === 'download' && 'The video file is being downloaded....'}
             {current_stage === 'extract_audio' && '正在从视频中提取音频...'}
                         {current_stage === 'generate_srt' && '正在使用ASR生成字幕...'}
           </div>
@@ -1027,7 +1027,7 @@ const VideoDetail: React.FC = () => {
               <h4 className="font-semibold mb-2">处理结果:</h4>
               {audioInfo && (
                 <div className="text-sm mb-1">
-                  ✓ 音频提取完成: {audioInfo.audioFilename} ({Math.round(audioInfo.duration)}秒)
+                  ✓ Audio Extraction Completed: {audioInfo.audioFilename} ({Math.round(audioInfo.duration)}秒)
                 </div>
               )}
               {srtInfo && (

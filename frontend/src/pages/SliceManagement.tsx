@@ -507,7 +507,7 @@ const SliceManagement: React.FC = () => {
       });
 
       if (response.data.is_valid) {
-        message.success('数据验证成功！');
+        message.success('Data Validation Successful！');
         setValidateModalVisible(false);
         setJsonInput('');
         setCoverTitle('');

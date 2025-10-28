@@ -145,7 +145,7 @@ async def generate_srt_endpoint(
     Examples:
         生成字幕: POST /api/v1/videos/1/generate-srt
     """
-    logger.info(f"开始生成字幕 - video_id: {video_id}, user_id: {current_user.id}")
+    logger.info(f"Start Generating Subtitles - video_id: {video_id}, user_id: {current_user.id}")
     
     # 验证视频属于当前用户
     stmt = select(Video).join(Project).where(

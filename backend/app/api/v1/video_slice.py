@@ -169,11 +169,11 @@ async def validate_slice_data(
         await db.commit()
         await db.refresh(analysis)
         
-        logger.info(f"切片数据验证成功 - analysis_id: {analysis.id}")
+        logger.info(f"切片Data Validation Successful - analysis_id: {analysis.id}")
         
         return SliceValidationResponse(
             is_valid=True,
-            message="数据验证成功",
+            message="Data Validation Successful",
             analysis_id=analysis.id
         )
         
