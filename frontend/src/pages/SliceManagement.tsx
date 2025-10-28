@@ -922,7 +922,7 @@ const SliceManagement: React.FC = () => {
                       <Progress percent={sliceProgress.progress} status="active" />
                       <p>{sliceProgress.message}</p>
                       {sliceProgress.taskId && (
-                        <Text type="secondary">任务ID: {sliceProgress.taskId}</Text>
+                        <Text type="secondary">TaskID: {sliceProgress.taskId}</Text>
                       )}
                     </div>
                   }
@@ -1332,7 +1332,7 @@ const SliceManagement: React.FC = () => {
         </Space>
       </Modal>
 
-      {/* 处理切片模态框 */}
+      {/* Processing Clips模态框 */}
       <Modal
         title="处理视频切片"
         open={processModalVisible}
@@ -1343,7 +1343,7 @@ const SliceManagement: React.FC = () => {
         {selectedAnalysis && (
           <Space direction="vertical" style={{ width: '100%' }} size="middle">
             <Alert
-              message="确认处理切片"
+              message="确认Processing Clips"
               description={`即将处理 ${selectedAnalysis.analysis_data.length} 个切片，这可能需要一些时间。`}
               type="warning"
               showIcon

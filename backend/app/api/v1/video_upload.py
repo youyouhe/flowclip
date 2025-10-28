@@ -58,8 +58,8 @@ async def upload_video(
                 - created_at (datetime): 创建时间
                 - updated_at (Optional[datetime]): 更新时间
                 - project_name (str): 项目名称
-            - task_id (str): Celery任务ID
-            - processing_task_id (int): 处理任务ID
+            - task_id (str): CeleryTaskID
+            - processing_task_id (int): 处理TaskID
             - message (str): 上传消息
             - status (str): 上传状态
     

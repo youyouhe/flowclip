@@ -185,7 +185,7 @@ async def _process_video_download(
             args=[url, project_id, current_user.id, quality, cookies_path, new_video.id]
         )
         
-        # 创建处理任务记录，使用实际的Celery任务ID
+        # 创建处理任务记录，使用实际的CeleryTaskID
         state_manager = get_state_manager(db)
         processing_task = await state_manager.create_processing_task(
             video_id=new_video.id,

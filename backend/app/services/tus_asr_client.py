@@ -154,18 +154,18 @@ class TusASRClient:
         logger.info(f"文件大小: {audio_path.stat().st_size} bytes")
 
         try:
-            # 如果没有提供Celery任务ID，尝试获取当前任务的ID
+            # 如果没有提供CeleryTaskID，尝试获取当前任务的ID
             if not celery_task_id:
                 try:
                     import celery
                     current_task = celery.current_task
                     if current_task:
                         celery_task_id = current_task.request.id
-                        logger.info(f"自动获取到当前Celery任务ID: {celery_task_id}")
+                        logger.info(f"自动获取到当前CeleryTaskID: {celery_task_id}")
                 except Exception as e:
-                    logger.debug(f"无法获取Celery任务ID: {e}")
+                    logger.debug(f"无法获取CeleryTaskID: {e}")
 
-            # 执行TUS处理流程，传递Celery任务ID（固定使用独立回调服务器）
+            # 执行TUS处理流程，传递CeleryTaskID（固定使用独立回调服务器）
             result = await self._execute_tus_pipeline(audio_file_path, metadata or {}, celery_task_id)
             return result
 
@@ -250,7 +250,7 @@ class TusASRClient:
                 'strategy': 'tus',
                 'task_id': task_id,
                 'status': 'submitted',  # 已提交，等待异步处理
-                'message': f'TUS ASR任务已提交，任务ID: {task_id}，结果将通过异步回调处理',
+                'message': f'TUS ASR任务已提交，TaskID: {task_id}，结果将通过异步回调处理',
                 'file_path': audio_file_path,
                 'metadata': metadata,
                 'processing_time': time.time() - start_time,
@@ -278,16 +278,16 @@ class TusASRClient:
             if not redis_available:
                 raise RuntimeError("独立回调管理器Redis不可用，无法启动异步TUS任务")
 
-            # 获取当前Celery任务ID
+            # 获取当前CeleryTaskID
             current_celery_task_id = None
             try:
                 import celery
                 current_task = celery.current_task
                 if current_task:
                     current_celery_task_id = current_task.request.id
-                    logger.info(f"🔗 当前Celery任务ID: {current_celery_task_id}")
+                    logger.info(f"🔗 当前CeleryTaskID: {current_celery_task_id}")
             except Exception as e:
-                logger.debug(f"无法获取当前Celery任务ID: {e}")
+                logger.debug(f"无法获取当前CeleryTaskID: {e}")
 
             # 步骤1: 创建ASR任务
             logger.info("📝 步骤1: 创建ASR任务...")
@@ -684,7 +684,7 @@ class TusASRClient:
 
     async def _wait_for_tus_results(self, task_id: str, celery_task_id: str = None) -> str:
         """等待TUS ASR处理结果"""
-        logger.info(f"开始等待TUS结果，任务ID: {task_id}")
+        logger.info(f"开始等待TUS结果，TaskID: {task_id}")
 
         start_time = time.time()
         # 设置一个安全的超时缓冲区，确保在Celery超时之前完成
@@ -702,10 +702,10 @@ class TusASRClient:
                 if is_already_registered:
                     logger.info(f"✅ 任务 {task_id} 已在独立回调服务器注册，跳过重复注册")
                 else:
-                    # 向独立回调服务器注册任务，传递Celery任务ID
-                    logger.info(f"🔄 任务 {task_id} 未注册，现在进行注册 (Celery任务ID: {celery_task_id})")
+                    # 向独立回调服务器注册任务，传递CeleryTaskID
+                    logger.info(f"🔄 任务 {task_id} 未注册，现在进行注册 (CeleryTaskID: {celery_task_id})")
                     if self.callback_manager.register_task(task_id, celery_task_id):
-                        logger.info(f"任务 {task_id} 已向独立回调服务器注册 (Celery任务ID: {celery_task_id})")
+                        logger.info(f"任务 {task_id} 已向独立回调服务器注册 (CeleryTaskID: {celery_task_id})")
                     else:
                         logger.error(f"❌ 任务 {task_id} 注册失败")
 

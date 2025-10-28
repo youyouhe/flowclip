@@ -239,7 +239,7 @@ def generate_srt(self, video_id: str, project_id: int, user_id: int, split_files
         if not celery_task_id:
             celery_task_id = "unknown"
             
-        print(f"DEBUG: 获取到Celery任务ID: {celery_task_id}")
+        print(f"DEBUG: 获取到CeleryTaskID: {celery_task_id}")
 
         # 记录处理开始时间
         processing_start_time = time.time()
@@ -273,8 +273,8 @@ def generate_srt(self, video_id: str, project_id: int, user_id: int, split_files
                 audio_filename = f"{video_id}.wav"
                 audio_path = temp_path / audio_filename
                 
-                _update_task_status(celery_task_id, ProcessingTaskStatus.RUNNING, 30, "正在下载音频文件")
-                self.update_state(state='PROGRESS', meta={'progress': 30, 'stage': ProcessingStage.GENERATE_SRT, 'message': '正在下载音频文件'})
+                _update_task_status(celery_task_id, ProcessingTaskStatus.RUNNING, 30, "The audio file is being downloaded.")
+                self.update_state(state='PROGRESS', meta={'progress': 30, 'stage': ProcessingStage.GENERATE_SRT, 'message': 'The audio file is being downloaded.'})
                 
                 # Handle both full URLs and object names
                 audio_minio_path = audio_info['audio_path']
@@ -323,8 +323,8 @@ def generate_srt(self, video_id: str, project_id: int, user_id: int, split_files
                 if downloaded_file_size < 100:
                     raise Exception(f"下载的音频文件太小，可能下载失败，大小: {downloaded_file_size} bytes")
                 
-                _update_task_status(celery_task_id, ProcessingTaskStatus.RUNNING, 70, "正在生成字幕")
-                self.update_state(state='PROGRESS', meta={'progress': 70, 'stage': ProcessingStage.GENERATE_SRT, 'message': '正在生成字幕'})
+                _update_task_status(celery_task_id, ProcessingTaskStatus.RUNNING, 70, "Start Generating Subtitles")
+                self.update_state(state='PROGRESS', meta={'progress': 70, 'stage': ProcessingStage.GENERATE_SRT, 'message': 'Start Generating Subtitles'})
             
                 # 准备自定义文件名
                 if slice_id:

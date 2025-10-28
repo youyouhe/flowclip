@@ -78,7 +78,7 @@ generate_srt → 生成字幕
 ### 4. 视频切片流程
 ```
 validate_slices → 验证切片数据
-process_slices → 处理切片
+process_slices → Processing Clips
 export_slice → 导出到CapCut
 ```
 

@@ -556,8 +556,8 @@ async def export_slice_to_capcut(
         dict: 导出任务启动结果
             - success (bool): 是否成功启动
             - message (str): 操作结果消息
-            - task_id (str): Celery任务ID
-            - processing_task_id (int): 处理任务ID
+            - task_id (str): CeleryTaskID
+            - processing_task_id (int): 处理TaskID
             
     Raises:
         HTTPException: 当切片不存在或启动任务失败时抛出异常
@@ -598,7 +598,7 @@ async def export_slice_to_capcut(
             draft_folder=request.draft_folder
         )
         
-        # 更新处理任务记录的Celery任务ID
+        # 更新处理任务记录的CeleryTaskID
         processing_task.celery_task_id = celery_task.id
         await db.commit()
         

@@ -437,7 +437,7 @@ async def get_slice_srt_content(
 ):
     """获取切片的SRT字幕内容"""
 
-    logger.info(f"🔍 开始处理切片SRT请求: slice_id={slice_id}")
+    logger.info(f"🔍 开始Processing ClipsSRT请求: slice_id={slice_id}")
 
     try:
         # 验证切片权限

@@ -200,7 +200,7 @@ class StandaloneCallbackServer:
                 logger.error("❌ 回调中缺少task_id")
                 return web.Response(status=400, text='Missing task_id')
 
-            logger.info(f"📝 处理任务ID: {task_id}")
+            logger.info(f"📝 处理TaskID: {task_id}")
 
             # 检查任务是否在Redis中注册
             task_key = self._get_task_key(task_id)
@@ -423,15 +423,15 @@ class StandaloneCallbackServer:
 
         try:
             session = self.db_session_factory()
-            logger.info(f"🔍 开始查找与TUS任务ID {task_id} 关联的ProcessingTask")
+            logger.info(f"🔍 开始查找与TUSTaskID {task_id} 关联的ProcessingTask")
 
-            # 首先尝试从Redis中获取Celery任务ID
+            # 首先尝试从Redis中获取CeleryTaskID
             celery_task_id = self._get_celery_task_id_from_redis(task_id)
-            logger.info(f"📋 从Redis获取到的Celery任务ID: {celery_task_id}")
+            logger.info(f"📋 从Redis获取到的CeleryTaskID: {celery_task_id}")
 
             # 详细调试：检查Redis中的所有相关键
             if not celery_task_id:
-                logger.warning(f"🔍 未找到Celery任务ID，调试Redis状态:")
+                logger.warning(f"🔍 未找到CeleryTaskID，调试Redis状态:")
                 try:
                     # 检查任务键
                     task_key = self._get_task_key(task_id)
@@ -466,12 +466,12 @@ class StandaloneCallbackServer:
 
             if not processing_task:
                 # 回退到通过task_metadata查找
-                logger.info(f"🔍 尝试通过task_metadata查找TUS任务ID {task_id}")
+                logger.info(f"🔍 尝试通过task_metadata查找TUSTaskID {task_id}")
                 processing_task = session.query(ProcessingTask).filter(
                     ProcessingTask.task_metadata.like(f'%{task_id}%')
                 ).first()
                 if processing_task:
-                    logger.info(f"✅ 通过task_metadata找到关联任务: TUS任务ID {task_id} -> ProcessingTask.id={processing_task.id}")
+                    logger.info(f"✅ 通过task_metadata找到关联任务: TUSTaskID {task_id} -> ProcessingTask.id={processing_task.id}")
 
             if not processing_task:
                 # 最后尝试：查找最近的相关任务
@@ -485,12 +485,12 @@ class StandaloneCallbackServer:
                 ).order_by(ProcessingTask.created_at.desc()).first()
 
                 if processing_task:
-                    logger.info(f"✅ 通过时间窗口找到关联任务: TUS任务ID {task_id} -> ProcessingTask.id={processing_task.id}")
+                    logger.info(f"✅ 通过时间窗口找到关联任务: TUSTaskID {task_id} -> ProcessingTask.id={processing_task.id}")
                     # 尝试事后恢复映射关系
                     self._try_restore_mapping(task_id, processing_task.celery_task_id)
 
             if not processing_task:
-                logger.error(f"❌ 未找到与TUS任务ID {task_id} 关联的ProcessingTask")
+                logger.error(f"❌ 未找到与TUSTaskID {task_id} 关联的ProcessingTask")
                 # 列出所有最近的ProcessingTask用于调试
                 from datetime import timedelta
                 recent_tasks = session.query(ProcessingTask).filter(
@@ -525,7 +525,7 @@ class StandaloneCallbackServer:
                 processing_task.status = ProcessingTaskStatus.FAILED
                 processing_task.progress = 0.0  # 失败时进度归零
                 processing_task.completed_at = datetime.utcnow()
-                processing_task.message = f"TUS ASR处理失败: {error_message} (任务ID: {task_id})"
+                processing_task.message = f"TUS ASR处理失败: {error_message} (TaskID: {task_id})"
 
                 # 更新output_data，保留失败信息
                 existing_output_data = processing_task.output_data or {}
@@ -607,7 +607,7 @@ class StandaloneCallbackServer:
                 # 更新processing_task的output_data
                 processing_task.output_data = existing_output_data
                 logger.info(f"✅ 已合并更新output_data，总字段数: {len(processing_task.output_data)}")
-                processing_task.message = f"TUS ASR Processing Completed (任务ID: {task_id})"
+                processing_task.message = f"TUS ASR Processing Completed (TaskID: {task_id})"
 
                 # 根据任务类型更新相关表
                 self._update_related_records(session, processing_task, result)
@@ -836,9 +836,9 @@ class StandaloneCallbackServer:
             logger.error(f"❌ 更新相关记录失败: {e}", exc_info=True)
 
     def _get_celery_task_id_from_redis(self, task_id: str) -> Optional[str]:
-        """从Redis中获取与TUS任务ID关联的Celery任务ID"""
+        """从Redis中获取与TUS任务ID关联的CeleryTaskID"""
         try:
-            # 首先检查任务数据中是否包含Celery任务ID
+            # 首先检查任务数据中是否包含CeleryTaskID
             task_key = self._get_task_key(task_id)
             task_data = self._redis_client.get(task_key)
             if task_data:
@@ -846,14 +846,14 @@ class StandaloneCallbackServer:
                     data = pickle.loads(task_data)
                     celery_task_id = data.get('celery_task_id')
                     if celery_task_id:
-                        logger.info(f"✅ 从任务数据中获取到Celery任务ID: {celery_task_id}")
+                        logger.info(f"✅ 从任务数据中获取到CeleryTaskID: {celery_task_id}")
                         return celery_task_id
                 except Exception as e:
                     logger.debug(f"解析任务数据失败: {e}")
 
             # 如果任务数据中没有，尝试通过映射查找
             # 这种情况下需要遍历所有可能的映射
-            logger.info(f"🔍 尝试通过映射查找TUS任务ID {task_id} 对应的Celery任务ID")
+            logger.info(f"🔍 尝试通过映射查找TUSTaskID {task_id} 对应的CeleryTaskID")
 
             # 检查所有可能的映射键（这种效率较低，但作为回退方案）
             for key_pattern in ["tus_celery_mapping:*"]:
@@ -866,15 +866,15 @@ class StandaloneCallbackServer:
                             decoded_value = mapping_value.decode('utf-8')
                             logger.debug(f"映射键 {key.decode('utf-8')} -> {decoded_value}")
                             if decoded_value == task_id:
-                                celery_task_id = key.decode('utf-8').split(':', 1)[1]  # 提取Celery任务ID
-                                logger.info(f"✅ 通过映射找到Celery任务ID: {celery_task_id}")
+                                celery_task_id = key.decode('utf-8').split(':', 1)[1]  # 提取CeleryTaskID
+                                logger.info(f"✅ 通过映射找到CeleryTaskID: {celery_task_id}")
                                 return celery_task_id
                         except Exception as decode_error:
                             logger.debug(f"解码映射值失败: {decode_error}")
                     else:
                         logger.debug(f"映射键 {key.decode('utf-8')} 没有值")
 
-            logger.info(f"⚠️ 未找到TUS任务ID {task_id} 对应的Celery任务ID")
+            logger.info(f"⚠️ 未找到TUSTaskID {task_id} 对应的CeleryTaskID")
             return None
 
         except Exception as e:

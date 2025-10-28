@@ -230,11 +230,11 @@ async def export_slice_to_jianying(
                 user_id=getattr(background_tasks, 'user_id', None)
             )
 
-            # 更新处理任务记录中的Celery任务ID
+            # 更新处理任务记录中的CeleryTaskID
             processing_task.celery_task_id = celery_task.id
             await db.commit()
 
-            logger.info(f"Jianying Celery任务已提交 - Celery任务ID: {celery_task.id}, 处理任务ID: {processing_task.id}")
+            logger.info(f"Jianying Celery任务已提交 - CeleryTaskID: {celery_task.id}, 处理TaskID: {processing_task.id}")
 
         except Exception as e:
             logger.error(f"提交Jianying Celery任务失败: {str(e)}")

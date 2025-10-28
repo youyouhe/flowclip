@@ -12,7 +12,7 @@ class ProcessingTask(Base):
     video_id = Column(Integer, ForeignKey("videos.id"), nullable=False)
     task_type = Column(String(50), nullable=False)  # ProcessingTaskType
     task_name = Column(String(200), nullable=False)  # 任务名称
-    celery_task_id = Column(String(255), unique=True, index=True)  # Celery任务ID
+    celery_task_id = Column(String(255), unique=True, index=True)  # CeleryTaskID
     
     # 状态信息
     status = Column(String(50), default=ProcessingTaskStatus.PENDING)  # ProcessingTaskStatus

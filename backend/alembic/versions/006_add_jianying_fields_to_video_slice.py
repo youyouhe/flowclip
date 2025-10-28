@@ -19,7 +19,7 @@ depends_on = None
 def upgrade():
     # Add Jianying fields to video_slices table
     op.add_column('video_slices', sa.Column('jianying_status', sa.String(length=50), nullable=True, server_default='pending', comment='Jianying导出状态'))
-    op.add_column('video_slices', sa.Column('jianying_task_id', sa.String(length=255), nullable=True, comment='Jianying导出的Celery任务ID'))
+    op.add_column('video_slices', sa.Column('jianying_task_id', sa.String(length=255), nullable=True, comment='Jianying导出的CeleryTaskID'))
     op.add_column('video_slices', sa.Column('jianying_draft_url', sa.Text(), nullable=True, comment='Jianying草稿文件URL'))
     op.add_column('video_slices', sa.Column('jianying_error_message', sa.Text(), nullable=True, comment='Jianying导出错误信息'))
 

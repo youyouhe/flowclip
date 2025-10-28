@@ -55,7 +55,7 @@ def process_video_slices(self, analysis_id: int, video_id: int, project_id: int,
             print(f"Error updating task status: {e}")
     
     def _process_slices():
-        """同步处理切片"""
+        """同步Processing Clips"""
         try:
             
             def _submit_processing_tasks(video_slice: VideoSlice, user_id: int, project_id: int):
@@ -214,7 +214,7 @@ def process_video_slices(self, analysis_id: int, video_id: int, project_id: int,
                     for i, slice_item in enumerate(slice_items):
                         try:
                             progress = 20 + (i / total_slices) * 70
-                            message = f"处理切片 {i+1}/{total_slices}: {slice_item.get('cover_title', 'N/A')}"
+                            message = f"Processing Clips {i+1}/{total_slices}: {slice_item.get('cover_title', 'N/A')}"
                             
                             _update_task_status(self.request.id, ProcessingTaskStatus.RUNNING, progress, message)
                             
@@ -344,7 +344,7 @@ def process_video_slices(self, analysis_id: int, video_id: int, project_id: int,
                             processed_slices += 1
                             
                         except Exception as e:
-                            print(f"处理切片失败: {str(e)}")
+                            print(f"Processing Clips失败: {str(e)}")
                             continue
                     
                     # 更新分析状态
@@ -376,7 +376,7 @@ def process_video_slices(self, analysis_id: int, video_id: int, project_id: int,
         except Exception as e:
             import traceback
             error_details = traceback.format_exc()
-            print(f"处理切片任务失败: {str(e)}")
+            print(f"Processing Clips任务失败: {str(e)}")
             print(f"详细错误信息: {error_details}")
             raise Exception(f"视频切片任务失败: {str(e)}")
     

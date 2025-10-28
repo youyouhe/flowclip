@@ -20,7 +20,7 @@ router = APIRouter()
 
 @router.get("/logs",
     summary="获取处理任务日志列表",
-    description="获取处理任务日志列表，支持多种过滤条件。可以按视频ID、任务ID、任务类型、状态、时间范围等进行过滤。",
+    description="获取处理任务日志列表，支持多种过滤条件。可以按视频ID、TaskID、任务类型、状态、时间范围等进行过滤。",
     responses={
         200: {
             "description": "成功返回处理任务日志列表",
@@ -75,7 +75,7 @@ async def get_processing_logs(
     """
     获取处理任务日志列表
     
-    获取处理任务日志列表，支持多种过滤条件。可以按视频ID、任务ID、任务类型、状态、时间范围等进行过滤。
+    获取处理任务日志列表，支持多种过滤条件。可以按视频ID、TaskID、任务类型、状态、时间范围等进行过滤。
     支持分页和搜索功能。
     
     Args:
@@ -294,7 +294,7 @@ async def get_task_logs(
     获取特定处理任务的所有日志记录。
     
     Args:
-        task_id (int): 任务ID
+        task_id (int): TaskID
         current_user (User): 当前认证用户（依赖注入）
         db (AsyncSession): 数据库会话（依赖注入）
         
@@ -405,7 +405,7 @@ async def get_video_logs_summary(
                 - last_updated (datetime): 最后更新时间
             - recent_logs (List[Dict]): 最近日志列表
                 - id (int): 日志ID
-                - task_id (int): 任务ID
+                - task_id (int): TaskID
                 - task_name (str): 任务名称
                 - task_type (str): 任务类型
                 - old_status (str): 旧状态
@@ -606,7 +606,7 @@ async def delete_task_logs(
     删除指定任务ID的所有日志记录。
     
     Args:
-        task_id (int): 任务ID
+        task_id (int): TaskID
         current_user (User): 当前认证用户（依赖注入）
         db (AsyncSession): 数据库会话（依赖注入）
         
@@ -714,7 +714,7 @@ async def delete_video_logs(
                 detail="视频不存在或无权限访问"
             )
         
-        # 获取视频的所有任务ID
+        # 获取视频的所有TaskID
         stmt = select(ProcessingTask.id).where(
             ProcessingTask.video_id == video_id
         )

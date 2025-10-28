@@ -65,7 +65,7 @@ def download_video(self, video_url: str, project_id: int, user_id: int, quality:
                 print(f"Error updating task status: {e}")
     
     try:
-        # 获取有效的任务ID
+        # 获取有效的TaskID
         celery_task_id = self.request.id if self.request and hasattr(self.request, 'id') and self.request.id else f"download_{int(time.time())}"
 
         # 确保 task_id 不为空

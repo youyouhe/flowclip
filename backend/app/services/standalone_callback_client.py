@@ -66,7 +66,7 @@ class StandaloneCallbackClient:
                 'client_type': 'standalone_callback_client'
             }
 
-            # 如果提供了Celery任务ID，保存关联关系
+            # 如果提供了CeleryTaskID，保存关联关系
             if celery_task_id:
                 task_data['celery_task_id'] = celery_task_id
                 logger.info(f"🔗 保存TUS任务ID与Celery任务ID关联: {task_id} -> {celery_task_id}")

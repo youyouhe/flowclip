@@ -302,7 +302,7 @@ class ASRStrategySelector:
             # 导入TUS客户端
             from app.services.tus_asr_client import tus_asr_client
 
-            # 获取Celery任务ID（如果可用）
+            # 获取CeleryTaskID（如果可用）
             celery_task_id = None
             try:
                 import celery
@@ -311,7 +311,7 @@ class ASRStrategySelector:
                     celery_task_id = current_task.request.id
                     logger.info(f"传递Celery任务ID给TUS客户端: {celery_task_id}")
             except Exception as e:
-                logger.debug(f"无法获取Celery任务ID: {e}")
+                logger.debug(f"无法获取CeleryTaskID: {e}")
 
             # 使用TUS客户端处理音频文件
             result = await tus_asr_client.process_audio_file(

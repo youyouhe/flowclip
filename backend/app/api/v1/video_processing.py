@@ -34,8 +34,8 @@ async def extract_audio_endpoint(
     
     Returns:
         dict: 音频提取任务信息
-            - task_id (str): Celery任务ID
-            - processing_task_id (int): 处理任务ID
+            - task_id (str): CeleryTaskID
+            - processing_task_id (int): 处理TaskID
             - message (str): 任务启动消息
             - status (str): 任务状态
     
@@ -84,7 +84,7 @@ async def extract_audio_endpoint(
             args=[str(video.id), video.project_id, current_user.id, video.file_path]
         )
         
-        # 创建处理任务记录，使用实际的Celery任务ID
+        # 创建处理任务记录，使用实际的CeleryTaskID
         state_manager = get_state_manager(db)
         processing_task = await state_manager.create_processing_task(
             video_id=video.id,
@@ -132,8 +132,8 @@ async def generate_srt_endpoint(
     
     Returns:
         dict: 字幕生成任务信息
-            - task_id (str): Celery任务ID
-            - processing_task_id (int): 处理任务ID
+            - task_id (str): CeleryTaskID
+            - processing_task_id (int): 处理TaskID
             - message (str): 任务启动消息
             - status (str): 任务状态
     
@@ -171,7 +171,7 @@ async def generate_srt_endpoint(
     )
     logger.info(f"Celery任务已发送 - task_id: {task.id}")
     
-    # 创建处理任务记录，使用实际的Celery任务ID
+    # 创建处理任务记录，使用实际的CeleryTaskID
     state_manager = get_state_manager(db)
     processing_task = await state_manager.create_processing_task(
         video_id=video.id,

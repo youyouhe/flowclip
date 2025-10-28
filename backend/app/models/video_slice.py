@@ -63,26 +63,26 @@ class VideoSlice(Base):
     # 音频处理状态
     audio_processing_status = Column(String(50), default="pending")  # pending, processing, completed, failed
     audio_progress = Column(Float, default=0.0)  # 音频处理进度
-    audio_task_id = Column(String(255), nullable=True)  # 音频处理的Celery任务ID
+    audio_task_id = Column(String(255), nullable=True)  # 音频处理的CeleryTaskID
     audio_error_message = Column(Text, nullable=True)  # 音频处理错误信息
     audio_url = Column(Text, nullable=True)  # 音频文件的MinIO存储URL
     
     # SRT处理状态
     srt_processing_status = Column(String(50), default="pending")  # pending, processing, completed, failed
     srt_progress = Column(Float, default=0.0)  # SRT处理进度
-    srt_task_id = Column(String(255), nullable=True)  # SRT处理的Celery任务ID
+    srt_task_id = Column(String(255), nullable=True)  # SRT处理的CeleryTaskID
     srt_error_message = Column(Text, nullable=True)  # SRT处理错误信息
     srt_url = Column(Text, nullable=True)  # SRT文件的MinIO存储URL
     
     # CapCut 导出状态
     capcut_status = Column(String(50), default="pending")  # pending, processing, completed, failed
-    capcut_task_id = Column(String(255), nullable=True)  # Celery任务ID
+    capcut_task_id = Column(String(255), nullable=True)  # CeleryTaskID
     capcut_draft_url = Column(Text, nullable=True)  # CapCut草稿文件URL
     capcut_error_message = Column(Text, nullable=True)  # CapCut导出错误信息
 
     # Jianying 导出状态
     jianying_status = Column(String(50), default="pending")  # pending, processing, completed, failed
-    jianying_task_id = Column(String(255), nullable=True)  # Celery任务ID
+    jianying_task_id = Column(String(255), nullable=True)  # CeleryTaskID
     jianying_draft_url = Column(Text, nullable=True)  # Jianying草稿文件URL
     jianying_error_message = Column(Text, nullable=True)  # Jianying导出错误信息
     
@@ -124,14 +124,14 @@ class VideoSubSlice(Base):
     # 音频处理状态
     audio_processing_status = Column(String(50), default="pending")  # pending, processing, completed, failed
     audio_progress = Column(Float, default=0.0)  # 音频处理进度
-    audio_task_id = Column(String(255), nullable=True)  # 音频处理的Celery任务ID
+    audio_task_id = Column(String(255), nullable=True)  # 音频处理的CeleryTaskID
     audio_error_message = Column(Text, nullable=True)  # 音频处理错误信息
     audio_url = Column(Text, nullable=True)  # 音频文件的MinIO存储URL
     
     # SRT处理状态
     srt_processing_status = Column(String(50), default="pending")  # pending, processing, completed, failed
     srt_progress = Column(Float, default=0.0)  # SRT处理进度
-    srt_task_id = Column(String(255), nullable=True)  # SRT处理的Celery任务ID
+    srt_task_id = Column(String(255), nullable=True)  # SRT处理的CeleryTaskID
     srt_error_message = Column(Text, nullable=True)  # SRT处理错误信息
     srt_url = Column(Text, nullable=True)  # SRT文件的MinIO存储URL
     

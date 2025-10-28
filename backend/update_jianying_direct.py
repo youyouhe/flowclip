@@ -75,7 +75,7 @@ def add_jianying_columns(connection):
 
     jianying_columns = [
         ("jianying_status", "VARCHAR(50)", "pending", "Jianying导出状态"),
-        ("jianying_task_id", "VARCHAR(255)", "NULL", "Jianying导出的Celery任务ID"),
+        ("jianying_task_id", "VARCHAR(255)", "NULL", "Jianying导出的CeleryTaskID"),
         ("jianying_draft_url", "TEXT", "NULL", "Jianying草稿文件URL"),
         ("jianying_error_message", "TEXT", "NULL", "Jianying导出错误信息")
     ]

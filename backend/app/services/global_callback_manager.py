@@ -635,7 +635,7 @@ class GlobalCallbackManager:
                     logger.error("回调中缺少task_id")
                     return web.Response(status=400, text='Missing task_id')
 
-                logger.info(f"处理任务ID: {task_id}")
+                logger.info(f"处理TaskID: {task_id}")
 
                 # 调试：检查任务状态（Redis模式）
                 is_registered = self._check_task_exists_in_redis(task_id)

@@ -548,16 +548,16 @@ class AudioProcessor:
             # 使用TUS客户端处理 - 只启动上传，不等待结果
             from app.services.tus_asr_client import tus_asr_client
 
-            # 获取Celery任务ID
+            # 获取CeleryTaskID
             current_celery_task_id = None
             try:
                 import celery
                 current_task = celery.current_task
                 if current_task:
                     current_celery_task_id = current_task.request.id
-                    logger.info(f"当前Celery任务ID: {current_celery_task_id}")
+                    logger.info(f"当前CeleryTaskID: {current_celery_task_id}")
             except Exception as e:
-                logger.debug(f"无法获取当前Celery任务ID: {e}")
+                logger.debug(f"无法获取当前CeleryTaskID: {e}")
 
             # 启动TUS任务（不等待结果）
             logger.info("启动TUS上传任务...")
@@ -565,7 +565,7 @@ class AudioProcessor:
             tus_task_id = tus_task_result.get('task_id')
 
             if not tus_task_id:
-                raise Exception("TUS任务启动失败，未获取到任务ID")
+                raise Exception("TUS任务启动失败，未获取到TaskID")
 
             logger.info(f"TUS任务已启动，task_id: {tus_task_id}")
 

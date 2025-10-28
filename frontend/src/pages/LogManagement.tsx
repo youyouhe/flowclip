@@ -569,7 +569,7 @@ const LogManagement: React.FC = () => {
         {selectedLog && (
           <Descriptions column={2} bordered>
             <Descriptions.Item label="日志ID">{selectedLog.id}</Descriptions.Item>
-            <Descriptions.Item label="任务ID">{selectedLog.task_id}</Descriptions.Item>
+            <Descriptions.Item label="TaskID">{selectedLog.task_id}</Descriptions.Item>
             <Descriptions.Item label="视频">{selectedLog.video_title}</Descriptions.Item>
             <Descriptions.Item label="任务类型">{selectedLog.task_type}</Descriptions.Item>
             <Descriptions.Item label="任务名称">{selectedLog.task_name}</Descriptions.Item>

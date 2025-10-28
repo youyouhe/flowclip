@@ -451,7 +451,7 @@ class JianyingService:
         """查询草稿状态"""
         for attempt in range(max_retries):
             try:
-                logger.info(f"查询Jianying草稿状态 - 任务ID: {task_id} (尝试 {attempt + 1}/{max_retries})")
+                logger.info(f"查询Jianying草稿状态 - TaskID: {task_id} (尝试 {attempt + 1}/{max_retries})")
                 # 准备请求头
                 headers = {"Content-Type": "application/json"}
                 if self.api_key:
@@ -521,7 +521,7 @@ class JianyingService:
         if not task_id:
             raise Exception(f"Jianying保存任务返回异步响应但缺少task_id: {save_result}")
 
-        logger.info(f"Jianying任务已提交到队列，开始轮询 - 任务ID: {task_id}")
+        logger.info(f"Jianying任务已提交到队列，开始轮询 - TaskID: {task_id}")
 
         # 3. 轮询查询状态
         import time
@@ -565,7 +565,7 @@ class JianyingService:
                 logger.error(f"轮询Jianying任务过程中出错: {e}")
                 time.sleep(poll_interval)
 
-        raise Exception(f"Jianying任务超时 ({timeout}秒) - 任务ID: {task_id}")
+        raise Exception(f"Jianying任务超时 ({timeout}秒) - TaskID: {task_id}")
 
     async def save_draft(self, draft_id: str, draft_folder: str, max_retries: int = 3) -> Dict[str, Any]:
         """保存草稿"""

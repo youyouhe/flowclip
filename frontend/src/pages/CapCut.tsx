@@ -793,7 +793,7 @@ const CapCut: React.FC = () => {
                       <Progress percent={capcutProgress.progress} status="active" />
                       <p>{capcutProgress.message}</p>
                       {capcutProgress.taskId && (
-                        <Text type="secondary">任务ID: {capcutProgress.taskId}</Text>
+                        <Text type="secondary">TaskID: {capcutProgress.taskId}</Text>
                       )}
                     </div>
                   }
@@ -811,7 +811,7 @@ const CapCut: React.FC = () => {
                       <Progress percent={jianyingProgress.progress} status="active" />
                       <p>{jianyingProgress.message}</p>
                       {jianyingProgress.taskId && (
-                        <Text type="secondary">任务ID: {jianyingProgress.taskId}</Text>
+                        <Text type="secondary">TaskID: {jianyingProgress.taskId}</Text>
                       )}
                     </div>
                   }

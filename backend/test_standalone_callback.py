@@ -47,7 +47,7 @@ async def test_callback_server():
 
     # 3. 测试任务注册和等待
     test_task_id = f"test_task_{int(time.time())}"
-    logger.info(f"📝 测试任务ID: {test_task_id}")
+    logger.info(f"📝 测试TaskID: {test_task_id}")
 
     # 注册任务
     if standalone_callback_client.register_task(test_task_id):
