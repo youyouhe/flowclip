@@ -641,7 +641,7 @@ return (
                                 rows={8}
                                 placeholder={config.default || `请输入${config.key}`}
                                 showCount
-                                maxLength={5000}
+                                maxLength={10000}
                               />
                             </Form.Item>
                           ) : config.key === 'llm_base_url' ? (
