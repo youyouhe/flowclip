@@ -25,10 +25,21 @@ const apiProxy = createProxyMiddleware({
   onError: (err, req, res) => {
     console.error('Proxy error:', err);
     if (!res.headersSent) {
-      res.status(502).json({
-        error: 'Backend service unavailable',
-        message: 'The backend service is not responding'
-      });
+      // 检查是否为HTTP响应对象（WebSocket代理错误时res可能不是标准HTTP响应）
+      if (typeof res.status === 'function') {
+        res.status(502).json({
+          error: 'Backend service unavailable',
+          message: 'The backend service is not responding'
+        });
+      } else {
+        // WebSocket连接错误，发送错误信息
+        if (res.socket && res.socket.readyState === 1) { // WebSocket.OPEN
+          res.socket.send(JSON.stringify({
+            error: 'Backend service unavailable',
+            message: 'The backend service is not responding'
+          }));
+        }
+      }
     }
   }
 });
