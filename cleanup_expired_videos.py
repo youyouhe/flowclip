@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/home/flowclip/EchoClip/venv/bin/python
 """
 清理超期视频脚本
 删除超过48小时的已完成视频
