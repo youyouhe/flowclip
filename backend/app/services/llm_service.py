@@ -335,9 +335,9 @@ class LLMService:
             分析结果
         """
         # 构建包含SRT内容的用户消息
-        user_message = f"""请基于以下视频字幕内容开始剪辑(Please start editing based on the following video subtitle content.)：
+        user_message = f"""Please start editing based on the following video subtitle content.：
 
-视频字幕内容(Video Subtitle Content)：
+Video Subtitle Content：
 {srt_content}  """
         
         messages = [
