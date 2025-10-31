@@ -482,7 +482,7 @@ def export_slice_to_capcut(self, slice_id: int, draft_folder: str, user_id: int 
                                 text=formatted_sub_title,
                                 start=current_time,
                                 end=current_time + 3,
-                                font="挥墨体",
+                                font="文艺繁体",
                                 font_color="#ffde00",
                                 font_size=8.0,
                                 track_name=f"title_track_{i+1}",
@@ -552,7 +552,7 @@ def export_slice_to_capcut(self, slice_id: int, draft_folder: str, user_id: int 
                                         draft_id=draft_id,
                                         srt_path=srt_content,  # 传递实际内容而不是URL
                                         time_offset=current_time,
-                                        font="HarmonyOS_Sans_SC_Regular",
+                                        font="文艺繁体",
                                         font_size=8.0,
                                         font_color="#ffde00",
                                         bold=False,
@@ -606,7 +606,7 @@ def export_slice_to_capcut(self, slice_id: int, draft_folder: str, user_id: int 
                         print(f"DEBUG: 添加渐显开幕特效 - 时间轴起始: {current_time}秒, 时间轴结束: {current_time + 3}秒")
                         open_effect_result = asyncio.run(capcut_service.add_effect(
                             draft_id=draft_id,
-                            effect_type="渐显开幕",
+                            effect_type="Fade_In",
                             start=current_time,
                             end=current_time + 3,
                             track_name="ending_open_effect_track",
@@ -657,7 +657,7 @@ def export_slice_to_capcut(self, slice_id: int, draft_folder: str, user_id: int 
                     print(f"DEBUG: 添加电视彩虹屏特效 - 时间轴起始: 3秒, 时间轴结束: {slice_obj.duration - 3}秒")
                     rainbow_effect_result = asyncio.run(capcut_service.add_effect(
                         draft_id=draft_id,
-                        effect_type="电视彩虹屏",
+                        effect_type="TV_Colored_Lines",
                         start=3,
                         end=slice_obj.duration - 3,
                         track_name="rainbow_effect_track_main",
@@ -733,7 +733,7 @@ def export_slice_to_capcut(self, slice_id: int, draft_folder: str, user_id: int 
                             print(f"DEBUG: 添加渐显开幕特效 - 时间轴起始: {current_time}秒, 时间轴结束: {current_time + 3}秒")
                             open_effect_result = asyncio.run(capcut_service.add_effect(
                                 draft_id=draft_id,
-                                effect_type="渐显开幕",
+                                effect_type="Fade_In",
                                 start=current_time,
                                 end=current_time + 3,
                                 track_name="ending_open_effect_track_main",
@@ -777,7 +777,7 @@ def export_slice_to_capcut(self, slice_id: int, draft_folder: str, user_id: int 
                 text=cover_title_with_date,
                 start=0,
                 end=current_time,
-                font="挥墨体",
+                font="文艺繁体",
                 font_color="#ffde00",
                 font_size=8.0,
                 track_name="cover_title_track",
@@ -834,7 +834,7 @@ def export_slice_to_capcut(self, slice_id: int, draft_folder: str, user_id: int 
                             subtitle_result = asyncio.run(capcut_service.add_subtitle(
                                 draft_id=draft_id,
                                 srt_path=srt_content,  # 传递实际内容而不是URL
-                                font="HarmonyOS_Sans_SC_Regular",
+                                font="文艺繁体",
                                 font_size=8.0,
                                 font_color="#ffde00",
                                 bold=False,
