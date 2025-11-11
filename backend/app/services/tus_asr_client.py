@@ -375,7 +375,7 @@ class TusASRClient:
 
             # 执行分块上传
             logger.info("📤 开始分块上传...")
-            chunk_size = 1024 * 1024  # 1MB chunks
+            chunk_size = 4 * 1024 * 1024  # 4MB chunks for better efficiency
 
             with open(audio_path, 'rb') as file:
                 offset = 0
@@ -589,7 +589,7 @@ class TusASRClient:
 
     async def _upload_tus_chunks(self, upload_id: str, file_path: Path) -> None:
         """分块上传文件数据"""
-        chunk_size = 1024 * 1024  # 1MB chunks
+        chunk_size = 4 * 1024 * 1024  # 4MB chunks for better efficiency
         offset = 0
         file_size = file_path.stat().st_size
 
