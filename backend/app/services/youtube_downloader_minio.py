@@ -80,7 +80,10 @@ def is_recoverable_error(error_output: str) -> bool:
         "fragment not found",
         "HTTP Error 404",
         "Unable to download video data",
-        "This video is unavailable"
+        "This video is unavailable",
+        "'false' is not a valid URL",  # 布尔参数错误
+        "nsig extraction failed",      # YouTube签名提取失败
+        "Unable to extract nsig function"  # n函数提取失败
     ]
 
     error_lower = error_output.lower()
@@ -405,7 +408,6 @@ class YouTubeDownloaderMinio:
                 '--verbose',  # 添加详细输出以获取更多进度信息
                 # 容错参数
                 '--ignore-errors',  # 忽略可恢复的下载错误
-                '--abort-on-unavailable-fragment', 'false',  # 不因分片不可用而中止
                 '--hls-use-mpegts',  # 使用MPEG-TS格式以提高HLS容错性
                 '--retries', '3',  # 重试次数
                 '--fragment-retries', '5',  # 分片重试次数
