@@ -27,7 +27,8 @@ celery_app = Celery(
         "app.tasks.subtasks.audio_task",
         "app.tasks.subtasks.srt_task",
         "app.tasks.subtasks.slice_task",
-        "app.tasks.subtasks.capcut_task"
+        "app.tasks.subtasks.capcut_task",
+        "app.tasks.cleanup_tasks"
     ]
 )
 
@@ -99,6 +100,36 @@ celery_app.conf.update(
     task_reject_on_worker_lost=True,  # 当worker丢失时拒绝任务
     worker_prefetch_multiplier=4,  # 增加预取任务数量，让worker能同时获取更多任务
 )
+
+# Celery Beat 定时任务配置
+from celery.schedules import crontab
+
+celery_app.conf.beat_schedule = {
+    # 每天凌晨2点执行清理任务
+    'cleanup-processing-tasks': {
+        'task': 'cleanup_processing_tasks',
+        'schedule': crontab(hour=2, minute=0),  # 每天凌晨2点执行
+        'options': {
+            'queue': 'default',
+        }
+    },
+    # 每天凌晨1点执行试运行清理任务（仅查看，不执行）
+    'cleanup-processing-tasks-dry-run': {
+        'task': 'cleanup_processing_tasks_dry_run',
+        'schedule': crontab(hour=1, minute=0),  # 每天凌晨1点试运行
+        'options': {
+            'queue': 'default',
+        }
+    },
+    # 每小时重新加载系统配置
+    'reload-system-configs': {
+        'task': 'reload_system_configs',
+        'schedule': crontab(minute=0),  # 每小时执行
+        'options': {
+            'queue': 'default',
+        }
+    }
+}
 
 # 打印配置信息以便调试
 print(f"Broker URL: {celery_app.conf.broker_url}")
