@@ -987,7 +987,7 @@ const VideoDetail: React.FC = () => {
               <>
                 <LoadingOutlined className="text-2xl text-blue-500 mb-2" />
                 <div className="text-lg font-semibold">
-                  {processingStep === 0 && '正在提取音频...'}
+                  {processingStep === 0 && 'extracting audio...'}
                   {processingStep === 1 && 'Start Generating Subtitles...'}
                 </div>
               </>

@@ -160,8 +160,8 @@ def extract_slice_audio(self, video_id: str, project_id: int, user_id: int, vide
                     for chunk in response.iter_content(chunk_size=8192):
                         f.write(chunk)
                 
-                _update_task_status(celery_task_id, ProcessingTaskStatus.RUNNING, 70, "正在提取音频", video_id=video_id)
-                self.update_state(state='PROGRESS', meta={'progress': 70, 'stage': ProcessingStage.EXTRACT_AUDIO, 'message': '正在提取音频'})
+                _update_task_status(celery_task_id, ProcessingTaskStatus.RUNNING, 70, "extracting audio", video_id=video_id)
+                self.update_state(state='PROGRESS', meta={'progress': 70, 'stage': ProcessingStage.EXTRACT_AUDIO, 'message': 'extracting audio'})
                 
                 result = run_async(
                     audio_processor.extract_audio_from_video(
