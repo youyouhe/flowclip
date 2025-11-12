@@ -17,6 +17,75 @@ from app.services.progress_service import update_video_progress
 
 logger = logging.getLogger(__name__)
 
+async def validate_downloaded_file(file_path: Path) -> Dict[str, Any]:
+    """验证下载的视频文件是否完整可用"""
+    try:
+        if not file_path.exists():
+            return {"valid": False, "reason": "文件不存在"}
+
+        file_size = file_path.stat().st_size
+        if file_size < 1024 * 1024:  # 小于1MB认为不完整
+            return {"valid": False, "reason": f"文件过小: {file_size} bytes"}
+
+        # 使用ffprobe验证文件完整性
+        try:
+            import subprocess
+            result = await asyncio.create_subprocess_exec(
+                'ffprobe', '-v', 'error', '-show_format', '-show_streams',
+                str(file_path),
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            stdout, stderr = await result.communicate()
+
+            if result.returncode == 0:
+                # 解析ffprobe输出验证视频流
+                output = stdout.decode('utf-8')
+                has_video = 'codec_name=h264' in output or 'codec_name=hevc' in output
+                has_audio = 'codec_name=aac' in output or 'codec_name=mp3' in output
+                has_duration = 'duration=' in output
+
+                if has_video and has_audio and has_duration:
+                    logger.info(f"✓ 文件完整性验证通过: {file_path.name} ({file_size} bytes)")
+                    return {
+                        "valid": True,
+                        "file_size": file_size,
+                        "has_video": has_video,
+                        "has_audio": has_audio,
+                        "has_duration": has_duration
+                    }
+                else:
+                    return {
+                        "valid": False,
+                        "reason": f"文件缺少必要流: video={has_video}, audio={has_audio}, duration={has_duration}"
+                    }
+            else:
+                return {"valid": False, "reason": f"ffprobe验证失败: {stderr.decode('utf-8')}"}
+
+        except Exception as e:
+            logger.warning(f"ffprobe验证失败，尝试基础检查: {e}")
+            # 如果ffprobe不可用，进行基础检查
+            if file_size > 10 * 1024 * 1024:  # 大于10MB认为可能完整
+                return {"valid": True, "file_size": file_size, "method": "基础检查"}
+            else:
+                return {"valid": False, "reason": f"文件可能不完整: {file_size} bytes"}
+
+    except Exception as e:
+        return {"valid": False, "reason": f"验证过程异常: {str(e)}"}
+
+def is_recoverable_error(error_output: str) -> bool:
+    """判断是否为可恢复的yt-dlp错误"""
+    recoverable_errors = [
+        "Did not get any data blocks",
+        "fragment not found",
+        "HTTP Error 404",
+        "Unable to download video data",
+        "This video is unavailable"
+    ]
+
+    error_lower = error_output.lower()
+    return any(error.lower() in error_lower for error in recoverable_errors)
+
 class YouTubeDownloaderMinio:
     """集成MinIO的YouTube下载器"""
     
@@ -309,9 +378,12 @@ class YouTubeDownloaderMinio:
         progress_callback: Optional[Callable[[float, str], None]] = None  # 进度回调函数
     ) -> Dict[str, Any]:
         """使用yt-dlp命令行下载视频并上传到MinIO"""
-        
+
         logger.info(f"开始命令行下载视频: {url}")
         logger.info(f"项目ID: {project_id}, 用户ID: {user_id}, 质量: {quality}")
+
+        # 初始化容错状态变量
+        download_succeeded_with_recovery = False
         
         # 创建临时目录
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -321,7 +393,7 @@ class YouTubeDownloaderMinio:
             # 使用提供的cookie文件或实例的cookie文件
             effective_cookies_file = cookies_file or self.cookies_file
             
-            # 构建yt-dlp命令 - 移除--no-warnings以捕获更多输出信息
+            # 构建yt-dlp命令 - 添加容错参数
             cmd = [
                 'yt-dlp',
                 url,
@@ -330,7 +402,15 @@ class YouTubeDownloaderMinio:
                 '--write-info-json',
                 '--write-thumbnail',
                 '--newline',  # 确保每行输出都立即刷新
-                '--verbose'  # 添加详细输出以获取更多进度信息
+                '--verbose',  # 添加详细输出以获取更多进度信息
+                # 容错参数
+                '--ignore-errors',  # 忽略可恢复的下载错误
+                '--abort-on-unavailable-fragment', 'false',  # 不因分片不可用而中止
+                '--hls-use-mpegts',  # 使用MPEG-TS格式以提高HLS容错性
+                '--retries', '3',  # 重试次数
+                '--fragment-retries', '5',  # 分片重试次数
+                '--skip-unavailable-fragments',  # 跳过不可用的分片
+                '--no-check-certificate'  # 跳过证书检查（如果需要）
             ]
             
             # 添加cookie文件（如果存在）
@@ -535,16 +615,56 @@ class YouTubeDownloaderMinio:
                             logger.error(f"DNS连接检查失败: {dns_error}")
                     
                     logger.error(f"错误输出详情: {'; '.join(error_lines) if error_lines else '无详细错误信息'}")
-                    
-                    error_msg = f"yt-dlp下载失败，返回码: {process.returncode}"
-                    if error_lines:
-                        error_msg += f"\n错误详情: {'; '.join(error_lines)}"
-                    
-                    logger.error(error_msg)
-                    raise Exception(error_msg)
+
+                    # 智能容错机制：检查是否为可恢复的错误且文件已基本下载完成
+                    error_text = ' '.join(error_lines) if error_lines else ''
+
+                    if is_recoverable_error(error_text):
+                        logger.info("检测到可恢复的yt-dlp错误，尝试验证已下载的文件...")
+
+                        # 检查临时目录中是否有视频文件
+                        temp_path_for_check = Path(temp_dir)
+                        files_in_temp = list(temp_path_for_check.glob('*')) if temp_path_for_check.exists() else []
+                        video_files_in_temp = [f for f in files_in_temp if f.suffix in ['.mp4', '.webm', '.mkv'] and f.name != 'NA']
+
+                        if video_files_in_temp:
+                            downloaded_file_for_check = video_files_in_temp[0]
+                            logger.info(f"找到已下载文件: {downloaded_file_for_check.name}")
+
+                            # 验证文件完整性
+                            validation_result = await validate_downloaded_file(downloaded_file_for_check)
+
+                            if validation_result.get("valid", False):
+                                file_size = validation_result.get("file_size", 0)
+                                logger.warning(f"✓ yt-dlp虽然报错但文件验证通过: {file_size} bytes")
+                                logger.warning("忽略yt-dlp返回码错误，继续处理...")
+
+                                # 跳过错误抛出，继续执行后续处理逻辑
+                                download_succeeded_with_recovery = True
+                            else:
+                                logger.error(f"✗ 文件验证失败: {validation_result.get('reason', '未知原因')}")
+                                download_succeeded_with_recovery = False
+                        else:
+                            logger.error("未找到已下载的视频文件")
+                            download_succeeded_with_recovery = False
+                    else:
+                        logger.error("错误类型不可恢复，抛出异常")
+                        download_succeeded_with_recovery = False
+
+                    # 如果容错失败，则抛出异常
+                    if not download_succeeded_with_recovery:
+                        error_msg = f"yt-dlp下载失败，返回码: {process.returncode}"
+                        if error_lines:
+                            error_msg += f"\n错误详情: {'; '.join(error_lines)}"
+
+                        logger.error(error_msg)
+                        raise Exception(error_msg)
                 
-                logger.info("yt-dlp下载完成")
-                
+                if download_succeeded_with_recovery:
+                    logger.warning("yt-dlp下载通过容错机制完成")
+                else:
+                    logger.info("yt-dlp下载完成")
+
                 # 查找下载的文件
                 files = list(temp_path.glob('*'))
                 video_files = [f for f in files if f.suffix in ['.mp4', '.webm', '.mkv'] and f.name != 'NA']
@@ -553,10 +673,18 @@ class YouTubeDownloaderMinio:
                 
                 if not video_files:
                     raise Exception("未找到下载的视频文件")
-                
+
                 downloaded_file = video_files[0]
                 info_file = info_files[0] if info_files else None
                 thumbnail_file = thumbnail_files[0] if thumbnail_files else None
+
+                # 如果是通过容错机制完成的，再次验证文件
+                if download_succeeded_with_recovery:
+                    logger.info("容错机制：对下载文件进行最终验证")
+                    final_validation = await validate_downloaded_file(downloaded_file)
+                    if not final_validation.get("valid", False):
+                        logger.error(f"容错下载的文件最终验证失败: {final_validation.get('reason', '未知原因')}")
+                        raise Exception("容错下载的文件验证失败")
                 
                 # 读取info.json获取信息
                 if info_file and info_file.exists():
