@@ -818,22 +818,47 @@ async def get_slice_info_by_capcut_filename(
         # 标准化文件名（移除路径前缀）
         clean_filename = _extract_filename(filename)
 
-        # 查询匹配的切片 - 使用LIKE进行后缀匹配
-        query = select(VideoSlice).where(
-            VideoSlice.capcut_draft_url.like(f"%{clean_filename}")
-        )
+        # 查询匹配的切片 - 使用验证过的raw SQL方式
+        pattern = f"%{clean_filename}%"
+        query = text("""
+            SELECT vs.*, v.title as video_title, p.name as project_name
+            FROM video_slices vs
+            LEFT JOIN videos v ON vs.video_id = v.id
+            LEFT JOIN projects p ON v.project_id = p.id
+            WHERE vs.capcut_draft_url LIKE :pattern
+            LIMIT 1
+        """)
 
-        result = await db.execute(query)
-        slice_obj = result.scalar_one_or_none()
+        result = await db.execute(query, {"pattern": pattern})
+        row = result.fetchone()
 
-        if not slice_obj:
+        if not row:
             raise HTTPException(
                 status_code=404,
                 detail=f"未找到匹配CapCut文件名 '{clean_filename}' 的切片"
             )
 
-        # 构建完整响应数据
-        slice_info = await _build_slice_info_response(db, slice_obj)
+        # 构建完整响应数据 - 直接从row构建
+        slice_info = {
+            "id": row.id,
+            "video_id": row.video_id,
+            "cover_title": row.cover_title,
+            "title": row.title,
+            "description": row.description,
+            "tags": row.tags,
+            "start_time": row.start_time,
+            "end_time": row.end_time,
+            "duration": row.duration,
+            "status": row.status,
+            "capcut_status": row.capcut_status,
+            "capcut_draft_url": row.capcut_draft_url,
+            "created_at": row.created_at.isoformat() if row.created_at else None,
+            "video_info": {
+                "id": row.video_id,
+                "title": row.video_title,
+                "project_name": row.project_name
+            }
+        }
 
         return {
             "success": True,
