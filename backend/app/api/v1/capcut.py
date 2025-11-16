@@ -8,7 +8,7 @@ import time
 import logging
 import re
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, text
 from pydantic import BaseModel, field_validator
 
 from app.core.database import get_db
