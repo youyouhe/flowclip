@@ -6,6 +6,7 @@ import requests
 import json
 import time
 import logging
+import re
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from pydantic import BaseModel, field_validator
@@ -15,6 +16,7 @@ from app.models.video_slice import VideoSlice, VideoSubSlice
 from app.models.transcript import Transcript
 from app.schemas.video_slice import VideoSlice as VideoSliceSchema
 from app.models.video import Video
+from app.models.project import Project
 from app.core.config import settings
 from app.models.resource import Resource, ResourceTag
 from app.core.constants import ProcessingTaskType, ProcessingTaskStatus, ProcessingStage
@@ -738,3 +740,199 @@ async def get_capcut_status():
         return {"status": "offline"}
     except:
         return {"status": "offline"}
+
+
+@router.get("/slice-info/{filename}",
+    summary="通过CapCut文件名查询切片信息",
+    description="根据CapCut导出的文件名精确匹配对应的切片信息，返回完整的切片数据包括视频和项目信息。",
+    responses={
+        200: {
+            "description": "成功返回切片信息",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "success": True,
+                        "data": {
+                            "slice_id": 217,
+                            "video_id": 76,
+                            "project_id": 2,
+                            "project_name": "示例项目",
+                            "video_title": "示例视频标题",
+                            "cover_title": "灭毒战争",
+                            "title": "委内瑞拉战争前夜",
+                            "description": "美国对委内瑞拉的军事行动...",
+                            "tags": ["委内瑞拉", "川普", "南方之谋"],
+                            "start_time": 3074.97,
+                            "end_time": 3450.31,
+                            "duration": 375.611,
+                            "status": "completed",
+                            "capcut_status": "completed",
+                            "capcut_draft_url": "http://107.173.223.214:9000/capcut-drafts/dfd_cat_1763276651_78e06300.zip",
+                            "file_size": 86068223,
+                            "created_at": "2025-11-16T07:00:28",
+                            "updated_at": "2025-11-16T07:05:10"
+                        }
+                    }
+                }
+            }
+        },
+        404: {"description": "未找到匹配的切片"},
+        422: {"description": "文件名格式无效"}
+    },
+    operation_id="get_slice_info_by_capcut_filename"
+)
+async def get_slice_info_by_capcut_filename(
+    filename: str,
+    db: AsyncSession = Depends(get_db)
+) -> Dict[str, Any]:
+    """
+    通过CapCut文件名查询切片信息
+
+    根据CapCut导出的文件名（如 dfd_cat_1763276651_78e06300.zip）精确匹配对应的切片，
+    返回完整的切片信息包括视频信息、项目信息等。
+
+    Args:
+        filename (str): CapCut文件名，不包含路径前缀
+        db (AsyncSession): 数据库会话依赖
+
+    Returns:
+        Dict[str, Any]: 包含切片信息的响应
+            - success (bool): 查询是否成功
+            - data (Dict): 切片详细信息
+            - message (str): 操作结果描述
+
+    Raises:
+        HTTPException: 当文件名格式无效或未找到匹配切片时抛出异常
+
+    Examples:
+        >>> GET /api/v1/capcut/slice-info/dfd_cat_1763276651_78e06300.zip
+    """
+    try:
+        # 验证文件名格式
+        if not _is_valid_capcut_filename(filename):
+            raise HTTPException(
+                status_code=422,
+                detail=f"无效的CapCut文件名格式: {filename}。期望格式: dfd_cat_{timestamp}_{hash}.zip"
+            )
+
+        # 标准化文件名（移除路径前缀）
+        clean_filename = _extract_filename(filename)
+
+        # 查询匹配的切片 - 使用LIKE进行后缀匹配
+        query = select(VideoSlice).where(
+            VideoSlice.capcut_draft_url.like(f"%{clean_filename}")
+        )
+
+        result = await db.execute(query)
+        slice_obj = result.scalar_one_or_none()
+
+        if not slice_obj:
+            raise HTTPException(
+                status_code=404,
+                detail=f"未找到匹配CapCut文件名 '{clean_filename}' 的切片"
+            )
+
+        # 构建完整响应数据
+        slice_info = await _build_slice_info_response(db, slice_obj)
+
+        return {
+            "success": True,
+            "data": slice_info,
+            "message": f"成功找到切片信息: {slice_info['cover_title']}"
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"查询CapCut切片信息失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"查询失败: {str(e)}")
+
+
+# ===== 辅助函数 =====
+
+def _is_valid_capcut_filename(filename: str) -> bool:
+    """验证CapCut文件名格式"""
+    # CapCut文件名正则表达式: dfd_cat_{timestamp}_{hash}.zip
+    pattern = r'^dfd_cat_\d+_[a-f0-9]+\.zip$'
+    return bool(re.match(pattern, filename, re.IGNORECASE))
+
+def _extract_filename(url_or_filename: str) -> str:
+    """从URL或路径中提取文件名"""
+    # 移除URL前缀，只保留文件名部分
+    if '/' in url_or_filename:
+        return url_or_filename.split('/')[-1]
+    return url_or_filename
+
+async def _build_slice_info_response(
+    db: AsyncSession,
+    slice_obj: VideoSlice
+) -> Dict[str, Any]:
+    """构建切片信息响应"""
+    try:
+        # 获取视频信息
+        video_result = await db.execute(select(Video).where(Video.id == slice_obj.video_id))
+        video_obj = video_result.scalar_one_or_none()
+
+        # 获取项目信息
+        project_name = None
+        if video_obj:
+            project_result = await db.execute(select(Project).where(Project.id == video_obj.project_id))
+            project_obj = project_result.scalar_one_or_none()
+            project_name = project_obj.name if project_obj else None
+
+        # 提取文件名
+        capcut_filename = None
+        if slice_obj.capcut_draft_url:
+            capcut_filename = _extract_filename(slice_obj.capcut_draft_url)
+
+        # 构建响应数据
+        slice_info = {
+            "slice_id": slice_obj.id,
+            "video_id": slice_obj.video_id,
+            "project_id": video_obj.project_id if video_obj else None,
+            "project_name": project_name,
+            "video_title": video_obj.title if video_obj else None,
+            "cover_title": slice_obj.cover_title,
+            "title": slice_obj.title,
+            "description": slice_obj.description,
+            "tags": slice_obj.tags or [],
+            "start_time": slice_obj.start_time,
+            "end_time": slice_obj.end_time,
+            "duration": slice_obj.duration,
+            "status": slice_obj.status,
+            "capcut_status": slice_obj.capcut_status,
+            "capcut_draft_url": slice_obj.capcut_draft_url,
+            "file_size": slice_obj.file_size,
+            "created_at": slice_obj.created_at,
+            "updated_at": slice_obj.updated_at
+        }
+
+        # 添加文件名（如果存在）
+        if capcut_filename:
+            slice_info["capcut_filename"] = capcut_filename
+
+        return slice_info
+
+    except Exception as e:
+        logger.error(f"构建切片响应失败: {str(e)}")
+        # 返回基础信息
+        return {
+            "slice_id": slice_obj.id,
+            "video_id": slice_obj.video_id,
+            "project_id": None,
+            "project_name": None,
+            "video_title": None,
+            "cover_title": slice_obj.cover_title,
+            "title": slice_obj.title,
+            "description": slice_obj.description,
+            "tags": slice_obj.tags or [],
+            "start_time": slice_obj.start_time,
+            "end_time": slice_obj.end_time,
+            "duration": slice_obj.duration,
+            "status": slice_obj.status,
+            "capcut_status": slice_obj.capcut_status,
+            "capcut_draft_url": slice_obj.capcut_draft_url,
+            "file_size": slice_obj.file_size,
+            "created_at": slice_obj.created_at,
+            "updated_at": slice_obj.updated_at
+        }
