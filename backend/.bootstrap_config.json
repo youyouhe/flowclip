@@ -1,0 +1,22 @@
+{
+  "mysql": {
+    "host": "127.0.0.1",
+    "port": 3306,
+    "user": "youtube_user",
+    "password": "",
+    "database": "youtube_slicer",
+    "root_password": ""
+  },
+  "redis": {
+    "url": "redis://127.0.0.1:6379"
+  },
+  "minio": {
+    "endpoint": "127.0.0.1:9000",
+    "public_endpoint": "",
+    "access_key": "minioadmin",
+    "secret_key": "minioadmin",
+    "bucket_name": "youtube-videos"
+  },
+  "secret_key": "your-secret-key-change-this-in-production",
+  "initialized": false
+}

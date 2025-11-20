@@ -182,7 +182,7 @@ export const llmAPI = {
     }),
   testLongRequest: () =>
     api.get('/llm/test-long-request', {
-      timeout: 120000, // 2分钟超时
+      timeout: 180000, // 3分钟超时
     }),
 };
 

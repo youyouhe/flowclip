@@ -56,12 +56,17 @@ async def test_long_request():
     import time
     
     start_time = time.time()
+    logger.info(f"🚀 开始长时间请求测试 - {start_time}")
     
     # 模拟LLM处理时间（60秒）
+    logger.info("⏳ 开始60秒睡眠...")
     await asyncio.sleep(60)
+    logger.info("✅ 60秒睡眠完成")
     
     end_time = time.time()
     processing_time = end_time - start_time
+    
+    logger.info(f"🎉 测试完成 - 总耗时: {processing_time:.2f}秒")
     
     return {
         "success": True,
