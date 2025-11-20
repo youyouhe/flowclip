@@ -199,13 +199,6 @@ async def check_service_status(
             database = get_config("mysql_database", settings.mysql_database)
 
             logger.info(f"MySQL配置: host={host}, port={port}, user={user}, database={database}")
-            logger.info(f"DEBUG: 最终使用的password: '{password}' (长度: {len(password)})")
-            
-            logger.info(f"DEBUG: 检查环境变量 - MYSQL_PASSWORD存在: {bool(os.getenv('MYSQL_PASSWORD'))}")
-            logger.info(f"DEBUG: 检查环境变量 - MYSQL_APP_PASSWORD存在: {bool(os.getenv('MYSQL_APP_PASSWORD'))}")
-            logger.info(f"DEBUG: settings.mysql_password: '{settings.mysql_password}' (长度: {len(settings.mysql_password)})")
-            
-            logger.info(f"DEBUG: get_config返回的password: '{password}' (长度: {len(password)})")
             
             try:
                 connection = await aiomysql.connect(
