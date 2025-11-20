@@ -189,14 +189,17 @@ async def check_service_status(
             return service_configs.get(key, getattr(settings, key, default))
         
         if service_name.lower() == "mysql":
-            # MySQL健康检查
+            # MySQL健康检查 - 优先使用环境变量中的正确密码
             host = get_config("mysql_host", settings.mysql_host)
             port = int(get_config("mysql_port", str(settings.mysql_port)))
             user = get_config("mysql_user", settings.mysql_user)
-            password = get_config("mysql_password", settings.mysql_password)
+            # 对于密码，如果数据库配置是空的，优先使用settings中的环境变量值
+            db_password = get_config("mysql_password", settings.mysql_password)
+            password = db_password if db_password else settings.mysql_password
             database = get_config("mysql_database", settings.mysql_database)
-            
+
             logger.info(f"MySQL配置: host={host}, port={port}, user={user}, database={database}")
+            logger.info(f"DEBUG: 最终使用的password: '{password}' (长度: {len(password)})")
             
             logger.info(f"DEBUG: 检查环境变量 - MYSQL_PASSWORD存在: {bool(os.getenv('MYSQL_PASSWORD'))}")
             logger.info(f"DEBUG: 检查环境变量 - MYSQL_APP_PASSWORD存在: {bool(os.getenv('MYSQL_APP_PASSWORD'))}")
