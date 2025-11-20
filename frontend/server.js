@@ -17,7 +17,7 @@ const apiProxy = createProxyMiddleware({
   changeOrigin: true,
   ws: true, // 支持 WebSocket
   secure: false,
-  timeout: 30000,
+  timeout: 180000, // 3分钟超时，匹配Axios配置
   // 移除 pathRewrite，因为前端已经生成正确的 /api/v1 路径
   onProxyReq: (proxyReq, req, res) => {
     console.log(`Proxying: ${req.method} ${req.url} -> http://localhost:8001${proxyReq.path}`);
