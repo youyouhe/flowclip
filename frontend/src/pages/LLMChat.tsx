@@ -147,47 +147,7 @@ const LLMChat: React.FC = () => {
     }
   };
 
-  const handleTestLongRequest = async () => {
-    const requestId = Math.random().toString(36).substring(7);
-    console.log(`🚀 [TEST][${requestId}] === 开始测试长时间请求 ===`, new Date().toISOString());
-    console.log(`🚀 [TEST][${requestId}] 当前loading状态:`, loading);
-    
-    if (loading) {
-      console.warn(`🚀 [TEST][${requestId}] 警告: 已有请求进行中，忽略本次调用`);
-      return;
-    }
-    
-    console.log(`🚀 [TEST][${requestId}] 函数调用堆栈:`, new Error().stack?.substring(0, 300));
-    setLoading(true);
-    
-    try {
-      const response = await llmAPI.testLongRequest();
-      console.log('长时间请求测试成功:', response.data);
-      message.success(`测试成功! 处理时间: ${response.data.processing_time_seconds}秒`);
-    } catch (error: any) {
-      console.error('长时间请求测试失败:', error);
-      console.error('错误详情:', {
-        code: error.code,
-        message: error.message,
-        response: error.response?.data,
-        status: error.response?.status,
-        timeout: error.code === 'ECONNABORTED'
-      });
-      
-      let errorMessage = '测试失败';
-      if (error.code === 'ECONNABORTED') {
-        errorMessage = '测试超时，请求被中断';
-      } else if (error.response?.data?.detail) {
-        errorMessage = `测试失败: ${error.response.data.detail}`;
-      } else if (error.message) {
-        errorMessage = `网络错误: ${error.message}`;
-      }
-      
-      message.error(errorMessage);
-    } finally {
-      setLoading(false);
-    }
-  };
+  
 
   const handleSendMessage = async () => {
     if (!inputMessage.trim()) return;
@@ -374,15 +334,6 @@ const LLMChat: React.FC = () => {
                   onClick={() => setSettingsVisible(true)}
                 >
                   设置
-                </Button>
-                <Button 
-                  type="dashed"
-                  onClick={handleTestLongRequest}
-                  loading={loading}
-                  disabled={loading}
-                  title="测试60秒长时间请求，用于诊断网络连接问题"
-                >
-                  网络测试
                 </Button>
               </Space>
             }

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Request
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from typing import List, Dict, Any, Optional
@@ -46,42 +46,7 @@ class SystemPromptResponse(BaseModel):
     message: str
     current_prompt: str
 
-@router.get("/test-long-request", operation_id="test_long_request")
-async def test_long_request(request: Request):
-    """
-    测试长时间请求 - 用于诊断网络连接问题
-    模拟LLM请求的处理时间，但不实际调用LLM服务
-    """
-    import asyncio
-    import time
-    
-    start_time = time.time()
-    
-    # 记录请求来源信息
-    client_ip = request.client.host
-    user_agent = request.headers.get("user-agent", "Unknown")
-    referer = request.headers.get("referer", "No referer")
-    
-    logger.info(f"🚀 开始长时间请求测试 - {start_time}")
-    logger.info(f"🔍 请求来源: IP={client_ip}, UA={user_agent}, Referer={referer}")
-    
-    # 模拟LLM处理时间（60秒）
-    logger.info("⏳ 开始60秒睡眠...")
-    await asyncio.sleep(60)
-    logger.info("✅ 60秒睡眠完成")
-    
-    end_time = time.time()
-    processing_time = end_time - start_time
-    
-    logger.info(f"🎉 测试完成 - 总耗时: {processing_time:.2f}秒")
-    
-    return {
-        "success": True,
-        "message": "长时间请求测试完成",
-        "processing_time_seconds": round(processing_time, 2),
-        "start_time": start_time,
-        "end_time": end_time
-    }
+
 
 @router.post("/chat", response_model=ChatResponse,
     summary="与LLM对话",
