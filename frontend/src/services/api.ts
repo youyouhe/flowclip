@@ -181,7 +181,9 @@ export const llmAPI = {
       timeout: 60000, // 1分钟超时
     }),
   testLongRequest: () => {
-    console.log('🔍 [API] 准备发送测试请求...', new Date().toISOString());
+    const apiRequestId = Math.random().toString(36).substring(7);
+    console.log(`🔍 [API][${apiRequestId}] 准备发送测试请求...`, new Date().toISOString());
+    console.log(`🔍 [API][${apiRequestId}] 当前时间戳:`, Date.now());
     return api.get('/llm/test-long-request', {
       timeout: 180000, // 3分钟超时
     });

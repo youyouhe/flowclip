@@ -148,8 +148,16 @@ const LLMChat: React.FC = () => {
   };
 
   const handleTestLongRequest = async () => {
-    console.log('🚀 [TEST] 开始测试长时间请求...', new Date().toISOString());
-    console.log('🚀 [TEST] 当前loading状态:', loading);
+    const requestId = Math.random().toString(36).substring(7);
+    console.log(`🚀 [TEST][${requestId}] === 开始测试长时间请求 ===`, new Date().toISOString());
+    console.log(`🚀 [TEST][${requestId}] 当前loading状态:`, loading);
+    
+    if (loading) {
+      console.warn(`🚀 [TEST][${requestId}] 警告: 已有请求进行中，忽略本次调用`);
+      return;
+    }
+    
+    console.log(`🚀 [TEST][${requestId}] 函数调用堆栈:`, new Error().stack?.substring(0, 300));
     setLoading(true);
     
     try {
