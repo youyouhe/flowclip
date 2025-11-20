@@ -46,7 +46,7 @@ class Settings(BaseSettings):
     mysql_host: str = os.getenv("MYSQL_HOST", "localhost")
     mysql_port: int = int(os.getenv("MYSQL_PORT", "3306"))
     mysql_user: str = os.getenv("MYSQL_USER", "youtube_user")
-    mysql_password: str = os.getenv("MYSQL_APP_PASSWORD", "youtube_password")
+    mysql_password: str = os.getenv("MYSQL_PASSWORD", os.getenv("MYSQL_APP_PASSWORD", "youtube_password"))
     mysql_database: str = os.getenv("MYSQL_DATABASE", "youtube_slicer")
     mysql_root_password: str = os.getenv("MYSQL_ROOT_PASSWORD", "rootpassword")
     
