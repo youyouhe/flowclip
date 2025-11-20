@@ -242,19 +242,35 @@ const SystemConfig: React.FC = () => {
       setError(null);
       setSuccess(null);
 
-      // 构造更新数据
+      // 只提交真正被修改过的配置项
       const updateData = Object.keys(values).map(key => {
         const config = configs.find(c => c.key === key);
-        return {
-          key,
-          value: values[key],
-          description: config?.description || '',
-          category: config?.category || ''
-        };
-      });
+        const newValue = values[key];
+        const originalValue = config?.value || '';
+
+        // 只有值真的发生变化时才包含在更新数据中
+        if (newValue !== originalValue) {
+          return {
+            key,
+            value: newValue,
+            description: config?.description || '',
+            category: config?.category || ''
+          };
+        }
+
+        return null;
+      }).filter(item => item !== null); // 过滤掉null值
+
+      if (updateData.length === 0) {
+        setSuccess('没有配置项被修改');
+        setSaving(false);
+        return;
+      }
+
+      console.log('正在更新的配置项:', updateData.map(item => ({ key: item.key, oldValue: configs.find(c => c.key === item.key)?.value, newValue: item.value })));
 
       await systemConfigAPI.updateSystemConfigs(updateData);
-      setSuccess('配置保存成功');
+      setSuccess(`成功更新 ${updateData.length} 个配置项`);
 
       // 重新获取配置以确保同步
       await fetchSystemConfigs();

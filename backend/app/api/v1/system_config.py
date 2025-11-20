@@ -99,13 +99,21 @@ async def update_system_configs(
 ):
     """批量更新系统配置项"""
     try:
+        logger.info(f"开始批量更新配置，共 {len(configs)} 个配置项")
+
         updated_configs = []
         for config in configs:
+            # 获取原始配置值进行对比
+            original_config = await SystemConfigService.get_config(db, config.key)
+            original_value = original_config.value if original_config else "未设置"
+
+            logger.info(f"更新配置 {config.key}: '{original_value}' -> '{config.value}'")
+
             # 保存到数据库
             db_config = await SystemConfigService.set_config(
-                db, 
-                config.key, 
-                config.value, 
+                db,
+                config.key,
+                config.value,
                 config.description,
                 config.category
             )
@@ -115,10 +123,11 @@ async def update_system_configs(
                 description=db_config.description,
                 category=db_config.category
             ))
-        
+
         # 更新当前settings
         await SystemConfigService.update_settings_from_db(db)
-        
+        logger.info("系统配置已更新到settings")
+
         # 如果更新了MinIO相关配置，重载MinIO客户端
         minio_updated = any(config.key.startswith('minio_') for config in configs)
         if minio_updated:
@@ -128,9 +137,11 @@ async def update_system_configs(
                 logger.info("MinIO客户端配置已重载")
             except Exception as e:
                 logger.error(f"重载MinIO客户端配置失败: {e}")
-        
+
+        logger.info(f"配置更新完成，共更新 {len(updated_configs)} 个配置项")
         return updated_configs
     except Exception as e:
+        logger.error(f"批量更新配置失败: {e}")
         raise HTTPException(status_code=400, detail=str(e))
 
 class ServiceStatus(BaseModel):
