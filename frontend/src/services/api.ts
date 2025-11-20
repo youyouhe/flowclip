@@ -180,6 +180,10 @@ export const llmAPI = {
     api.get('/llm/models', {
       timeout: 60000, // 1分钟超时
     }),
+  testLongRequest: () =>
+    api.get('/llm/test-long-request', {
+      timeout: 120000, // 2分钟超时
+    }),
 };
 
 // 视频切片相关API

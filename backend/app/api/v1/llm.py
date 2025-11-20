@@ -46,6 +46,31 @@ class SystemPromptResponse(BaseModel):
     message: str
     current_prompt: str
 
+@router.get("/test-long-request", operation_id="test_long_request")
+async def test_long_request():
+    """
+    测试长时间请求 - 用于诊断网络连接问题
+    模拟LLM请求的处理时间，但不实际调用LLM服务
+    """
+    import asyncio
+    import time
+    
+    start_time = time.time()
+    
+    # 模拟LLM处理时间（60秒）
+    await asyncio.sleep(60)
+    
+    end_time = time.time()
+    processing_time = end_time - start_time
+    
+    return {
+        "success": True,
+        "message": "长时间请求测试完成",
+        "processing_time_seconds": round(processing_time, 2),
+        "start_time": start_time,
+        "end_time": end_time
+    }
+
 @router.post("/chat", response_model=ChatResponse,
     summary="与LLM对话",
     description="与大型语言模型进行对话。支持使用视频内容作为上下文进行分析，也可以进行简单的对话。",
