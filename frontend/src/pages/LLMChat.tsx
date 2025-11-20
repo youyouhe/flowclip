@@ -148,7 +148,8 @@ const LLMChat: React.FC = () => {
   };
 
   const handleTestLongRequest = async () => {
-    console.log('开始测试长时间请求...');
+    console.log('🚀 [TEST] 开始测试长时间请求...', new Date().toISOString());
+    console.log('🚀 [TEST] 当前loading状态:', loading);
     setLoading(true);
     
     try {
@@ -370,6 +371,7 @@ const LLMChat: React.FC = () => {
                   type="dashed"
                   onClick={handleTestLongRequest}
                   loading={loading}
+                  disabled={loading}
                   title="测试60秒长时间请求，用于诊断网络连接问题"
                 >
                   网络测试
