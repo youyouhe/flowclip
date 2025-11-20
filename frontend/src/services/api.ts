@@ -24,7 +24,7 @@ console.log('🔍 Debug - Final API baseURL:', baseURL);
 
 const api = axios.create({
   baseURL: baseURL,
-  timeout: 30000,
+  timeout: 120000, // 设置为120秒
 });
 
 // 请求拦截器添加token
@@ -170,7 +170,7 @@ export const llmAPI = {
       system_prompt: systemPrompt,
       use_srt_context: useSrtContext
     }, {
-      timeout: 120000, // 2分钟超时
+      timeout: 180000, // 3分钟超时，给LLM更多处理时间
     }),
   updateSystemPrompt: (systemPrompt: string) =>
     api.post('/llm/system-prompt', { system_prompt: systemPrompt }),

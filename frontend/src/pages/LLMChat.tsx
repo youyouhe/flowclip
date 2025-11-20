@@ -187,7 +187,24 @@ const LLMChat: React.FC = () => {
 
     } catch (error: any) {
       console.error('LLM对话失败:', error);
-      message.error(`对话失败: ${error.response?.data?.detail || error.message}`);
+      console.error('错误详情:', {
+        code: error.code,
+        message: error.message,
+        response: error.response?.data,
+        status: error.response?.status,
+        timeout: error.code === 'ECONNABORTED'
+      });
+      
+      let errorMessage = '对话失败';
+      if (error.code === 'ECONNABORTED') {
+        errorMessage = '请求超时，请稍后重试';
+      } else if (error.response?.data?.detail) {
+        errorMessage = `对话失败: ${error.response.data.detail}`;
+      } else if (error.message) {
+        errorMessage = `网络错误: ${error.message}`;
+      }
+      
+      message.error(errorMessage);
     } finally {
       setLoading(false);
     }
